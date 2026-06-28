@@ -64,3 +64,5 @@ The fallback model has no helicopter dynamics or sound, which is why the sim sho
 ## Notes
 
 The full replacement `gtvr_attack_copter.tmb` path is still risky because replacing that compiled model would likely remove the EC135 cockpit geometry. The next viable route is to find a text-loadable graphics hook or a compiled-model merge path that preserves `gtvr_attack_copter.tmb`, `gtvr_attack_copter.tmq`, controls, sounds, and cockpit textures.
+
+The currently safe converter use is the repaint texture workflow in `docs/repaint-workflow.md`. It converts generated PNGs into the three exterior `.ttx` files used by the `prototype_tactical` repaint and does not patch the aircraft graph.
