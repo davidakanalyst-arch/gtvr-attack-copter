@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local/generated build output
+dist/
+build/
+out/
+release/
+
+# Electron-style unpacked app output: keep only one canonical win-unpacked.
+**/win-unpacked*/
+
+# Aerofly compiled/exported binaries should be regenerated or kept local unless explicitly intended.
+*.tmb
+*.ttx
+*.tsb
+

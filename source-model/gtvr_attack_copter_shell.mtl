@@ -1,0 +1,25 @@
+newmtl matte_graphite
+Kd 0.055 0.060 0.060
+Ks 0.100 0.100 0.095
+Ns 18
+
+newmtl canopy_glass
+Kd 0.080 0.150 0.180
+Ks 0.600 0.750 0.800
+Ns 90
+d 0.45
+
+newmtl dark_metal
+Kd 0.018 0.020 0.020
+Ks 0.250 0.250 0.240
+Ns 35
+
+newmtl olive_panel
+Kd 0.170 0.205 0.145
+Ks 0.080 0.090 0.075
+Ns 12
+
+newmtl warning_red
+Kd 0.550 0.030 0.020
+Ks 0.100 0.020 0.020
+Ns 8
