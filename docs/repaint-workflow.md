@@ -37,7 +37,7 @@ The installer copies those three converted textures into:
 C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\prototype_tactical
 ```
 
-It renames the repaint option to `GTVR Tactical Black` and backs up the previous files beside the repaint folder:
+It renames the repaint option to `GTVR Attack Wrap` and backs up the previous files beside the repaint folder:
 
 ```text
 C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\_prototype_tactical_pre_gtvr_generated_repaint
@@ -47,4 +47,4 @@ C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\_prototype_tac
 
 This makes the flyable EC135-derived prototype visibly different without touching the compiled aircraft model. It does not solve the shell replacement problem; it is the safe interim visual layer while the geometry route is researched.
 
-The EC135 exterior UV layout spreads texture regions across the fuselage, roof, and tail boom in ways that are not obvious from file names alone. Keep repaint art broad and repeated across all three exterior maps; avoid long readable labels because they can land on the tail or wrap across unexpected panels.
+The EC135 exterior UV layout spreads texture regions across the fuselage, roof, and tail boom in ways that are not obvious from file names alone. Keep repaint art broad and repeated across all three exterior maps. The generated attack wrap uses armor-panel blocks, dark red strike marks, sensor circles, fastener grids, and low-visibility `ATTACK COPTER` stencils so the aircraft reads more like a compact military scout without changing the model.

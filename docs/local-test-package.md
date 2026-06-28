@@ -41,6 +41,6 @@ python tools\run_aerofly_converter.py gtvr_repaint_textures tools\vendor\gtvr_re
 python tools\install_gtvr_repaint_textures.py
 ```
 
-That updates the selectable `prototype_tactical` repaint to `GTVR Tactical Black` without touching the aircraft model, pilot slot, sound, or flight dynamics.
+That updates the selectable `prototype_tactical` repaint to `GTVR Attack Wrap` without touching the aircraft model, pilot slot, sound, or flight dynamics.
 
 The installer creates one custom repaint folder named `prototype_tactical` from the local EC135 `german_army` repaint, then removes the other stock repaint folders. It keeps `highskids` because that tactical repaint depends on the hidden high-skid option.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AIRCRAFT_NAME = "gtvr_attack_copter"
 REPAINT_NAME = "prototype_tactical"
+REPAINT_DISPLAY_NAME = "GTVR Attack Wrap"
 CONVERTER_MODEL_NAME = "gtvr_repaint_textures"
 DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
 DEFAULT_COMPILED_REPAINT = (
@@ -30,8 +32,12 @@ def patch_option_tmc(repaint_dir: Path, backup_dir: Path) -> None:
         shutil.copy2(option_path, backup_path)
 
     text = option_path.read_text(encoding="utf-8", errors="replace")
-    text = text.replace("[Prototype Tactical]", "[GTVR Tactical Black]")
-    text = text.replace("[German Army]", "[GTVR Tactical Black]")
+    text = re.sub(
+        r"<\[string8\]\[Description\]\[[^\]]+\]>",
+        f"<[string8][Description][{REPAINT_DISPLAY_NAME}]>",
+        text,
+        count=1,
+    )
     option_path.write_text(text, encoding="utf-8")
 
 

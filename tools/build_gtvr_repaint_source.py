@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import random
 import shutil
 from pathlib import Path
 
@@ -18,18 +19,18 @@ DEFAULT_USER_DIR = ROOT / "tools" / "vendor" / "gtvr_repaint_test_user"
 REPAINT_MATERIALS = {
     "ext01_fuselage": {
         "shader": "standard exterior",
-        "base": (17, 20, 20),
-        "accent": (73, 91, 58),
+        "base": (12, 15, 15),
+        "accent": (49, 62, 45),
     },
     "ext02_fuselage": {
         "shader": "standard exterior",
-        "base": (11, 13, 14),
-        "accent": (92, 20, 18),
+        "base": (9, 11, 12),
+        "accent": (88, 18, 15),
     },
     "ext03_fuselage": {
         "shader": "standard exterior",
-        "base": (21, 23, 22),
-        "accent": (45, 56, 40),
+        "base": (14, 16, 15),
+        "accent": (42, 53, 39),
     },
 }
 
@@ -45,75 +46,193 @@ def load_font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def draw_diagonal_stripes(draw: ImageDraw.ImageDraw, size: int, color: tuple[int, int, int]) -> None:
-    for offset in range(-size, size * 2, 240):
+def blend(base: tuple[int, int, int], overlay: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
+    return tuple(int(base[index] * (1.0 - alpha) + overlay[index] * alpha) for index in range(3))
+
+
+def draw_translucent_polygon(
+    image: Image.Image,
+    points: list[tuple[int, int]],
+    fill: tuple[int, int, int],
+    outline: tuple[int, int, int] | None = None,
+    alpha: int = 255,
+) -> None:
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    draw.polygon(points, fill=(*fill, alpha), outline=(*outline, alpha) if outline else None)
+    image.alpha_composite(overlay)
+
+
+def draw_gradient(image: Image.Image, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> None:
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    for y in range(height):
+        t = y / max(height - 1, 1)
+        color = blend(top, bottom, t)
+        draw.line((0, y, width, y), fill=color)
+
+
+def draw_armor_panels(image: Image.Image, seed: int, accent: tuple[int, int, int]) -> None:
+    rng = random.Random(seed)
+    size = image.size[0]
+    panel_colors = [
+        (18, 24, 23),
+        (25, 31, 29),
+        accent,
+        (31, 36, 32),
+    ]
+
+    fixed_panels = [
+        [(90, 130), (820, 90), (950, 380), (240, 455)],
+        [(1040, 205), (1920, 155), (1840, 520), (1110, 590)],
+        [(80, 1180), (780, 1095), (980, 1450), (210, 1605)],
+        [(1060, 1250), (1900, 1160), (1960, 1540), (1160, 1660)],
+        [(370, 690), (930, 610), (1110, 860), (520, 960)],
+    ]
+    for index, points in enumerate(fixed_panels):
+        color = panel_colors[index % len(panel_colors)]
+        draw_translucent_polygon(image, points, color, outline=(47, 54, 51), alpha=208)
+
+    for _ in range(15):
+        x = rng.randrange(-120, size - 260)
+        y = rng.randrange(70, size - 260)
+        width = rng.randrange(260, 620)
+        height = rng.randrange(95, 260)
+        skew = rng.randrange(-120, 160)
+        points = [
+            (x, y),
+            (x + width, y + rng.randrange(-30, 30)),
+            (x + width + skew, y + height),
+            (x + skew, y + height + rng.randrange(-20, 45)),
+        ]
+        color = rng.choice(panel_colors)
+        draw_translucent_polygon(image, points, color, outline=(38, 45, 43), alpha=rng.randrange(92, 150))
+
+
+def draw_attack_slashes(image: Image.Image, seed: int) -> None:
+    rng = random.Random(seed + 1000)
+    size = image.size[0]
+    colors = [(132, 16, 12), (174, 26, 18), (86, 12, 10)]
+    for index, offset in enumerate(range(-size, size * 2, 510)):
+        width = 92 if index % 3 else 138
         points = [
             (offset, size),
-            (offset + 86, size),
-            (offset + size + 86, 0),
+            (offset + width, size),
+            (offset + size + width, 0),
             (offset + size, 0),
         ]
-        draw.polygon(points, fill=color)
+        draw_translucent_polygon(image, points, colors[index % len(colors)], alpha=205 if index % 3 else 235)
 
-
-def draw_cross_stripes(draw: ImageDraw.ImageDraw, size: int, red: tuple[int, int, int]) -> None:
-    for offset in range(-size, size * 2, 360):
+    for _ in range(9):
+        x = rng.randrange(-260, size)
+        y = rng.randrange(100, size - 200)
+        width = rng.randrange(340, 760)
         points = [
-            (offset, 0),
-            (offset + 62, 0),
-            (offset - size + 62, size),
-            (offset - size, size),
+            (x, y),
+            (x + width, y - 85),
+            (x + width + 52, y - 20),
+            (x + 52, y + 68),
         ]
-        draw.polygon(points, fill=(82, 12, 10))
-
-    for offset in range(-size, size * 2, 420):
-        points = [
-            (offset, size),
-            (offset + 120, size),
-            (offset + size + 120, 0),
-            (offset + size, 0),
-        ]
-        draw.polygon(points, fill=red)
+        draw_translucent_polygon(image, points, rng.choice(colors), alpha=138)
 
 
 def draw_panel_grid(draw: ImageDraw.ImageDraw, size: int) -> None:
-    line = (45, 50, 48)
+    line = (37, 43, 41)
     for step in range(256, size, 256):
-        draw.line((step, 0, step, size), fill=line, width=4)
-        draw.line((0, step, size, step), fill=line, width=4)
+        draw.line((step, 0, step, size), fill=line, width=3)
+        draw.line((0, step, size, step), fill=line, width=3)
     for step in range(128, size, 256):
-        draw.line((step, 0, step, size), fill=(27, 31, 31), width=2)
-        draw.line((0, step, size, step), fill=(27, 31, 31), width=2)
+        draw.line((step, 0, step, size), fill=(25, 30, 29), width=1)
+        draw.line((0, step, size, step), fill=(25, 30, 29), width=1)
+
+
+def draw_fasteners(draw: ImageDraw.ImageDraw, size: int) -> None:
+    for x in range(64, size, 128):
+        for y in range(64, size, 128):
+            if (x // 128 + y // 128) % 3:
+                draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(57, 63, 59))
+
+
+def draw_chevrons(draw: ImageDraw.ImageDraw, size: int) -> None:
+    red = (151, 18, 13)
+    dark = (8, 10, 10)
+    for y in (164, 1772):
+        for x in range(90, size - 160, 190):
+            draw.polygon([(x, y), (x + 70, y + 36), (x, y + 72)], fill=red)
+            draw.polygon([(x + 44, y), (x + 114, y + 36), (x + 44, y + 72)], fill=dark)
+
+
+def draw_sensor_marks(draw: ImageDraw.ImageDraw) -> None:
+    red = (150, 22, 16)
+    pale = (156, 164, 154)
+    for cx, cy, radius in ((1640, 360, 88), (360, 1460, 70), (1710, 1710, 54)):
+        draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), outline=red, width=8)
+        draw.line((cx - radius - 35, cy, cx + radius + 35, cy), fill=red, width=5)
+        draw.line((cx, cy - radius - 35, cx, cy + radius + 35), fill=red, width=5)
+        draw.ellipse((cx - 14, cy - 14, cx + 14, cy + 14), outline=pale, width=4)
+
+
+def draw_stencils(draw: ImageDraw.ImageDraw, size: int) -> None:
+    stencil_large = load_font(104)
+    stencil_medium = load_font(76)
+    stencil_small = load_font(42)
+    pale = (172, 179, 168)
+    subdued = (86, 95, 83)
+    red = (145, 20, 15)
+    low_vis_red = (101, 13, 10)
+
+    for x, y, label in (
+        (1180, 190, "GT-04"),
+        (150, 1660, "GTVR"),
+        (1530, 1460, "04"),
+    ):
+        draw.text((x, y), label, fill=pale, font=stencil_large)
+
+    for x, y in ((520, 1540), (930, 470)):
+        draw.text((x + 4, y + 4), "ATTACK COPTER", fill=(16, 18, 17), font=stencil_medium)
+        draw.text((x, y), "ATTACK COPTER", fill=low_vis_red, font=stencil_medium)
+
+    for x, y, label in (
+        (165, 520, "NO STEP"),
+        (1210, 610, "LIFT"),
+        (880, 1740, "ARM"),
+        (1480, 950, "FUEL"),
+    ):
+        draw.text((x, y), label, fill=subdued, font=stencil_small)
+        draw.rectangle((x - 22, y + 10, x - 4, y + 28), fill=red)
+
+    draw.rectangle((132, 132, 430, 188), outline=red, width=8)
+    draw.line((132, 188, 430, 132), fill=red, width=8)
 
 
 def write_texture(path: Path, material_name: str, base: tuple[int, int, int], accent: tuple[int, int, int]) -> None:
     size = 2048
-    image = Image.new("RGB", (size, size), base)
+    seed = sum(ord(char) for char in material_name)
+    image = Image.new("RGBA", (size, size), (*base, 255))
+    draw_gradient(image, blend(base, (0, 0, 0), 0.15), blend(base, (48, 56, 49), 0.22))
+    draw_armor_panels(image, seed, accent)
+    draw_attack_slashes(image, seed)
     draw = ImageDraw.Draw(image)
     draw_panel_grid(draw, size)
-    draw_cross_stripes(draw, size, (148, 17, 12))
-    draw_diagonal_stripes(draw, size, (95, 14, 10))
-
-    draw.rectangle((0, 0, size, 120), fill=(9, 11, 11))
-    draw.rectangle((0, size - 140, size, size), fill=(10, 12, 12))
+    draw_fasteners(draw, size)
+    draw_chevrons(draw, size)
+    draw_sensor_marks(draw)
 
     if material_name == "ext01_fuselage":
-        draw.rectangle((110, 150, 720, 430), fill=accent)
-        draw.rectangle((1320, 1260, 1920, 1600), fill=(29, 34, 33))
+        draw.rectangle((0, 0, size, 118), fill=(7, 9, 9))
+        draw.rectangle((0, size - 130, size, size), fill=(8, 10, 10))
+        draw.polygon([(80, 700), (520, 620), (610, 840), (160, 930)], fill=(28, 34, 31))
     elif material_name == "ext02_fuselage":
-        draw.rectangle((0, 870, size, 1010), fill=(66, 77, 52))
-        draw.rectangle((110, 145, 520, 520), outline=(130, 19, 15), width=22)
+        draw.rectangle((0, 850, size, 990), fill=(46, 56, 39))
+        draw.rectangle((105, 145, 520, 520), outline=(116, 16, 13), width=20)
     else:
-        for x in range(260, 1900, 360):
-            draw.rectangle((x, 580, x + 86, 1480), fill=(8, 10, 10))
-        draw.rectangle((230, 260, 1810, 410), fill=accent)
+        for x in range(230, 1900, 330):
+            draw.rectangle((x, 560, x + 78, 1490), fill=(7, 9, 9))
+        draw.rectangle((210, 250, 1840, 390), fill=(40, 51, 37))
 
-    small_font = load_font(82)
-    stencil = (178, 184, 176)
-    draw.text((1320, 170), "GT-04", fill=stencil, font=small_font)
-    draw.text((150, 1710), "GTVR", fill=(82, 92, 75), font=small_font)
+    draw_stencils(draw, size)
 
-    image.save(path)
+    image.convert("RGB").save(path)
 
 
 def write_model_tmc(path: Path) -> None:
