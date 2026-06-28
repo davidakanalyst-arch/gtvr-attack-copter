@@ -21,14 +21,16 @@ Then start Aerofly FS 4 and look for:
 GTVR Attack Copter
 ```
 
-The first installed prototype will still visually resemble the EC135 until a custom compiled model is added. The current non-destructive geometry experiment uses the external pilot-object slot:
+The first installed prototype will still visually resemble the EC135 until a safe custom-geometry route is found.
+
+The external pilot-object slot was tested as a possible non-destructive overlay:
 
 ```powershell
 python tools\build_gtvr_source_project.py --profile pilot-overlay --user-dir tools\vendor\gtvr_overlay_test_user
 python tools\run_aerofly_converter.py gtvr_attack_shell tools\vendor\gtvr_overlay_source\aircraft --userfolder tools\vendor\gtvr_overlay_launch
-python tools\install_gtvr_overlay_object.py
+python tools\install_gtvr_overlay_object.py --experimental-pilot-slot
 ```
 
-That keeps the EC135-derived cockpit and flight model in place while loading `gtvr_attack_shell` as an overlay object.
+That route failed in FS4: the aircraft loaded the fallback STOP model, with no helicopter sound or flight dynamics. Keep the local test package on `Pilot[pilot_jason]` until a different graphics hook or compiled-model merge route is proven.
 
 The installer creates one custom repaint folder named `prototype_tactical` from the local EC135 `german_army` repaint, then removes the other stock repaint folders. It keeps `highskids` because that tactical repaint depends on the hidden high-skid option.

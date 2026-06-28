@@ -479,7 +479,7 @@ def main() -> int:
         "--profile",
         choices=("aircraft", "pilot-overlay"),
         default="aircraft",
-        help="Build the full aircraft shell source or the external pilot-slot overlay source.",
+        help="Build the full aircraft shell source or the failed pilot-slot overlay diagnostic source.",
     )
     parser.add_argument(
         "--user-dir",

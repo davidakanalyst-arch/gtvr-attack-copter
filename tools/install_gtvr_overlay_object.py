@@ -21,6 +21,17 @@ OVERLAY_FILES = [
     "olive_panel_color.ttx",
     "warning_red_color.ttx",
 ]
+RUNTIME_FAILURE_NOTE = """\
+Refusing to patch the live aircraft by default.
+
+The pilot-slot overlay experiment compiled successfully, but FS4 rejected it at
+runtime and loaded the fallback STOP model. The sim log showed missing
+PilotBody/PilotHead/HeadsetLower/HeadsetUpper geometries in the main aircraft
+graph, followed by fallback dynamics with no helicopter sound.
+
+Use this script only for a controlled diagnostic run, and keep a known-good TMC
+backup ready for rollback.
+"""
 
 
 def copy_overlay(compiled_overlay: Path, fs4_user: Path) -> list[Path]:
@@ -66,10 +77,25 @@ def patch_aircraft_tmc(fs4_user: Path) -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Install the compiled GTVR shell as an Aerofly pilot-slot object.")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Diagnostic-only installer for the failed GTVR pilot-slot overlay. "
+            "It refuses to patch the live aircraft unless explicitly forced."
+        )
+    )
     parser.add_argument("--compiled-overlay", type=Path, default=DEFAULT_COMPILED_OVERLAY)
     parser.add_argument("--fs4-user", type=Path, default=DEFAULT_FS4_USER)
+    parser.add_argument(
+        "--experimental-pilot-slot",
+        action="store_true",
+        help="Actually patch the live TMC Pilot field. Known to trigger FS4 fallback on this aircraft.",
+    )
     args = parser.parse_args()
+
+    if not args.experimental_pilot_slot:
+        print(RUNTIME_FAILURE_NOTE)
+        print("Pass --experimental-pilot-slot only if you are deliberately reproducing the failed test.")
+        return 2
 
     targets = copy_overlay(args.compiled_overlay, args.fs4_user)
     backup = patch_aircraft_tmc(args.fs4_user)
