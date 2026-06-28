@@ -34,13 +34,11 @@ Each converter run emits:
 tools\vendor\gtvr_repaint_test_user\aircraft\gtvr_repaint_textures\ext01_fuselage_color.ttx
 tools\vendor\gtvr_repaint_test_user\aircraft\gtvr_repaint_textures\ext02_fuselage_color.ttx
 tools\vendor\gtvr_repaint_test_user\aircraft\gtvr_repaint_textures\ext03_fuselage_color.ttx
-tools\vendor\gtvr_repaint_test_user\aircraft\gtvr_repaint_textures\preview.ttx
-tools\vendor\gtvr_repaint_test_user\aircraft\gtvr_repaint_textures\preview_small.ttx
 ```
 
 ## Install
 
-The olive install copies converted textures and previews into:
+The olive install copies converted textures into:
 
 ```text
 C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\prototype_tactical
@@ -52,13 +50,21 @@ It renames that repaint option to `GTVR Attack Wrap` and backs up the previous f
 C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\_prototype_tactical_pre_gtvr_generated_repaint
 ```
 
-The black install copies converted textures and previews into the GTVR aircraft root and into this user-side EC135 repaint:
+The black install copies converted textures into the GTVR aircraft root and into this user-side EC135 repaint:
 
 ```text
 C:\Users\david\Documents\Aerofly FS 4\aircraft\ec135\gtvr_attack_black
 ```
 
 The EC135 repaint is created from the stock `german_army` repaint as a local user repaint. The installer does not modify the Steam EC135 folder.
+
+The converter's generated preview files are not installed because this texture-only converter project uses dummy geometry and produces blank aircraft menu images. GTVR preview files are restored from the live package backups, and the EC135 user repaint preview is copied from the stock `german_army` repaint.
+
+To repair previews without reinstalling textures:
+
+```powershell
+python tools\install_gtvr_repaint_textures.py --repair-previews
+```
 
 ## Scope
 
