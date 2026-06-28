@@ -23,3 +23,4 @@ GTVR Attack Copter
 
 The first installed prototype will still visually resemble the EC135 until the generated shell is refined in Blender and exported through the Aerofly aircraft conversion workflow.
 
+The installer folds the local EC135 `german_army` repaint files into the single prototype option before pruning stock repaint folders. That gives the current in-game prototype a military texture baseline while keeping the aircraft menu clean.

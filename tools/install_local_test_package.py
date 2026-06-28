@@ -13,6 +13,7 @@ DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
 SOURCE_AIRCRAFT = "ec135"
 TARGET_AIRCRAFT = "gtvr_attack_copter"
 STOCK_OPTION_FOLDERS = ["adac", "drf", "german_army", "highskids", "police", "sheriff"]
+TACTICAL_REPAINT_SOURCE = "german_army"
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -64,7 +65,7 @@ def patch_option(path: Path) -> None:
     if not path.exists():
         return
     text = path.read_text(encoding="utf-8", errors="replace")
-    text = text.replace("<[string8][Description][Black]>", "<[string8][Description][Prototype Black]>")
+    text = text.replace("<[string8][Description][Black]>", "<[string8][Description][Prototype Tactical]>")
     path.write_text(text, encoding="utf-8")
 
 
@@ -87,6 +88,17 @@ def remove_stock_options(target_dir: Path) -> None:
         folder = target_dir / folder_name
         if folder.exists():
             shutil.rmtree(folder)
+
+
+def apply_tactical_repaint(target_dir: Path) -> None:
+    repaint_dir = target_dir / TACTICAL_REPAINT_SOURCE
+    if not repaint_dir.exists():
+        raise FileNotFoundError(f"Expected tactical repaint folder missing: {repaint_dir}")
+
+    for source_file in repaint_dir.iterdir():
+        if source_file.name == "option.tmc" or not source_file.is_file():
+            continue
+        shutil.copy2(source_file, target_dir / source_file.name)
 
 
 def write_marker_files(target_dir: Path, source_dir: Path) -> None:
@@ -136,6 +148,7 @@ def install(force: bool, steam_root: Path, user_root: Path) -> Path:
         raise FileNotFoundError(f"Expected copied TMC missing: {tmc_path}")
     patch_tmc(tmc_path)
     patch_option(target_dir / "option.tmc")
+    apply_tactical_repaint(target_dir)
     rename_main_files(target_dir)
     remove_stock_options(target_dir)
 

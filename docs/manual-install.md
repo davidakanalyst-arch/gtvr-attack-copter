@@ -63,7 +63,19 @@ To:
 
 ## Reduce Stock Livery Clutter
 
-The EC135 livery choices come from repaint folders. To keep the GTVR prototype cleaner, remove these copied folders from the local prototype:
+The EC135 livery choices come from repaint folders. To give the GTVR prototype an immediate tactical baseline, first copy all files except `option.tmc` from:
+
+```text
+german_army
+```
+
+Into the root of:
+
+```text
+gtvr_attack_copter
+```
+
+That overwrites the base exterior texture files with the local military repaint files. Then remove these copied folders from the local prototype:
 
 ```text
 adac
