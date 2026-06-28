@@ -17,6 +17,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `docs/design-brief.md` - visual and simulation target.
 - `docs/aerofly-fs4-notes.md` - local FS4 paths and package notes from this machine.
 - `docs/local-test-package.md` - how to install the private local FS4 prototype.
+- `docs/manual-install.md` - manual copy/rename steps for learning the Aerofly aircraft layout.
 - `tools/generate_attack_copter_obj.py` - source generator for the first exterior shell concept.
 - `tools/install_local_test_package.py` - creates a private local FS4 working aircraft from your installed EC135.
 - `source-model/gtvr_attack_copter_shell.obj` - generated low-poly concept mesh.

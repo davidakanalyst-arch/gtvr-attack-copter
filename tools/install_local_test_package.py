@@ -12,6 +12,7 @@ DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
 
 SOURCE_AIRCRAFT = "ec135"
 TARGET_AIRCRAFT = "gtvr_attack_copter"
+STOCK_OPTION_FOLDERS = ["adac", "drf", "german_army", "highskids", "police", "sheriff"]
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -81,6 +82,13 @@ def rename_main_files(target_dir: Path) -> None:
             old.rename(new)
 
 
+def remove_stock_options(target_dir: Path) -> None:
+    for folder_name in STOCK_OPTION_FOLDERS:
+        folder = target_dir / folder_name
+        if folder.exists():
+            shutil.rmtree(folder)
+
+
 def write_marker_files(target_dir: Path, source_dir: Path) -> None:
     (target_dir / "_GTVR_PROTOTYPE.txt").write_text(
         "\n".join(
@@ -129,6 +137,7 @@ def install(force: bool, steam_root: Path, user_root: Path) -> Path:
     patch_tmc(tmc_path)
     patch_option(target_dir / "option.tmc")
     rename_main_files(target_dir)
+    remove_stock_options(target_dir)
 
     repo_root = Path(__file__).resolve().parents[1]
     copy_source_model(target_dir, repo_root)
