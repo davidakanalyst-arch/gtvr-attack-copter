@@ -46,14 +46,34 @@ def load_font(size: int) -> ImageFont.ImageFont:
 
 
 def draw_diagonal_stripes(draw: ImageDraw.ImageDraw, size: int, color: tuple[int, int, int]) -> None:
-    for offset in range(-size, size * 2, 220):
+    for offset in range(-size, size * 2, 240):
         points = [
             (offset, size),
-            (offset + 90, size),
-            (offset + size + 90, 0),
+            (offset + 86, size),
+            (offset + size + 86, 0),
             (offset + size, 0),
         ]
         draw.polygon(points, fill=color)
+
+
+def draw_cross_stripes(draw: ImageDraw.ImageDraw, size: int, red: tuple[int, int, int]) -> None:
+    for offset in range(-size, size * 2, 360):
+        points = [
+            (offset, 0),
+            (offset + 62, 0),
+            (offset - size + 62, size),
+            (offset - size, size),
+        ]
+        draw.polygon(points, fill=(82, 12, 10))
+
+    for offset in range(-size, size * 2, 420):
+        points = [
+            (offset, size),
+            (offset + 120, size),
+            (offset + size + 120, 0),
+            (offset + size, 0),
+        ]
+        draw.polygon(points, fill=red)
 
 
 def draw_panel_grid(draw: ImageDraw.ImageDraw, size: int) -> None:
@@ -71,33 +91,27 @@ def write_texture(path: Path, material_name: str, base: tuple[int, int, int], ac
     image = Image.new("RGB", (size, size), base)
     draw = ImageDraw.Draw(image)
     draw_panel_grid(draw, size)
+    draw_cross_stripes(draw, size, (148, 17, 12))
+    draw_diagonal_stripes(draw, size, (95, 14, 10))
+
+    draw.rectangle((0, 0, size, 120), fill=(9, 11, 11))
+    draw.rectangle((0, size - 140, size, size), fill=(10, 12, 12))
 
     if material_name == "ext01_fuselage":
-        draw.rectangle((120, 160, 820, 500), fill=accent)
-        draw.rectangle((1040, 1280, 1900, 1760), fill=(31, 35, 35))
-        draw_diagonal_stripes(draw, size, (118, 15, 12))
+        draw.rectangle((110, 150, 720, 430), fill=accent)
+        draw.rectangle((1320, 1260, 1920, 1600), fill=(29, 34, 33))
     elif material_name == "ext02_fuselage":
-        draw.rectangle((0, 760, size, 980), fill=(120, 18, 14))
-        draw.rectangle((0, 1000, size, 1090), fill=(70, 82, 55))
-        draw.rectangle((128, 128, 540, 540), outline=(92, 20, 18), width=28)
+        draw.rectangle((0, 870, size, 1010), fill=(66, 77, 52))
+        draw.rectangle((110, 145, 520, 520), outline=(130, 19, 15), width=22)
     else:
-        draw.rectangle((240, 240, 1808, 520), fill=accent)
-        draw.rectangle((240, 1528, 1808, 1808), fill=(91, 17, 14))
-        for x in range(280, 1800, 300):
-            draw.rectangle((x, 600, x + 90, 1450), fill=(9, 11, 11))
+        for x in range(260, 1900, 360):
+            draw.rectangle((x, 580, x + 86, 1480), fill=(8, 10, 10))
+        draw.rectangle((230, 260, 1810, 410), fill=accent)
 
-    title_font = load_font(210)
-    label_font = load_font(96)
-    small_font = load_font(54)
-    light = (197, 204, 194)
-    red = (182, 22, 17)
-
-    draw.text((180, 700), "GTVR", fill=light, font=title_font)
-    draw.text((190, 930), "ATTACK COPTER", fill=red, font=label_font)
-    draw.text((1370, 190), "GT-04", fill=light, font=label_font)
-    draw.text((1420, 1810), "RESCUE THIS", fill=(70, 82, 55), font=small_font)
-    draw.text((1160, 700), "NO STEP", fill=(130, 130, 122), font=small_font)
-    draw.text((1160, 780), "JETTISON", fill=(130, 130, 122), font=small_font)
+    small_font = load_font(82)
+    stencil = (178, 184, 176)
+    draw.text((1320, 170), "GT-04", fill=stencil, font=small_font)
+    draw.text((150, 1710), "GTVR", fill=(82, 92, 75), font=small_font)
 
     image.save(path)
 

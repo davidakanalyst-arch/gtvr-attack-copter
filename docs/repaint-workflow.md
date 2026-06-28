@@ -46,3 +46,5 @@ C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\_prototype_tac
 ## Scope
 
 This makes the flyable EC135-derived prototype visibly different without touching the compiled aircraft model. It does not solve the shell replacement problem; it is the safe interim visual layer while the geometry route is researched.
+
+The EC135 exterior UV layout spreads texture regions across the fuselage, roof, and tail boom in ways that are not obvious from file names alone. Keep repaint art broad and repeated across all three exterior maps; avoid long readable labels because they can land on the tail or wrap across unexpected panels.
