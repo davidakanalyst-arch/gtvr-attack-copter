@@ -12,7 +12,7 @@ MTL_PATH = OUT_DIR / "gtvr_attack_copter_shell.mtl"
 class ObjBuilder:
     def __init__(self) -> None:
         self.vertices: list[tuple[float, float, float]] = []
-        self.faces: list[tuple[str, tuple[int, ...]]] = []
+        self.faces: list[tuple[str, str, tuple[int, ...]]] = []
 
     def add_box(
         self,
@@ -44,7 +44,7 @@ class ObjBuilder:
             (base + 3, base + 7, base + 4, base + 0),
         ]
         for face in quads:
-            self.faces.append((material, face))
+            self.faces.append((name, material, face))
 
     def add_wedge(
         self,
@@ -80,7 +80,7 @@ class ObjBuilder:
             (base + 2, base + 3, base + 7, base + 6),
             (base + 0, base + 4, base + 5, base + 1),
         ]:
-            self.faces.append((material, face))
+            self.faces.append((name, material, face))
 
     def add_cylinder(
         self,
@@ -109,9 +109,9 @@ class ObjBuilder:
                     self.vertices.append((cx + p, cy + q, cz + end * length))
         for i in range(segments):
             j = (i + 1) % segments
-            self.faces.append((material, (base + i, base + j, base + segments + j, base + segments + i)))
-        self.faces.append((material, tuple(base + i for i in range(segments - 1, -1, -1))))
-        self.faces.append((material, tuple(base + segments + i for i in range(segments))))
+            self.faces.append((name, material, (base + i, base + j, base + segments + j, base + segments + i)))
+        self.faces.append((name, material, tuple(base + i for i in range(segments - 1, -1, -1))))
+        self.faces.append((name, material, tuple(base + segments + i for i in range(segments))))
 
     def write(self, obj_path: Path) -> None:
         lines = [
@@ -120,8 +120,13 @@ class ObjBuilder:
         ]
         for vertex in self.vertices:
             lines.append(f"v {vertex[0]:.4f} {vertex[1]:.4f} {vertex[2]:.4f}")
+        current_object = None
         current_material = None
-        for material, face in self.faces:
+        for object_name, material, face in self.faces:
+            if object_name != current_object:
+                lines.append(f"o {object_name}")
+                current_object = object_name
+                current_material = None
             if material != current_material:
                 lines.append(f"usemtl {material}")
                 current_material = material
@@ -201,6 +206,13 @@ def build_model() -> ObjBuilder:
 
     obj.add_box("left_flare_box", (-1.6, -1.05, 0.22), (0.48, 0.12, 0.32), "warning_red")
     obj.add_box("right_flare_box", (-1.6, 1.05, 0.22), (0.48, 0.12, 0.32), "warning_red")
+    obj.add_box("left_canopy_armor_rail", (3.25, -0.78, 1.28), (1.95, 0.10, 0.16), "dark_metal")
+    obj.add_box("right_canopy_armor_rail", (3.25, 0.78, 1.28), (1.95, 0.10, 0.16), "dark_metal")
+    obj.add_box("nose_upper_armor_plate", (4.05, 0.0, 0.95), (1.35, 1.00, 0.10), "olive_panel")
+    obj.add_box("left_door_armor_panel", (1.10, -1.07, 0.16), (1.55, 0.10, 0.85), "olive_panel")
+    obj.add_box("right_door_armor_panel", (1.10, 1.07, 0.16), (1.55, 0.10, 0.85), "olive_panel")
+    obj.add_box("belly_mission_pack", (1.05, 0.0, -1.08), (2.35, 0.82, 0.28), "dark_metal")
+    obj.add_box("tail_antenna_spine", (-3.25, 0.0, 0.68), (1.20, 0.08, 0.22), "dark_metal")
     return obj
 
 
@@ -215,4 +227,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
