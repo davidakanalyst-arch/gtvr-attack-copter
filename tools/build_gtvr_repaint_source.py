@@ -16,21 +16,36 @@ DISPLAY_NAME = "GTVR Repaint Textures"
 DEFAULT_SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_repaint_source" / "aircraft"
 DEFAULT_USER_DIR = ROOT / "tools" / "vendor" / "gtvr_repaint_test_user"
 
-REPAINT_MATERIALS = {
-    "ext01_fuselage": {
-        "shader": "standard exterior",
-        "base": (12, 15, 15),
-        "accent": (49, 62, 45),
+REPAINT_VARIANTS = {
+    "olive": {
+        "materials": {
+            "ext01_fuselage": {"shader": "standard exterior", "base": (12, 15, 15)},
+            "ext02_fuselage": {"shader": "standard exterior", "base": (9, 11, 12)},
+            "ext03_fuselage": {"shader": "standard exterior", "base": (14, 16, 15)},
+        },
+        "style": {
+            "gradient_lift": (48, 56, 49),
+            "panel_colors": [(18, 24, 23), (25, 31, 29), (49, 62, 45), (31, 36, 32)],
+            "feature_panel": (28, 34, 31),
+            "belt": (46, 56, 39),
+            "bar": (40, 51, 37),
+            "bay": (7, 9, 9),
+        },
     },
-    "ext02_fuselage": {
-        "shader": "standard exterior",
-        "base": (9, 11, 12),
-        "accent": (88, 18, 15),
-    },
-    "ext03_fuselage": {
-        "shader": "standard exterior",
-        "base": (14, 16, 15),
-        "accent": (42, 53, 39),
+    "black": {
+        "materials": {
+            "ext01_fuselage": {"shader": "standard exterior", "base": (4, 5, 5)},
+            "ext02_fuselage": {"shader": "standard exterior", "base": (3, 4, 4)},
+            "ext03_fuselage": {"shader": "standard exterior", "base": (5, 5, 5)},
+        },
+        "style": {
+            "gradient_lift": (24, 25, 25),
+            "panel_colors": [(8, 9, 9), (13, 14, 14), (20, 21, 21), (28, 29, 29)],
+            "feature_panel": (13, 14, 14),
+            "belt": (12, 13, 13),
+            "bar": (14, 15, 15),
+            "bay": (4, 5, 5),
+        },
     },
 }
 
@@ -72,15 +87,9 @@ def draw_gradient(image: Image.Image, top: tuple[int, int, int], bottom: tuple[i
         draw.line((0, y, width, y), fill=color)
 
 
-def draw_armor_panels(image: Image.Image, seed: int, accent: tuple[int, int, int]) -> None:
+def draw_armor_panels(image: Image.Image, seed: int, panel_colors: list[tuple[int, int, int]]) -> None:
     rng = random.Random(seed)
     size = image.size[0]
-    panel_colors = [
-        (18, 24, 23),
-        (25, 31, 29),
-        accent,
-        (31, 36, 32),
-    ]
 
     fixed_panels = [
         [(90, 130), (820, 90), (950, 380), (240, 455)],
@@ -205,12 +214,21 @@ def draw_stencils(draw: ImageDraw.ImageDraw, size: int) -> None:
     draw.line((132, 188, 430, 132), fill=red, width=8)
 
 
-def write_texture(path: Path, material_name: str, base: tuple[int, int, int], accent: tuple[int, int, int]) -> None:
+def write_texture(
+    path: Path,
+    material_name: str,
+    base: tuple[int, int, int],
+    style: dict[str, object],
+) -> None:
     size = 2048
     seed = sum(ord(char) for char in material_name)
     image = Image.new("RGBA", (size, size), (*base, 255))
-    draw_gradient(image, blend(base, (0, 0, 0), 0.15), blend(base, (48, 56, 49), 0.22))
-    draw_armor_panels(image, seed, accent)
+    draw_gradient(
+        image,
+        blend(base, (0, 0, 0), 0.15),
+        blend(base, style["gradient_lift"], 0.22),
+    )
+    draw_armor_panels(image, seed, style["panel_colors"])
     draw_attack_slashes(image, seed)
     draw = ImageDraw.Draw(image)
     draw_panel_grid(draw, size)
@@ -221,22 +239,22 @@ def write_texture(path: Path, material_name: str, base: tuple[int, int, int], ac
     if material_name == "ext01_fuselage":
         draw.rectangle((0, 0, size, 118), fill=(7, 9, 9))
         draw.rectangle((0, size - 130, size, size), fill=(8, 10, 10))
-        draw.polygon([(80, 700), (520, 620), (610, 840), (160, 930)], fill=(28, 34, 31))
+        draw.polygon([(80, 700), (520, 620), (610, 840), (160, 930)], fill=style["feature_panel"])
     elif material_name == "ext02_fuselage":
-        draw.rectangle((0, 850, size, 990), fill=(46, 56, 39))
+        draw.rectangle((0, 850, size, 990), fill=style["belt"])
         draw.rectangle((105, 145, 520, 520), outline=(116, 16, 13), width=20)
     else:
         for x in range(230, 1900, 330):
-            draw.rectangle((x, 560, x + 78, 1490), fill=(7, 9, 9))
-        draw.rectangle((210, 250, 1840, 390), fill=(40, 51, 37))
+            draw.rectangle((x, 560, x + 78, 1490), fill=style["bay"])
+        draw.rectangle((210, 250, 1840, 390), fill=style["bar"])
 
     draw_stencils(draw, size)
 
     image.convert("RGB").save(path)
 
 
-def write_model_tmc(path: Path) -> None:
-    texture_names = "\n".join(f"                                    {name}_color" for name in REPAINT_MATERIALS)
+def write_model_tmc(path: Path, materials: dict[str, dict[str, object]]) -> None:
+    texture_names = "\n".join(f"                                    {name}_color" for name in materials)
     text = f"""<[file][][]
     <[convert_model_settings][][]
         <[float64][BumpMapScaling][1]>
@@ -261,9 +279,9 @@ def write_model_tmc(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def build_dummy_geometry() -> dict[str, dict[str, aircraft_source.Patch]]:
+def build_dummy_geometry(materials: dict[str, dict[str, object]]) -> dict[str, dict[str, aircraft_source.Patch]]:
     patch_map: dict[str, aircraft_source.Patch] = {}
-    for index, material_name in enumerate(REPAINT_MATERIALS):
+    for index, material_name in enumerate(materials):
         x = float(index) * 0.2
         patch_map[material_name] = aircraft_source.Patch(
             material_name=material_name,
@@ -303,7 +321,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build source PNGs for the safe GTVR tactical repaint.")
     parser.add_argument("--source-root", type=Path, default=DEFAULT_SOURCE_ROOT)
     parser.add_argument("--user-dir", type=Path, default=DEFAULT_USER_DIR)
+    parser.add_argument("--variant", choices=sorted(REPAINT_VARIANTS), default="olive")
     args = parser.parse_args()
+
+    variant = REPAINT_VARIANTS[args.variant]
+    materials = variant["materials"]
+    style = variant["style"]
 
     out_aircraft_dir = args.source_root / MODEL_NAME
     if out_aircraft_dir.exists():
@@ -313,25 +336,25 @@ def main() -> int:
     aircraft_source.ensure_runtime_resources(args.source_root)
     aircraft_source.MATERIALS = {
         name: {"shader": settings["shader"], "color": settings["base"]}
-        for name, settings in REPAINT_MATERIALS.items()
+        for name, settings in materials.items()
     }
 
-    geometries = build_dummy_geometry()
+    geometries = build_dummy_geometry(materials)
     aircraft_source.write_aircraft_tmc(out_aircraft_dir / f"{MODEL_NAME}.tmc", MODEL_NAME, DISPLAY_NAME)
     aircraft_source.write_minimal_tmd(out_aircraft_dir / f"{MODEL_NAME}.tmd", sorted(geometries))
     aircraft_source.write_tgi(out_aircraft_dir / f"{MODEL_NAME}.tgi", geometries)
-    write_model_tmc(out_aircraft_dir / "model.tmc")
+    write_model_tmc(out_aircraft_dir / "model.tmc", materials)
     aircraft_source.write_root_converter_config(args.source_root / "config.tmc", args.source_root, args.user_dir)
 
-    for material_name, settings in REPAINT_MATERIALS.items():
+    for material_name, settings in materials.items():
         write_texture(
             out_aircraft_dir / f"{material_name}_color.png",
             material_name,
             settings["base"],
-            settings["accent"],
+            style,
         )
 
-    print(f"Wrote repaint source project: {out_aircraft_dir}")
+    print(f"Wrote {args.variant} repaint source project: {out_aircraft_dir}")
     return 0
 
 
