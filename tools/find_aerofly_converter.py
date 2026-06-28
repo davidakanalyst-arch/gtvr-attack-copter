@@ -26,19 +26,41 @@ SEARCH_ROOTS = [
 ]
 
 
+def is_converter_candidate(path: Path) -> bool:
+    name = path.name.lower()
+    if any(skip in name for skip in ("setup", "unins", "install")):
+        return False
+    lowered_path = str(path).lower()
+    return name in {pattern.lower() for pattern in EXE_PATTERNS} or (
+        "aerofly" in lowered_path and "converter" in name
+    )
+
+
+def sort_key(path: Path) -> tuple[int, str]:
+    lowered_path = str(path).lower()
+    name = path.name.lower()
+    score = 0
+    if name == "aerofly_fs_4_aircraft_converter.exe":
+        score -= 20
+    if "bin64" in lowered_path:
+        score -= 10
+    if "content" in name:
+        score += 5
+    return (score, lowered_path)
+
+
 def find_converter() -> list[Path]:
     found: list[Path] = []
-    lowered = {pattern.lower() for pattern in EXE_PATTERNS}
     for root in SEARCH_ROOTS:
         if not root.exists():
             continue
         try:
             for path in root.rglob("*.exe"):
-                if path.name.lower() in lowered or "aerofly" in str(path).lower() and "converter" in path.name.lower():
+                if is_converter_candidate(path):
                     found.append(path)
         except (PermissionError, OSError):
             continue
-    return sorted(set(found))
+    return sorted(set(found), key=sort_key)
 
 
 def main() -> int:
@@ -60,4 +82,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,56 +1,46 @@
 # Aerofly Converter Toolchain
 
-Aerofly FS 4 is currently loading this compiled visual model:
+The Aerofly FS 4 aircraft converter is now working locally from the ignored SDK/tool folder under `tools/vendor/`.
 
-```text
-C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\gtvr_attack_copter.tmb
-```
-
-That `.tmb` is still a renamed copy of the EC135 model. The custom GTVR shell will not appear in-game until a new Aerofly-compatible `.tmb` is generated.
-
-## What To Find
-
-We need the Aerofly aircraft/content converter executable from the SDK/toolchain. Likely executable names include:
-
-```text
-aircraft_converter.exe
-aerofly_fs_2_aircraft_converter.exe
-aerofly_fs_4_aircraft_converter.exe
-content_converter.exe
-aerofly_fs_2_content_converter.exe
-aerofly_fs_4_content_converter.exe
-```
-
-Run:
+The reproducible launch contract is:
 
 ```powershell
-python tools\find_aerofly_converter.py
+python tools\run_aerofly_converter.py gtvr_attack_shell tools\vendor\gtvr_overlay_source\aircraft --userfolder tools\vendor\gtvr_overlay_launch
 ```
 
-If it finds nothing, the machine does not currently have the converter in a normal location.
+That wrapper launches `aerofly_fs_4_aircraft_converter.exe` with:
 
-The geometry build entrypoint is:
+```text
+-userfolder='<launch-log-folder>/' model='<source-folder-name>' dir='<source-aircraft-root>/'
+```
+
+The converter reads its output paths from `dir\config.tmc`, not from the `-userfolder` directory. Missing `world`, `texture`, or `shader_vulkan` resources can cause the converter to crash; the source generator copies those resource folders into the generated source root when available.
+
+## Overlay Workflow
+
+The current visible-geometry path preserves the EC135-derived cockpit and flight model by using Aerofly's external pilot-object slot as a shell overlay:
 
 ```powershell
-python tools\build_aerofly_geometry.py
+python tools\build_gtvr_source_project.py --profile pilot-overlay --user-dir tools\vendor\gtvr_overlay_test_user
+python tools\run_aerofly_converter.py gtvr_attack_shell tools\vendor\gtvr_overlay_source\aircraft --userfolder tools\vendor\gtvr_overlay_launch
+python tools\install_gtvr_overlay_object.py
 ```
 
-Right now that script fails fast at the missing converter. Once the converter exists locally, this script is where the final command-line invocation should live.
+The converter emits:
 
-## Current Status
+```text
+tools\vendor\gtvr_overlay_test_user\aircraft\gtvr_attack_shell\gtvr_attack_shell.tmb
+```
 
-Confirmed working:
+The installer copies that object and its converted textures into:
 
-- FS4 aircraft folder install.
-- Renamed aircraft metadata.
-- Startup/state files.
-- Single tactical repaint option.
-- EC135 cockpit and flight behavior baseline.
+```text
+C:\Users\david\Documents\Aerofly FS 4\objects\gtvr_attack_shell
+C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\objects\gtvr_attack_shell
+```
 
-Blocked for visible custom geometry:
+It also changes the live aircraft metadata from `Pilot[pilot_jason]` to `Pilot[gtvr_attack_shell]`, with a backup beside the live `.tmc`.
 
-- Building a new `gtvr_attack_copter.tmb` from the source shell.
+## Notes
 
-## Why This Matters
-
-Dropping `gtvr_attack_copter_shell.obj` beside the aircraft does nothing by itself. Aerofly does not load arbitrary OBJ files from the aircraft folder at runtime; it loads its compiled model bundle.
+The full replacement `gtvr_attack_copter.tmb` path is still risky because replacing that compiled model would likely remove the EC135 cockpit geometry. The pilot-slot overlay is the safer current path: it adds a custom tactical shell while leaving `gtvr_attack_copter.tmb`, `gtvr_attack_copter.tmq`, controls, sounds, and cockpit textures intact.

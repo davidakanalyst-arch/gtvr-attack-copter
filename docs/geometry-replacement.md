@@ -1,36 +1,46 @@
 # Geometry Replacement
 
-The current in-game prototype still uses the EC135 compiled model:
+The live prototype still keeps the original EC135-derived compiled aircraft model:
 
 ```text
-gtvr_attack_copter.tmb
+C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_attack_copter\gtvr_attack_copter.tmb
 ```
 
-That file is the visual geometry bundle Aerofly FS 4 loads. Repaints and option folders can change textures and menu variants, but they do not replace the actual helicopter shape.
+That is intentional for now. The EC135 cockpit and most of the flight/graphics glue appear to live inside the compiled `.tmb`/`.tmq` pair, so replacing the whole file with a minimal custom shell would likely remove the glass cockpit we want to preserve.
 
-## What We Have Now
+## Current Approach
 
-- A working selectable FS4 aircraft folder.
-- EC135-style cockpit and handling preserved.
-- A real tactical repaint option.
-- A named source shell at `source-model/gtvr_attack_copter_shell.obj`.
-- A Blender scene builder at `blender/create_gtvr_attack_copter_scene.py`.
+The first visible custom-geometry path is an overlay object loaded through Aerofly's external pilot model slot.
 
-## What Must Happen To See The New Shell In-Game
+Evidence from the converter log:
 
-1. Build/refine the exterior model in Blender.
-2. Keep the glass cockpit volume and rotor reference axes aligned.
-3. Export through the Aerofly aircraft/content conversion workflow.
-4. Replace the local prototype's compiled model bundle with a GTVR-generated `.tmb`.
-5. Test in FS4, then iterate object names, origins, animations, and materials.
+```text
+geometry 'objects/pilot_jason/pilot_jason.tmb' not found
+geometry 'PilotBody' not found
+geometry 'PilotHead' not found
+geometry 'HeadsetLower' not found
+geometry 'HeadsetUpper' not found
+```
 
-## Current Machine State
+So the GTVR shell is compiled as `gtvr_attack_shell.tmb`, with geometry groups named:
 
-At the time this note was written, neither Blender nor an Aerofly content converter executable was found in the usual install locations on this machine. The source pipeline is ready, but the compiled in-game model cannot be produced locally until those tools are available.
+```text
+PilotBody
+PilotHead
+HeadsetLower
+HeadsetUpper
+```
 
-Run this after Blender is installed:
+The live `gtvr_attack_copter.tmc` now points `Pilot` at `gtvr_attack_shell`. This keeps the aircraft package flyable while adding a tactical shell through a loader path Aerofly already supports.
+
+## Build Commands
 
 ```powershell
-python tools\build_blender_source.py
+python tools\build_gtvr_source_project.py --profile pilot-overlay --user-dir tools\vendor\gtvr_overlay_test_user
+python tools\run_aerofly_converter.py gtvr_attack_shell tools\vendor\gtvr_overlay_source\aircraft --userfolder tools\vendor\gtvr_overlay_launch
+python tools\install_gtvr_overlay_object.py
 ```
 
+## Open Risk
+
+The next manual FS4 test decides whether the pilot-slot object is positioned and shown the way we need. If it appears only in external views, that is probably acceptable. If it is offset, hidden, or only visible in cockpit views, the fallback is to refine the object coordinates or find another text-loadable graphics hook.
