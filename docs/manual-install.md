@@ -61,27 +61,38 @@ To:
 <[string8][DisplayNameFull][GTVR Attack Copter Prototype]>
 ```
 
-## Reduce Stock Livery Clutter
+## Create The Tactical Repaint
 
-The EC135 livery choices come from repaint folders. To give the GTVR prototype an immediate tactical baseline, first copy all files except `option.tmc` from:
+The EC135 livery choices come from repaint folders. To give the GTVR prototype an immediate tactical baseline, copy this folder:
 
 ```text
 german_army
 ```
 
-Into the root of:
+To:
 
 ```text
-gtvr_attack_copter
+prototype_tactical
 ```
 
-That overwrites the base exterior texture files with the local military repaint files. Then remove these copied folders from the local prototype:
+Inside `prototype_tactical\option.tmc`, change:
+
+```text
+<[string8][Description][German Army]>
+```
+
+To:
+
+```text
+<[string8][Description][Prototype Tactical]>
+```
+
+Then remove these copied folders from the local prototype:
 
 ```text
 adac
 drf
 german_army
-highskids
 police
 sheriff
 ```
@@ -89,7 +100,9 @@ sheriff
 Keep:
 
 ```text
+highskids
 lowskids
+prototype_tactical
 ```
 
-The base `option.tmc` currently depends on `lowskids`, so removing that folder can stop the selected option from working correctly.
+The base `option.tmc` currently depends on `lowskids`, and `prototype_tactical` depends on `highskids`, so both hidden support folders need to stay.

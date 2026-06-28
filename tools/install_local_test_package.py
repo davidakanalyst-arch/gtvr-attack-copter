@@ -12,8 +12,9 @@ DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
 
 SOURCE_AIRCRAFT = "ec135"
 TARGET_AIRCRAFT = "gtvr_attack_copter"
-STOCK_OPTION_FOLDERS = ["adac", "drf", "german_army", "highskids", "police", "sheriff"]
+STOCK_OPTION_FOLDERS = ["adac", "drf", "german_army", "police", "sheriff"]
 TACTICAL_REPAINT_SOURCE = "german_army"
+TACTICAL_REPAINT_TARGET = "prototype_tactical"
 
 
 def replace_once(text: str, old: str, new: str) -> str:
@@ -65,7 +66,7 @@ def patch_option(path: Path) -> None:
     if not path.exists():
         return
     text = path.read_text(encoding="utf-8", errors="replace")
-    text = text.replace("<[string8][Description][Black]>", "<[string8][Description][Prototype Tactical]>")
+    text = text.replace("<[string8][Description][Black]>", "<[string8][Description][Prototype Black]>")
     path.write_text(text, encoding="utf-8")
 
 
@@ -95,10 +96,16 @@ def apply_tactical_repaint(target_dir: Path) -> None:
     if not repaint_dir.exists():
         raise FileNotFoundError(f"Expected tactical repaint folder missing: {repaint_dir}")
 
-    for source_file in repaint_dir.iterdir():
-        if source_file.name == "option.tmc" or not source_file.is_file():
-            continue
-        shutil.copy2(source_file, target_dir / source_file.name)
+    tactical_dir = target_dir / TACTICAL_REPAINT_TARGET
+    shutil.copytree(repaint_dir, tactical_dir)
+
+    option_path = tactical_dir / "option.tmc"
+    option_text = option_path.read_text(encoding="utf-8", errors="replace")
+    option_text = option_text.replace(
+        "<[string8][Description][German Army]>",
+        "<[string8][Description][Prototype Tactical]>",
+    )
+    option_path.write_text(option_text, encoding="utf-8")
 
 
 def write_marker_files(target_dir: Path, source_dir: Path) -> None:
