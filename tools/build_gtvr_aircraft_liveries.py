@@ -36,6 +36,7 @@ class Variant:
     f15e_base: tuple[int, int, int]
     mb339_base: tuple[int, int, int]
     lj45_base: tuple[int, int, int]
+    c90gtx_base: tuple[int, int, int]
 
 
 @dataclass(frozen=True)
@@ -52,10 +53,11 @@ class AircraftLivery:
 
 
 VARIANTS = (
-    Variant("black", "Black", (9, 11, 13), (12, 13, 12), (12, 13, 14)),
-    Variant("camo", "Camo", (44, 57, 49), (39, 52, 42), (58, 65, 50)),
-    Variant("desert", "Desert", (151, 127, 82), (145, 119, 74), (154, 126, 76)),
-    Variant("ruby_red", "Ruby Red", (93, 4, 18), (93, 4, 18), (128, 6, 24)),
+    Variant("black", "Black", (9, 11, 13), (12, 13, 12), (12, 13, 14), (14, 13, 10)),
+    Variant("camo", "Camo", (44, 57, 49), (39, 52, 42), (58, 65, 50), (79, 75, 46)),
+    Variant("desert", "Desert", (151, 127, 82), (145, 119, 74), (154, 126, 76), (150, 119, 65)),
+    Variant("ruby_red", "Ruby Red", (93, 4, 18), (93, 4, 18), (128, 6, 24), (128, 6, 24)),
+    Variant("gold_bling", "Gold Bling", (176, 126, 24), (176, 126, 24), (176, 126, 24), (196, 146, 32)),
 )
 
 MB339_PREVIEW_SOURCES = {
@@ -65,6 +67,9 @@ MB339_PREVIEW_SOURCES = {
 }
 LJ45_PREVIEW_SOURCES = {
     "ruby_red": MENU_PREVIEW_DIR / "gtvr_ruby_red_learjet_source.jpg",
+}
+C90GTX_PREVIEW_SOURCES = {
+    "gold_bling": MENU_PREVIEW_DIR / "gtvr_gold_bling_kingair_source.jpg",
 }
 VARIANT_BY_KEY = {variant.key: variant for variant in VARIANTS}
 
@@ -109,6 +114,16 @@ AIRCRAFT = (
         display_prefix="GTVR",
         texture_bases=("learjet_exterior_001", "learjet_exterior_002"),
         variants=("ruby_red",),
+    ),
+    AircraftLivery(
+        key="c90gtx",
+        aircraft_folder="c90gtx",
+        source_repaint="red_black",
+        theme="bling",
+        target_prefix="gtvr",
+        display_prefix="GTVR",
+        texture_bases=("ka_ext_001", "ka_ext_002"),
+        variants=("gold_bling",),
     ),
 )
 
@@ -381,8 +396,71 @@ def draw_ruby_texture(path: Path, texture_base: str, base: tuple[int, int, int])
     image.convert("RGB").save(path)
 
 
+def draw_bling_texture(path: Path, texture_base: str, base: tuple[int, int, int]) -> None:
+    size = 2048
+    image = Image.new("RGBA", (size, size), (*base, 255))
+    draw_gradient(image, blend(base, (255, 255, 255), 0.22), blend(base, (0, 0, 0), 0.22))
+    draw = ImageDraw.Draw(image)
+
+    bright_gold = (246, 196, 58)
+    pale_gold = (255, 226, 130)
+    bronze = blend(base, (92, 48, 8), 0.45)
+    smoked = (18, 15, 11)
+    wine = (95, 14, 20)
+    ivory = (244, 235, 204)
+
+    for offset in range(-360, 2400, 460):
+        polygon_overlay(
+            image,
+            [(offset, 0), (offset + 180, 0), (offset + 520, 2048), (offset + 310, 2048)],
+            pale_gold,
+            56,
+        )
+        polygon_overlay(
+            image,
+            [(offset + 80, 0), (offset + 180, 0), (offset + 40, 2048), (offset - 80, 2048)],
+            bronze,
+            74,
+        )
+
+    for y in (430, 880, 1330):
+        line_overlay(image, (-160, y, 2160, y - 250), smoked, 54, 185)
+        line_overlay(image, (-160, y + 58, 2160, y - 192), wine, 20, 210)
+        line_overlay(image, (-160, y + 88, 2160, y - 162), pale_gold, 10, 240)
+
+    for x, y in ((170, 360), (1120, 310), (430, 1260), (1280, 1210)):
+        draw.ellipse((x, y, x + 430, y + 260), outline=rgba(pale_gold, 150), width=8)
+        draw.line((x + 65, y + 210, x + 370, y + 45), fill=rgba(pale_gold, 120), width=7)
+
+    draw_panel_grid(draw, size, base)
+    draw_fasteners(draw, size, base)
+
+    title = load_font(110, bold=True)
+    code = load_font(86, bold=True)
+    small = load_font(42, bold=True)
+    if texture_base.endswith("001"):
+        draw.rectangle((1050, 210, 1870, 360), fill=rgba(smoked, 170))
+        draw.text((1090, 230), "GTVR BLING", fill=rgba(ivory, 240), font=code)
+        draw.text((1092, 318), "GOLD EXECUTIVE", fill=rgba(pale_gold, 215), font=small)
+        for x in range(260, 1220, 165):
+            draw.ellipse((x, 700, x + 76, 782), fill=rgba((38, 61, 73), 225), outline=rgba(ivory, 190), width=4)
+        draw.text((210, 1550), "G-BLNG", fill=rgba(ivory, 238), font=code)
+    else:
+        draw.rectangle((250, 250, 1700, 440), fill=rgba(smoked, 170))
+        draw.text((315, 285), "GOLD BLING", fill=rgba(ivory, 240), font=title)
+        draw.line((180, 760, 1860, 530), fill=rgba(pale_gold, 245), width=18)
+        draw.line((190, 820, 1870, 590), fill=rgba(wine, 220), width=26)
+        draw.line((190, 854, 1870, 624), fill=rgba(ivory, 185), width=6)
+        draw.ellipse((1380, 1230, 1810, 1660), outline=rgba(pale_gold, 200), width=10)
+        draw.text((1480, 1385), "KA", fill=rgba(ivory, 232), font=title)
+
+    image.convert("RGB").save(path)
+
+
 def write_texture(path: Path, aircraft: AircraftLivery, variant: Variant, texture_base: str) -> None:
-    if aircraft.key == "lj45":
+    if aircraft.key == "c90gtx":
+        draw_bling_texture(path, texture_base, variant.c90gtx_base)
+    elif aircraft.key == "lj45":
         draw_ruby_texture(path, texture_base, variant.lj45_base)
     elif aircraft.theme == "strike":
         base = variant.f15e_base
@@ -403,6 +481,19 @@ def draw_reflection(source: Image.Image, opacity: float = 0.22) -> Image.Image:
     alpha = Image.composite(alpha, Image.new("L", (width, height), 0), fade)
     reflection.putalpha(alpha)
     return reflection.filter(ImageFilter.GaussianBlur(radius=1.2))
+
+
+def draw_asset_reflection(source: Image.Image, opacity: float = 0.20) -> Image.Image:
+    reflection = source.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    alpha = reflection.getchannel("A").point(lambda value: int(value * opacity))
+    width, height = reflection.size
+    fade = Image.new("L", (width, height), 0)
+    fade_draw = ImageDraw.Draw(fade)
+    for y in range(height):
+        fade_draw.line((0, y, width, y), fill=max(0, int(255 * (1 - y / max(height * 0.78, 1)))))
+    alpha = Image.composite(alpha, Image.new("L", (width, height), 0), fade)
+    reflection.putalpha(alpha)
+    return reflection.filter(ImageFilter.GaussianBlur(radius=0.75))
 
 
 def draw_f15e_preview(path: Path, variant: Variant, small: bool = False) -> None:
@@ -625,15 +716,42 @@ def place_preview_image(source: Image.Image, size: int) -> Image.Image:
     return canvas
 
 
+def place_preview_with_generated_reflection(source: Image.Image, size: int, split: float = 0.60) -> Image.Image:
+    bbox = alpha_bbox(source)
+    crop = source.crop(bbox)
+    aircraft = crop.crop((0, 0, crop.width, max(1, int(crop.height * split))))
+    aircraft_bbox = alpha_bbox(aircraft)
+    aircraft = aircraft.crop(aircraft_bbox)
+
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    target_width = int(size * 0.88)
+    target_height = int(size * 0.48)
+    scale = min(target_width / aircraft.width, target_height / aircraft.height)
+    scaled_size = (max(1, int(aircraft.width * scale)), max(1, int(aircraft.height * scale)))
+    aircraft = aircraft.resize(scaled_size, Image.Resampling.LANCZOS)
+
+    x = (size - scaled_size[0]) // 2
+    y = int(size * 0.49 - scaled_size[1] / 2)
+    canvas.alpha_composite(aircraft, (x, max(0, y)))
+
+    reflection = draw_asset_reflection(aircraft, opacity=0.22)
+    reflection_y = max(0, y + scaled_size[1] - int(size * 0.035))
+    canvas.alpha_composite(reflection, (x, reflection_y))
+    return canvas
+
+
 def write_asset_preview(path: Path, source_path: Path, variant: Variant, small: bool) -> bool:
     if not source_path.exists():
         return False
     source = Image.open(source_path)
     cutout = remove_light_preview_background(source)
-    if variant.key in {"camo", "desert", "ruby_red"}:
+    if variant.key in {"camo", "desert", "ruby_red", "gold_bling"}:
         cutout = remove_white_preview_fill(cutout)
     cutout = soften_alpha(cutout)
     size = 256 if small else 2048
+    if variant.key == "gold_bling":
+        save_rgba_with_alpha_sidecar(place_preview_with_generated_reflection(cutout, size, split=0.58), path)
+        return True
     save_rgba_with_alpha_sidecar(place_preview_image(cutout, size), path)
     return True
 
@@ -642,6 +760,8 @@ def write_preview(path: Path, aircraft: AircraftLivery, variant: Variant, small:
     if aircraft.key == "mb339" and write_asset_preview(path, MB339_PREVIEW_SOURCES[variant.key], variant, small):
         return
     if aircraft.key == "lj45" and write_asset_preview(path, LJ45_PREVIEW_SOURCES[variant.key], variant, small):
+        return
+    if aircraft.key == "c90gtx" and write_asset_preview(path, C90GTX_PREVIEW_SOURCES[variant.key], variant, small):
         return
     if aircraft.key == "f15e":
         draw_f15e_preview(path, variant, small=small)
