@@ -22,6 +22,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `docs/geometry-replacement.md` - geometry replacement findings, including the failed pilot-slot overlay diagnostic.
 - `docs/converter-toolchain.md` - verified Aerofly converter launch contract and current cautions.
 - `docs/repaint-workflow.md` - safe tactical repaint conversion and install workflow.
+- `docs/livery-library.md` - local drag-and-drop livery library notes for EC135, F-15E, MB-339, and future aircraft.
 - `blender/create_gtvr_attack_copter_scene.py` - builds a Blender source scene from the named OBJ.
 - `tools/generate_attack_copter_obj.py` - source generator for the first exterior shell concept.
 - `tools/build_blender_source.py` - runs Blender in background to create the `.blend` source scene when Blender is installed.
@@ -30,6 +31,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `tools/build_gtvr_source_project.py` - generates Aerofly source files for the full shell or diagnostic pilot-slot overlay.
 - `tools/build_gtvr_repaint_source.py` - generates source PNGs for the camo, black, and desert attack repaints.
 - `tools/build_gtvr_menu_preview_source.py` - builds converter source files for custom aircraft selection preview images.
+- `tools/build_gtvr_aircraft_liveries.py` - generates and assembles F-15E Strike and MB-339 Assault repaint packages.
 - `tools/run_aerofly_converter.py` - drives the Aerofly converter GUI using the discovered launch contract.
 - `tools/install_gtvr_repaint_textures.py` - installs converted attack repaint textures and previews with backups.
 - `tools/install_gtvr_overlay_object.py` - diagnostic-only pilot-slot installer; refuses to patch live aircraft by default.

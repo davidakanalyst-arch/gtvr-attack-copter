@@ -9,6 +9,7 @@ out/
 release/
 tools/vendor/
 local-aircraft-packages/
+Liveries/
 
 # Electron-style unpacked app output: keep only one canonical win-unpacked.
 **/win-unpacked*/
