@@ -28,9 +28,9 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `tools/find_aerofly_converter.py` - searches this machine for the Aerofly aircraft/content converter.
 - `tools/build_aerofly_geometry.py` - future one-command geometry build; currently fails fast if the converter is missing.
 - `tools/build_gtvr_source_project.py` - generates Aerofly source files for the full shell or diagnostic pilot-slot overlay.
-- `tools/build_gtvr_repaint_source.py` - generates source PNGs for the olive and black attack-wrap repaints.
+- `tools/build_gtvr_repaint_source.py` - generates source PNGs for the camo, black, and desert attack repaints.
 - `tools/run_aerofly_converter.py` - drives the Aerofly converter GUI using the discovered launch contract.
-- `tools/install_gtvr_repaint_textures.py` - installs converted attack-wrap textures and previews with backups.
+- `tools/install_gtvr_repaint_textures.py` - installs converted attack repaint textures and previews with backups.
 - `tools/install_gtvr_overlay_object.py` - diagnostic-only pilot-slot installer; refuses to patch live aircraft by default.
 - `tools/install_local_test_package.py` - creates a private local FS4 working aircraft from your installed EC135.
 - `source-model/gtvr_attack_copter_shell.obj` - generated low-poly concept mesh.
@@ -40,6 +40,6 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 
 1. Keep the live aircraft on `Pilot[pilot_jason]` so the EC135-derived sound, systems, cockpit, and flight model load normally.
 2. Treat the `gtvr_attack_shell` pilot-slot overlay as a failed diagnostic: it triggered the FS4 fallback STOP model and removed helicopter sound/dynamics.
-3. Use `GTVR Attack Black` and `GTVR Attack Wrap` as the safe visible prototype repaints while geometry replacement is researched.
+3. Use `GTVR Attack Black`, `GTVR Attack Camo`, and `GTVR Attack Desert` as the safe visible prototype repaints while geometry replacement is researched.
 4. Find a safe text-loadable graphics hook or a proper compiled-model merge path before changing the visible shell again.
 5. Keep the original EC135-derived `.tmb` in place until the cockpit can be preserved another way.

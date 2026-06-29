@@ -10,9 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 GTVR_AIRCRAFT_NAME = "gtvr_attack_copter"
 EC135_AIRCRAFT_NAME = "ec135"
 GTVR_OLIVE_REPAINT_NAME = "prototype_tactical"
+GTVR_DESERT_REPAINT_NAME = "prototype_desert"
 EC135_BLACK_REPAINT_NAME = "gtvr_attack_black"
-GTVR_OLIVE_DISPLAY_NAME = "GTVR Attack Wrap"
+EC135_DESERT_REPAINT_NAME = "gtvr_attack_desert"
+GTVR_OLIVE_DISPLAY_NAME = "GTVR Attack Camo"
 BLACK_DISPLAY_NAME = "GTVR Attack Black"
+DESERT_DISPLAY_NAME = "GTVR Attack Desert"
 CONVERTER_MODEL_NAME = "gtvr_repaint_textures"
 DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
 DEFAULT_STOCK_EC135 = Path(
@@ -127,12 +130,34 @@ def install_gtvr_black(compiled_repaint: Path, fs4_user: Path) -> Path:
     return backup_dir
 
 
-def ensure_ec135_repaint_folder(fs4_user: Path, stock_ec135: Path) -> Path:
+def ensure_gtvr_desert_repaint_folder(fs4_user: Path) -> Path:
+    aircraft_dir = fs4_user / "aircraft" / GTVR_AIRCRAFT_NAME
+    source_repaint = aircraft_dir / GTVR_OLIVE_REPAINT_NAME
+    repaint_dir = aircraft_dir / GTVR_DESERT_REPAINT_NAME
+    if not source_repaint.exists():
+        raise FileNotFoundError(f"Missing GTVR source repaint folder: {source_repaint}")
+
+    if not repaint_dir.exists():
+        shutil.copytree(source_repaint, repaint_dir)
+    return repaint_dir
+
+
+def install_gtvr_desert(compiled_repaint: Path, fs4_user: Path) -> Path:
+    repaint_dir = ensure_gtvr_desert_repaint_folder(fs4_user)
+    backup_dir = repaint_dir.parent / f"_{GTVR_DESERT_REPAINT_NAME}_pre_gtvr_generated_repaint"
+    copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
+    copy_preview_files(repaint_dir.parent / GTVR_OLIVE_REPAINT_NAME, repaint_dir, backup_dir)
+    patch_option_tmc(repaint_dir, backup_dir, DESERT_DISPLAY_NAME)
+    disable_backup_repaint_options(repaint_dir.parent)
+    return backup_dir
+
+
+def ensure_ec135_repaint_folder(fs4_user: Path, stock_ec135: Path, repaint_name: str) -> Path:
     stock_repaint = stock_ec135 / "german_army"
     if not stock_repaint.exists():
         raise FileNotFoundError(f"Missing stock EC135 German Army repaint folder: {stock_repaint}")
 
-    repaint_dir = fs4_user / "aircraft" / EC135_AIRCRAFT_NAME / EC135_BLACK_REPAINT_NAME
+    repaint_dir = fs4_user / "aircraft" / EC135_AIRCRAFT_NAME / repaint_name
     if not repaint_dir.exists():
         repaint_dir.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(stock_repaint, repaint_dir)
@@ -140,11 +165,20 @@ def ensure_ec135_repaint_folder(fs4_user: Path, stock_ec135: Path) -> Path:
 
 
 def install_ec135_black(compiled_repaint: Path, fs4_user: Path, stock_ec135: Path) -> Path:
-    repaint_dir = ensure_ec135_repaint_folder(fs4_user, stock_ec135)
+    repaint_dir = ensure_ec135_repaint_folder(fs4_user, stock_ec135, EC135_BLACK_REPAINT_NAME)
     backup_dir = repaint_dir.parent / f"_{EC135_BLACK_REPAINT_NAME}_pre_gtvr_generated_repaint"
     copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
     copy_preview_files(stock_ec135 / "german_army", repaint_dir, backup_dir)
     patch_option_tmc(repaint_dir, backup_dir, BLACK_DISPLAY_NAME)
+    return backup_dir
+
+
+def install_ec135_desert(compiled_repaint: Path, fs4_user: Path, stock_ec135: Path) -> Path:
+    repaint_dir = ensure_ec135_repaint_folder(fs4_user, stock_ec135, EC135_DESERT_REPAINT_NAME)
+    backup_dir = repaint_dir.parent / f"_{EC135_DESERT_REPAINT_NAME}_pre_gtvr_generated_repaint"
+    copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
+    copy_preview_files(stock_ec135 / "german_army", repaint_dir, backup_dir)
+    patch_option_tmc(repaint_dir, backup_dir, DESERT_DISPLAY_NAME)
     return backup_dir
 
 
@@ -157,6 +191,11 @@ def install(compiled_repaint: Path, fs4_user: Path, stock_ec135: Path, variant: 
             install_gtvr_black(compiled_repaint, fs4_user),
             install_ec135_black(compiled_repaint, fs4_user, stock_ec135),
         ]
+    if variant == "desert":
+        return [
+            install_gtvr_desert(compiled_repaint, fs4_user),
+            install_ec135_desert(compiled_repaint, fs4_user, stock_ec135),
+        ]
     raise ValueError(f"Unsupported repaint variant: {variant}")
 
 
@@ -165,13 +204,21 @@ def repair_previews(fs4_user: Path, stock_ec135: Path) -> list[Path]:
     gtvr_root_backup = gtvr_dir / "_root_black_pre_gtvr_generated_repaint"
     gtvr_olive_dir = gtvr_dir / GTVR_OLIVE_REPAINT_NAME
     gtvr_olive_backup = gtvr_dir / f"_{GTVR_OLIVE_REPAINT_NAME}_pre_gtvr_generated_repaint"
+    gtvr_desert_dir = gtvr_dir / GTVR_DESERT_REPAINT_NAME
+    gtvr_desert_backup = gtvr_dir / f"_{GTVR_DESERT_REPAINT_NAME}_pre_gtvr_generated_repaint"
     ec135_black_dir = fs4_user / "aircraft" / EC135_AIRCRAFT_NAME / EC135_BLACK_REPAINT_NAME
     ec135_backup = ec135_black_dir.parent / f"_{EC135_BLACK_REPAINT_NAME}_pre_gtvr_generated_repaint"
+    ec135_desert_dir = fs4_user / "aircraft" / EC135_AIRCRAFT_NAME / EC135_DESERT_REPAINT_NAME
+    ec135_desert_backup = ec135_desert_dir.parent / f"_{EC135_DESERT_REPAINT_NAME}_pre_gtvr_generated_repaint"
 
     restore_original_previews(gtvr_dir, gtvr_root_backup)
     restore_original_previews(gtvr_olive_dir, gtvr_olive_backup)
+    if gtvr_desert_dir.exists():
+        copy_preview_files(gtvr_olive_dir, gtvr_desert_dir, gtvr_desert_backup)
     copy_preview_files(stock_ec135 / "german_army", ec135_black_dir, ec135_backup)
-    return [gtvr_root_backup, gtvr_olive_backup, ec135_backup]
+    if ec135_desert_dir.exists():
+        copy_preview_files(stock_ec135 / "german_army", ec135_desert_dir, ec135_desert_backup)
+    return [gtvr_root_backup, gtvr_olive_backup, gtvr_desert_backup, ec135_backup, ec135_desert_backup]
 
 
 def main() -> int:
@@ -179,7 +226,7 @@ def main() -> int:
     parser.add_argument("--compiled-repaint", type=Path, default=DEFAULT_COMPILED_REPAINT)
     parser.add_argument("--fs4-user", type=Path, default=DEFAULT_FS4_USER)
     parser.add_argument("--stock-ec135", type=Path, default=DEFAULT_STOCK_EC135)
-    parser.add_argument("--variant", choices=["olive", "black"], default="olive")
+    parser.add_argument("--variant", choices=["olive", "black", "desert"], default="olive")
     parser.add_argument("--repair-previews", action="store_true")
     args = parser.parse_args()
 

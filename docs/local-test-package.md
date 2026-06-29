@@ -33,7 +33,7 @@ python tools\install_gtvr_overlay_object.py --experimental-pilot-slot
 
 That route failed in FS4: the aircraft loaded the fallback STOP model, with no helicopter sound or flight dynamics. Keep the local test package on `Pilot[pilot_jason]` until a different graphics hook or compiled-model merge route is proven.
 
-The safe interim visual path is the generated attack-wrap repaint pair:
+The safe interim visual path is the generated attack repaint set:
 
 ```powershell
 python tools\build_gtvr_repaint_source.py --variant olive --user-dir tools\vendor\gtvr_repaint_test_user
@@ -43,8 +43,12 @@ python tools\install_gtvr_repaint_textures.py --variant olive
 python tools\build_gtvr_repaint_source.py --variant black --user-dir tools\vendor\gtvr_repaint_test_user
 python tools\run_aerofly_converter.py gtvr_repaint_textures tools\vendor\gtvr_repaint_source\aircraft --userfolder tools\vendor\gtvr_repaint_launch
 python tools\install_gtvr_repaint_textures.py --variant black
+
+python tools\build_gtvr_repaint_source.py --variant desert --user-dir tools\vendor\gtvr_repaint_test_user
+python tools\run_aerofly_converter.py gtvr_repaint_textures tools\vendor\gtvr_repaint_source\aircraft --userfolder tools\vendor\gtvr_repaint_launch
+python tools\install_gtvr_repaint_textures.py --variant desert
 ```
 
-That updates the GTVR prototype to two visible attack-wrap choices: root `GTVR Attack Black` and `prototype_tactical` `GTVR Attack Wrap`. The black variant is also installed as a user-side EC135 repaint named `GTVR Attack Black` without touching the stock Steam aircraft folder.
+That updates the GTVR prototype with `GTVR Attack Black`, `GTVR Attack Camo`, and `GTVR Attack Desert`. The black and desert variants are also installed as user-side EC135 repaints without touching the stock Steam aircraft folder.
 
 The installer creates one custom repaint folder named `prototype_tactical` from the local EC135 `german_army` repaint, then removes the other stock repaint folders. It keeps `highskids` because that tactical repaint depends on the hidden high-skid option.

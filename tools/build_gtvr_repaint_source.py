@@ -47,6 +47,21 @@ REPAINT_VARIANTS = {
             "bay": (4, 5, 5),
         },
     },
+    "desert": {
+        "materials": {
+            "ext01_fuselage": {"shader": "standard exterior", "base": (99, 84, 55)},
+            "ext02_fuselage": {"shader": "standard exterior", "base": (87, 72, 45)},
+            "ext03_fuselage": {"shader": "standard exterior", "base": (108, 91, 58)},
+        },
+        "style": {
+            "gradient_lift": (150, 129, 86),
+            "panel_colors": [(111, 94, 61), (130, 111, 73), (74, 69, 48), (155, 130, 82)],
+            "feature_panel": (83, 73, 50),
+            "belt": (70, 64, 45),
+            "bar": (120, 101, 64),
+            "bay": (49, 44, 33),
+        },
+    },
 }
 
 
