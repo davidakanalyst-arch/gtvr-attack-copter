@@ -35,6 +35,7 @@ class Variant:
     label: str
     f15e_base: tuple[int, int, int]
     mb339_base: tuple[int, int, int]
+    lj45_base: tuple[int, int, int]
 
 
 @dataclass(frozen=True)
@@ -46,13 +47,15 @@ class AircraftLivery:
     target_prefix: str
     display_prefix: str
     texture_bases: tuple[str, ...]
+    variants: tuple[str, ...]
     requirements: str | None = None
 
 
 VARIANTS = (
-    Variant("black", "Black", (9, 11, 13), (12, 13, 12)),
-    Variant("camo", "Camo", (44, 57, 49), (39, 52, 42)),
-    Variant("desert", "Desert", (151, 127, 82), (145, 119, 74)),
+    Variant("black", "Black", (9, 11, 13), (12, 13, 12), (12, 13, 14)),
+    Variant("camo", "Camo", (44, 57, 49), (39, 52, 42), (58, 65, 50)),
+    Variant("desert", "Desert", (151, 127, 82), (145, 119, 74), (154, 126, 76)),
+    Variant("ruby_red", "Ruby Red", (93, 4, 18), (93, 4, 18), (128, 6, 24)),
 )
 
 MB339_PREVIEW_SOURCES = {
@@ -60,6 +63,10 @@ MB339_PREVIEW_SOURCES = {
     "camo": MENU_PREVIEW_DIR / "gtvr_assault_camo_source.jpg",
     "desert": MENU_PREVIEW_DIR / "gtvr_assault_desert_source.jpg",
 }
+LJ45_PREVIEW_SOURCES = {
+    "ruby_red": MENU_PREVIEW_DIR / "gtvr_ruby_red_learjet_source.jpg",
+}
+VARIANT_BY_KEY = {variant.key: variant for variant in VARIANTS}
 
 AIRCRAFT = (
     AircraftLivery(
@@ -80,6 +87,7 @@ AIRCRAFT = (
             "mapeight",
             "mapnine",
         ),
+        variants=("black", "camo", "desert"),
     ),
     AircraftLivery(
         key="mb339",
@@ -89,7 +97,18 @@ AIRCRAFT = (
         target_prefix="gtvr_assault",
         display_prefix="GTVR Assault",
         texture_bases=("fuselage", "decals", "tank", "outer_tank", "pylon"),
+        variants=("black", "camo", "desert"),
         requirements=" decals_none nose_cone load_tip_tanks tail_antenna ",
+    ),
+    AircraftLivery(
+        key="lj45",
+        aircraft_folder="lj45",
+        source_repaint="black_red",
+        theme="ruby",
+        target_prefix="gtvr",
+        display_prefix="GTVR",
+        texture_bases=("learjet_exterior_001", "learjet_exterior_002"),
+        variants=("ruby_red",),
     ),
 )
 
@@ -101,6 +120,10 @@ def material_name(aircraft: AircraftLivery, variant: Variant, texture_base: str)
 def preview_name(aircraft: AircraftLivery, variant: Variant, small: bool = False) -> str:
     suffix = "preview_small" if small else "preview"
     return f"{aircraft.key}_{aircraft.theme}_{variant.key}_{suffix}"
+
+
+def variants_for(aircraft: AircraftLivery) -> tuple[Variant, ...]:
+    return tuple(VARIANT_BY_KEY[key] for key in aircraft.variants)
 
 
 def load_font(size: int, bold: bool = False) -> ImageFont.ImageFont:
@@ -302,11 +325,70 @@ def draw_assault_texture(path: Path, texture_base: str, base: tuple[int, int, in
     image.convert("RGB").save(path)
 
 
+def draw_ruby_texture(path: Path, texture_base: str, base: tuple[int, int, int]) -> None:
+    size = 2048
+    image = Image.new("RGBA", (size, size), (*base, 255))
+    draw_gradient(image, blend(base, (255, 255, 255), 0.16), blend(base, (0, 0, 0), 0.28))
+    draw = ImageDraw.Draw(image)
+
+    ruby_dark = blend(base, (0, 0, 0), 0.55)
+    ruby_shadow = blend(base, (0, 0, 0), 0.72)
+    ruby_gloss = blend(base, (255, 255, 255), 0.24)
+    champagne = (222, 183, 94)
+    warm_white = (235, 229, 205)
+    smoke = (36, 24, 26)
+
+    for y in (310, 670, 1030, 1390, 1750):
+        line_overlay(image, (-180, y + 105, 2240, y - 90), ruby_gloss, 18, 70)
+        line_overlay(image, (-220, y + 165, 2180, y - 145), ruby_dark, 44, 125)
+
+    for y in (610, 1180):
+        line_overlay(image, (-120, y, 2160, y - 180), champagne, 14, 235)
+        line_overlay(image, (-120, y + 46, 2160, y - 134), warm_white, 5, 205)
+
+    for offset in range(-320, 2200, 520):
+        polygon_overlay(
+            image,
+            [(offset, 0), (offset + 220, 0), (offset + 510, 2048), (offset + 260, 2048)],
+            ruby_shadow,
+            62,
+        )
+
+    draw_panel_grid(draw, size, base)
+    draw_fasteners(draw, size, base)
+
+    title = load_font(104, bold=True)
+    code = load_font(78, bold=True)
+    small = load_font(42, bold=True)
+    if texture_base.endswith("001"):
+        draw.rectangle((120, 710, 1940, 870), fill=rgba(smoke, 165))
+        for x in range(250, 1700, 135):
+            draw.rounded_rectangle((x, 735, x + 70, 820), radius=14, fill=rgba((170, 217, 226), 230))
+            draw.rounded_rectangle((x + 7, 742, x + 63, 813), radius=11, outline=rgba(warm_white, 180), width=3)
+        draw.text((1320, 250), "GTVR RUBY", fill=rgba(warm_white, 235), font=title)
+        draw.text((1325, 360), "LEARJET 45", fill=rgba(champagne, 215), font=small)
+        draw.rectangle((210, 1510, 780, 1620), outline=rgba(warm_white, 230), width=9)
+        draw.text((245, 1530), "G-VRTR", fill=rgba(warm_white, 235), font=code)
+    else:
+        draw.rectangle((250, 260, 1820, 440), fill=rgba(ruby_shadow, 165))
+        draw.text((320, 295), "RUBY RED", fill=rgba(warm_white, 235), font=title)
+        draw.text((330, 405), "GTVR EXECUTIVE", fill=rgba(champagne, 220), font=small)
+        draw.line((240, 760, 1780, 540), fill=rgba(champagne, 245), width=16)
+        draw.line((260, 815, 1800, 595), fill=rgba(warm_white, 195), width=5)
+        draw.ellipse((1430, 1260, 1810, 1640), outline=rgba(champagne, 200), width=10)
+        draw.text((1518, 1390), "45", fill=rgba(warm_white, 230), font=title)
+
+    image.convert("RGB").save(path)
+
+
 def write_texture(path: Path, aircraft: AircraftLivery, variant: Variant, texture_base: str) -> None:
-    base = variant.f15e_base if aircraft.key == "f15e" else variant.mb339_base
-    if aircraft.theme == "strike":
+    if aircraft.key == "lj45":
+        draw_ruby_texture(path, texture_base, variant.lj45_base)
+    elif aircraft.theme == "strike":
+        base = variant.f15e_base
         draw_strike_texture(path, texture_base, base)
     else:
+        base = variant.mb339_base
         draw_assault_texture(path, texture_base, base)
 
 
@@ -548,7 +630,7 @@ def write_asset_preview(path: Path, source_path: Path, variant: Variant, small: 
         return False
     source = Image.open(source_path)
     cutout = remove_light_preview_background(source)
-    if variant.key in {"camo", "desert"}:
+    if variant.key in {"camo", "desert", "ruby_red"}:
         cutout = remove_white_preview_fill(cutout)
     cutout = soften_alpha(cutout)
     size = 256 if small else 2048
@@ -559,7 +641,11 @@ def write_asset_preview(path: Path, source_path: Path, variant: Variant, small: 
 def write_preview(path: Path, aircraft: AircraftLivery, variant: Variant, small: bool = False) -> None:
     if aircraft.key == "mb339" and write_asset_preview(path, MB339_PREVIEW_SOURCES[variant.key], variant, small):
         return
+    if aircraft.key == "lj45" and write_asset_preview(path, LJ45_PREVIEW_SOURCES[variant.key], variant, small):
+        return
     if aircraft.key == "f15e":
+        draw_f15e_preview(path, variant, small=small)
+    elif aircraft.key == "lj45":
         draw_f15e_preview(path, variant, small=small)
     else:
         draw_mb339_preview(path, variant, small=small)
@@ -611,7 +697,7 @@ def build_source(source_root: Path, user_dir: Path) -> None:
     materials: dict[str, dict[str, object]] = {}
     texture_names: list[str] = []
     for aircraft in AIRCRAFT:
-        for variant in VARIANTS:
+        for variant in variants_for(aircraft):
             for texture_base in aircraft.texture_bases:
                 name = material_name(aircraft, variant, texture_base)
                 materials[name] = {"shader": "standard exterior", "base": (96, 96, 96)}
@@ -633,7 +719,7 @@ def build_source(source_root: Path, user_dir: Path) -> None:
     aircraft_source.write_root_converter_config(source_root / "config.tmc", source_root, user_dir)
 
     for aircraft in AIRCRAFT:
-        for variant in VARIANTS:
+        for variant in variants_for(aircraft):
             for texture_base in aircraft.texture_bases:
                 write_texture(
                     out_aircraft_dir / f"{material_name(aircraft, variant, texture_base)}_color.png",
@@ -690,7 +776,7 @@ def assemble_liveries(compiled_dir: Path, livery_root: Path, stock_root: Path) -
         if not source_repaint.exists():
             raise FileNotFoundError(f"Missing stock repaint folder: {source_repaint}")
 
-        for variant in VARIANTS:
+        for variant in variants_for(aircraft):
             target_dir = livery_root / aircraft.aircraft_folder / f"{aircraft.target_prefix}_{variant.key}"
             remove_target_folder(target_dir, livery_root)
             target_dir.parent.mkdir(parents=True, exist_ok=True)
