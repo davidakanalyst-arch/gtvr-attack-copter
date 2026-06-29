@@ -29,6 +29,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `tools/build_aerofly_geometry.py` - future one-command geometry build; currently fails fast if the converter is missing.
 - `tools/build_gtvr_source_project.py` - generates Aerofly source files for the full shell or diagnostic pilot-slot overlay.
 - `tools/build_gtvr_repaint_source.py` - generates source PNGs for the camo, black, and desert attack repaints.
+- `tools/build_gtvr_menu_preview_source.py` - builds converter source files for custom aircraft selection preview images.
 - `tools/run_aerofly_converter.py` - drives the Aerofly converter GUI using the discovered launch contract.
 - `tools/install_gtvr_repaint_textures.py` - installs converted attack repaint textures and previews with backups.
 - `tools/install_gtvr_overlay_object.py` - diagnostic-only pilot-slot installer; refuses to patch live aircraft by default.

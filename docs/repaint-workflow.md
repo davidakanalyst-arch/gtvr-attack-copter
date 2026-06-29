@@ -44,6 +44,31 @@ tools\vendor\gtvr_repaint_test_user\aircraft\gtvr_repaint_textures\ext02_fuselag
 tools\vendor\gtvr_repaint_test_user\aircraft\gtvr_repaint_textures\ext03_fuselage_color.ttx
 ```
 
+Build and convert the custom aircraft selection previews:
+
+```powershell
+python tools\build_gtvr_menu_preview_source.py
+python tools\run_aerofly_converter.py gtvr_menu_preview tools\vendor\gtvr_menu_preview_source\aircraft --userfolder tools\vendor\gtvr_menu_preview_launch
+python tools\install_gtvr_repaint_textures.py --repair-previews
+```
+
+The preview source plates live in:
+
+```text
+assets\menu-previews
+```
+
+The converter emits:
+
+```text
+tools\vendor\gtvr_menu_preview_user\aircraft\gtvr_menu_preview\black_preview_color.ttx
+tools\vendor\gtvr_menu_preview_user\aircraft\gtvr_menu_preview\black_preview_small_color.ttx
+tools\vendor\gtvr_menu_preview_user\aircraft\gtvr_menu_preview\camo_preview_color.ttx
+tools\vendor\gtvr_menu_preview_user\aircraft\gtvr_menu_preview\camo_preview_small_color.ttx
+tools\vendor\gtvr_menu_preview_user\aircraft\gtvr_menu_preview\desert_preview_color.ttx
+tools\vendor\gtvr_menu_preview_user\aircraft\gtvr_menu_preview\desert_preview_small_color.ttx
+```
+
 ## Install
 
 The olive install copies converted textures into:
@@ -73,7 +98,7 @@ C:\Users\david\Documents\Aerofly FS 4\aircraft\ec135\gtvr_attack_desert
 
 The EC135 repaint is created from the stock `german_army` repaint as a local user repaint. The installer does not modify the Steam EC135 folder.
 
-The converter's generated preview files are not installed because this texture-only converter project uses dummy geometry and produces blank aircraft menu images. GTVR preview files are restored from the live package backups. The EC135 black repaint preview is copied from the live GTVR black slot, while the EC135 desert repaint still uses the stock `german_army` compiled preview until a sand EC135 preview can be rendered or compiled.
+The repaint texture converter's generated preview files are not installed because that texture-only project uses dummy geometry and produces blank aircraft menu images. The menu preview converter compiles the curated preview plates in `assets\menu-previews` into `.ttx` files, and the installer copies those compiled files into the live `preview.ttx` and `preview_small.ttx` slots. If those custom preview files are missing, the installer falls back to the previous stock/copy behavior.
 
 To repair previews without reinstalling textures:
 
