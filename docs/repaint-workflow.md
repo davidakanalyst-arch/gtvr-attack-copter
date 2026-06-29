@@ -58,6 +58,10 @@ The preview source plates live in:
 assets\menu-previews
 ```
 
+These plates are transparent PNG cutouts. The builder writes RGB `*_color.png` files plus matching
+`*_color_alpha.png` sidecars so the Aerofly converter can preserve transparency in the compiled
+menu preview textures.
+
 The converter emits:
 
 ```text

@@ -65,13 +65,13 @@ def copy_preview_assets(out_aircraft_dir: Path, variant_names: list[str]) -> Non
         if not source.exists():
             raise FileNotFoundError(f"Missing menu preview source image: {source}")
 
-        image = Image.open(source).convert("RGB")
-        image.resize((2048, 2048), Image.Resampling.LANCZOS).save(
-            out_aircraft_dir / f"{name}_preview_color.png"
-        )
-        image.resize((256, 256), Image.Resampling.LANCZOS).save(
-            out_aircraft_dir / f"{name}_preview_small_color.png"
-        )
+        image = Image.open(source).convert("RGBA")
+        for suffix, size in (("", (2048, 2048)), ("_small", (256, 256))):
+            resized = image.resize(size, Image.Resampling.LANCZOS)
+            color_path = out_aircraft_dir / f"{name}_preview{suffix}_color.png"
+            alpha_path = out_aircraft_dir / f"{name}_preview{suffix}_color_alpha.png"
+            resized.convert("RGB").save(color_path)
+            resized.getchannel("A").save(alpha_path)
 
 
 def main() -> int:
