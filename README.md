@@ -39,8 +39,8 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 
 ## Next Build Steps
 
-1. Keep the live aircraft on `Pilot[pilot_jason]` so the EC135-derived sound, systems, cockpit, and flight model load normally.
-2. Treat the `gtvr_attack_shell` pilot-slot overlay as a failed diagnostic: it triggered the FS4 fallback STOP model and removed helicopter sound/dynamics.
-3. Use `GTVR Attack Black`, `GTVR Attack Camo`, and `GTVR Attack Desert` as the safe visible prototype repaints while geometry replacement is researched.
+1. Use `GTVR Attack Black`, `GTVR Attack Camo`, and `GTVR Attack Desert` as EC135 user repaints.
+2. Treat the standalone `gtvr_attack_copter` aircraft as a drag-copy archive only.
+3. Treat the `gtvr_attack_shell` pilot-slot overlay as a failed diagnostic: it triggered the FS4 fallback STOP model and removed helicopter sound/dynamics.
 4. Find a safe text-loadable graphics hook or a proper compiled-model merge path before changing the visible shell again.
 5. Keep the original EC135-derived `.tmb` in place until the cockpit can be preserved another way.

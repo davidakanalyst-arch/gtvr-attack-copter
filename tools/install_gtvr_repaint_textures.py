@@ -12,8 +12,9 @@ EC135_AIRCRAFT_NAME = "ec135"
 GTVR_OLIVE_REPAINT_NAME = "prototype_tactical"
 GTVR_DESERT_REPAINT_NAME = "prototype_desert"
 EC135_BLACK_REPAINT_NAME = "gtvr_attack_black"
+EC135_CAMO_REPAINT_NAME = "gtvr_attack_camo"
 EC135_DESERT_REPAINT_NAME = "gtvr_attack_desert"
-GTVR_OLIVE_DISPLAY_NAME = "GTVR Attack Camo"
+CAMO_DISPLAY_NAME = "GTVR Attack Camo"
 BLACK_DISPLAY_NAME = "GTVR Attack Black"
 DESERT_DISPLAY_NAME = "GTVR Attack Desert"
 CONVERTER_MODEL_NAME = "gtvr_repaint_textures"
@@ -142,7 +143,7 @@ def install_gtvr_olive(compiled_repaint: Path, compiled_previews: Path, fs4_user
     copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
     if not copy_custom_preview_files(compiled_previews, "camo", repaint_dir, backup_dir):
         restore_original_previews(repaint_dir, backup_dir)
-    patch_option_tmc(repaint_dir, backup_dir, GTVR_OLIVE_DISPLAY_NAME)
+    patch_option_tmc(repaint_dir, backup_dir, CAMO_DISPLAY_NAME)
     disable_backup_repaint_options(repaint_dir.parent)
     return backup_dir
 
@@ -201,8 +202,18 @@ def install_ec135_black(compiled_repaint: Path, compiled_previews: Path, fs4_use
     backup_dir = repaint_dir.parent / f"_{EC135_BLACK_REPAINT_NAME}_pre_gtvr_generated_repaint"
     copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
     if not copy_custom_preview_files(compiled_previews, "black", repaint_dir, backup_dir):
-        copy_preview_files(gtvr_black_preview_dir(fs4_user), repaint_dir, backup_dir)
+        copy_preview_files(stock_camo_preview_dir(stock_ec135), repaint_dir, backup_dir)
     patch_option_tmc(repaint_dir, backup_dir, BLACK_DISPLAY_NAME)
+    return backup_dir
+
+
+def install_ec135_camo(compiled_repaint: Path, compiled_previews: Path, fs4_user: Path, stock_ec135: Path) -> Path:
+    repaint_dir = ensure_ec135_repaint_folder(fs4_user, stock_ec135, EC135_CAMO_REPAINT_NAME)
+    backup_dir = repaint_dir.parent / f"_{EC135_CAMO_REPAINT_NAME}_pre_gtvr_generated_repaint"
+    copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
+    if not copy_custom_preview_files(compiled_previews, "camo", repaint_dir, backup_dir):
+        copy_preview_files(stock_camo_preview_dir(stock_ec135), repaint_dir, backup_dir)
+    patch_option_tmc(repaint_dir, backup_dir, CAMO_DISPLAY_NAME)
     return backup_dir
 
 
@@ -218,64 +229,50 @@ def install_ec135_desert(compiled_repaint: Path, compiled_previews: Path, fs4_us
 
 def install(compiled_repaint: Path, compiled_previews: Path, fs4_user: Path, stock_ec135: Path, variant: str) -> list[Path]:
     validate_compiled_repaint(compiled_repaint)
-    if variant == "olive":
-        return [install_gtvr_olive(compiled_repaint, compiled_previews, fs4_user)]
+    if variant in {"camo", "olive"}:
+        return [install_ec135_camo(compiled_repaint, compiled_previews, fs4_user, stock_ec135)]
     if variant == "black":
-        return [
-            install_gtvr_black(compiled_repaint, compiled_previews, fs4_user),
-            install_ec135_black(compiled_repaint, compiled_previews, fs4_user, stock_ec135),
-        ]
+        return [install_ec135_black(compiled_repaint, compiled_previews, fs4_user, stock_ec135)]
     if variant == "desert":
-        return [
-            install_gtvr_desert(compiled_repaint, compiled_previews, fs4_user),
-            install_ec135_desert(compiled_repaint, compiled_previews, fs4_user, stock_ec135),
-        ]
+        return [install_ec135_desert(compiled_repaint, compiled_previews, fs4_user, stock_ec135)]
     raise ValueError(f"Unsupported repaint variant: {variant}")
 
 
 def repair_previews(fs4_user: Path, stock_ec135: Path, compiled_previews: Path) -> list[Path]:
-    gtvr_dir = fs4_user / "aircraft" / GTVR_AIRCRAFT_NAME
-    gtvr_root_backup = gtvr_dir / "_root_black_pre_gtvr_generated_repaint"
-    gtvr_olive_dir = gtvr_dir / GTVR_OLIVE_REPAINT_NAME
-    gtvr_olive_backup = gtvr_dir / f"_{GTVR_OLIVE_REPAINT_NAME}_pre_gtvr_generated_repaint"
-    gtvr_desert_dir = gtvr_dir / GTVR_DESERT_REPAINT_NAME
-    gtvr_desert_backup = gtvr_dir / f"_{GTVR_DESERT_REPAINT_NAME}_pre_gtvr_generated_repaint"
     ec135_black_dir = fs4_user / "aircraft" / EC135_AIRCRAFT_NAME / EC135_BLACK_REPAINT_NAME
-    ec135_backup = ec135_black_dir.parent / f"_{EC135_BLACK_REPAINT_NAME}_pre_gtvr_generated_repaint"
+    ec135_black_backup = ec135_black_dir.parent / f"_{EC135_BLACK_REPAINT_NAME}_pre_gtvr_generated_repaint"
+    ec135_camo_dir = fs4_user / "aircraft" / EC135_AIRCRAFT_NAME / EC135_CAMO_REPAINT_NAME
+    ec135_camo_backup = ec135_camo_dir.parent / f"_{EC135_CAMO_REPAINT_NAME}_pre_gtvr_generated_repaint"
     ec135_desert_dir = fs4_user / "aircraft" / EC135_AIRCRAFT_NAME / EC135_DESERT_REPAINT_NAME
     ec135_desert_backup = ec135_desert_dir.parent / f"_{EC135_DESERT_REPAINT_NAME}_pre_gtvr_generated_repaint"
 
-    if not copy_custom_preview_files(compiled_previews, "black", gtvr_dir, gtvr_root_backup):
-        restore_original_previews(gtvr_dir, gtvr_root_backup)
-    if not copy_custom_preview_files(compiled_previews, "camo", gtvr_olive_dir, gtvr_olive_backup):
-        restore_original_previews(gtvr_olive_dir, gtvr_olive_backup)
-    if gtvr_desert_dir.exists():
-        if not copy_custom_preview_files(compiled_previews, "desert", gtvr_desert_dir, gtvr_desert_backup):
-            copy_preview_files(gtvr_olive_dir, gtvr_desert_dir, gtvr_desert_backup)
-    if not copy_custom_preview_files(compiled_previews, "black", ec135_black_dir, ec135_backup):
-        copy_preview_files(gtvr_black_preview_dir(fs4_user), ec135_black_dir, ec135_backup)
+    if not copy_custom_preview_files(compiled_previews, "black", ec135_black_dir, ec135_black_backup):
+        copy_preview_files(stock_camo_preview_dir(stock_ec135), ec135_black_dir, ec135_black_backup)
+    if ec135_camo_dir.exists():
+        if not copy_custom_preview_files(compiled_previews, "camo", ec135_camo_dir, ec135_camo_backup):
+            copy_preview_files(stock_camo_preview_dir(stock_ec135), ec135_camo_dir, ec135_camo_backup)
     if ec135_desert_dir.exists():
         if not copy_custom_preview_files(compiled_previews, "desert", ec135_desert_dir, ec135_desert_backup):
             copy_preview_files(stock_camo_preview_dir(stock_ec135), ec135_desert_dir, ec135_desert_backup)
-    return [gtvr_root_backup, gtvr_olive_backup, gtvr_desert_backup, ec135_backup, ec135_desert_backup]
+    return [ec135_black_backup, ec135_camo_backup, ec135_desert_backup]
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Install converted GTVR attack repaint textures.")
+    parser = argparse.ArgumentParser(description="Install converted EC135 attack repaint textures.")
     parser.add_argument("--compiled-repaint", type=Path, default=DEFAULT_COMPILED_REPAINT)
     parser.add_argument("--compiled-previews", type=Path, default=DEFAULT_COMPILED_PREVIEWS)
     parser.add_argument("--fs4-user", type=Path, default=DEFAULT_FS4_USER)
     parser.add_argument("--stock-ec135", type=Path, default=DEFAULT_STOCK_EC135)
-    parser.add_argument("--variant", choices=["olive", "black", "desert"], default="olive")
+    parser.add_argument("--variant", choices=["olive", "camo", "black", "desert"], default="camo")
     parser.add_argument("--repair-previews", action="store_true")
     args = parser.parse_args()
 
     if args.repair_previews:
         backup_dirs = repair_previews(args.fs4_user, args.stock_ec135, args.compiled_previews)
-        print("Repaired GTVR and EC135 attack repaint preview files.")
+        print("Repaired EC135 attack repaint preview files.")
     else:
         backup_dirs = install(args.compiled_repaint, args.compiled_previews, args.fs4_user, args.stock_ec135, args.variant)
-        print(f"Installed {args.variant} GTVR attack repaint files.")
+        print(f"Installed {args.variant} EC135 attack repaint files.")
 
     for backup_dir in backup_dirs:
         print(f"Original files backed up at: {backup_dir}")

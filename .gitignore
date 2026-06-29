@@ -8,6 +8,7 @@ build/
 out/
 release/
 tools/vendor/
+local-aircraft-packages/
 
 # Electron-style unpacked app output: keep only one canonical win-unpacked.
 **/win-unpacked*/

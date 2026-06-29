@@ -63,6 +63,7 @@ REPAINT_VARIANTS = {
         },
     },
 }
+REPAINT_VARIANTS["camo"] = REPAINT_VARIANTS["olive"]
 
 
 def load_font(size: int) -> ImageFont.ImageFont:
