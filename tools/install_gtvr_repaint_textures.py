@@ -94,6 +94,14 @@ def copy_preview_files(source_dir: Path, target_dir: Path, backup_dir: Path) -> 
         shutil.copy2(source, target)
 
 
+def gtvr_black_preview_dir(fs4_user: Path) -> Path:
+    return fs4_user / "aircraft" / GTVR_AIRCRAFT_NAME
+
+
+def stock_camo_preview_dir(stock_ec135: Path) -> Path:
+    return stock_ec135 / "german_army"
+
+
 def disable_backup_repaint_options(aircraft_dir: Path) -> None:
     for option_path in aircraft_dir.glob("_*/option.tmc"):
         disabled_path = option_path.with_name("option.tmc.backup")
@@ -168,7 +176,7 @@ def install_ec135_black(compiled_repaint: Path, fs4_user: Path, stock_ec135: Pat
     repaint_dir = ensure_ec135_repaint_folder(fs4_user, stock_ec135, EC135_BLACK_REPAINT_NAME)
     backup_dir = repaint_dir.parent / f"_{EC135_BLACK_REPAINT_NAME}_pre_gtvr_generated_repaint"
     copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
-    copy_preview_files(stock_ec135 / "german_army", repaint_dir, backup_dir)
+    copy_preview_files(gtvr_black_preview_dir(fs4_user), repaint_dir, backup_dir)
     patch_option_tmc(repaint_dir, backup_dir, BLACK_DISPLAY_NAME)
     return backup_dir
 
@@ -177,7 +185,7 @@ def install_ec135_desert(compiled_repaint: Path, fs4_user: Path, stock_ec135: Pa
     repaint_dir = ensure_ec135_repaint_folder(fs4_user, stock_ec135, EC135_DESERT_REPAINT_NAME)
     backup_dir = repaint_dir.parent / f"_{EC135_DESERT_REPAINT_NAME}_pre_gtvr_generated_repaint"
     copy_converted_files(compiled_repaint, repaint_dir, backup_dir)
-    copy_preview_files(stock_ec135 / "german_army", repaint_dir, backup_dir)
+    copy_preview_files(stock_camo_preview_dir(stock_ec135), repaint_dir, backup_dir)
     patch_option_tmc(repaint_dir, backup_dir, DESERT_DISPLAY_NAME)
     return backup_dir
 
@@ -215,9 +223,9 @@ def repair_previews(fs4_user: Path, stock_ec135: Path) -> list[Path]:
     restore_original_previews(gtvr_olive_dir, gtvr_olive_backup)
     if gtvr_desert_dir.exists():
         copy_preview_files(gtvr_olive_dir, gtvr_desert_dir, gtvr_desert_backup)
-    copy_preview_files(stock_ec135 / "german_army", ec135_black_dir, ec135_backup)
+    copy_preview_files(gtvr_black_preview_dir(fs4_user), ec135_black_dir, ec135_backup)
     if ec135_desert_dir.exists():
-        copy_preview_files(stock_ec135 / "german_army", ec135_desert_dir, ec135_desert_backup)
+        copy_preview_files(stock_camo_preview_dir(stock_ec135), ec135_desert_dir, ec135_desert_backup)
     return [gtvr_root_backup, gtvr_olive_backup, gtvr_desert_backup, ec135_backup, ec135_desert_backup]
 
 

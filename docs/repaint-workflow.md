@@ -73,7 +73,7 @@ C:\Users\david\Documents\Aerofly FS 4\aircraft\ec135\gtvr_attack_desert
 
 The EC135 repaint is created from the stock `german_army` repaint as a local user repaint. The installer does not modify the Steam EC135 folder.
 
-The converter's generated preview files are not installed because this texture-only converter project uses dummy geometry and produces blank aircraft menu images. GTVR preview files are restored from the live package backups, and the EC135 user repaint preview is copied from the stock `german_army` repaint.
+The converter's generated preview files are not installed because this texture-only converter project uses dummy geometry and produces blank aircraft menu images. GTVR preview files are restored from the live package backups. The EC135 black repaint preview is copied from the live GTVR black slot, while the EC135 desert repaint still uses the stock `german_army` compiled preview until a sand EC135 preview can be rendered or compiled.
 
 To repair previews without reinstalling textures:
 
