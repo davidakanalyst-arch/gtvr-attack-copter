@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
+MENU_PREVIEW_DIR = ROOT / "assets" / "menu-previews"
 sys.path.insert(0, str(ROOT / "tools"))
 
 import build_gtvr_repaint_source as repaint_source  # noqa: E402
@@ -52,6 +54,12 @@ VARIANTS = (
     Variant("camo", "Camo", (44, 57, 49), (39, 52, 42)),
     Variant("desert", "Desert", (151, 127, 82), (145, 119, 74)),
 )
+
+MB339_PREVIEW_SOURCES = {
+    "black": MENU_PREVIEW_DIR / "gtvr_assault_black_source.jpg",
+    "camo": MENU_PREVIEW_DIR / "gtvr_assault_camo_source.jpg",
+    "desert": MENU_PREVIEW_DIR / "gtvr_assault_desert_source.jpg",
+}
 
 AIRCRAFT = (
     AircraftLivery(
@@ -414,7 +422,143 @@ def save_rgba_with_alpha_sidecar(image: Image.Image, color_path: Path) -> None:
     image.getchannel("A").save(color_path.with_name(f"{color_path.stem}_alpha.png"))
 
 
+def remove_light_preview_background(image: Image.Image) -> Image.Image:
+    return remove_connected_background(
+        image,
+        lambda r, g, b, _x, _y, _w, _h: max(r, g, b) > 180 and max(r, g, b) - min(r, g, b) < 42,
+    )
+
+
+def remove_connected_background(image: Image.Image, is_background_candidate) -> Image.Image:
+    rgba_image = image.convert("RGBA")
+    pixels = rgba_image.load()
+    width, height = rgba_image.size
+    visited = bytearray(width * height)
+    background = bytearray(width * height)
+    queue: deque[tuple[int, int]] = deque()
+
+    def index(x: int, y: int) -> int:
+        return y * width + x
+
+    def try_enqueue(x: int, y: int) -> None:
+        if x < 0 or y < 0 or x >= width or y >= height:
+            return
+        idx = index(x, y)
+        if visited[idx]:
+            return
+        visited[idx] = 1
+        r, g, b, _alpha = pixels[x, y]
+        if is_background_candidate(r, g, b, x, y, width, height):
+            background[idx] = 1
+            queue.append((x, y))
+
+    for x in range(width):
+        try_enqueue(x, 0)
+        try_enqueue(x, height - 1)
+    for y in range(height):
+        try_enqueue(0, y)
+        try_enqueue(width - 1, y)
+
+    while queue:
+        x, y = queue.popleft()
+        try_enqueue(x + 1, y)
+        try_enqueue(x - 1, y)
+        try_enqueue(x, y + 1)
+        try_enqueue(x, y - 1)
+
+    for y in range(height):
+        for x in range(width):
+            idx = index(x, y)
+            if background[idx]:
+                r, g, b, _alpha = pixels[x, y]
+                pixels[x, y] = (r, g, b, 0)
+    return rgba_image
+
+
+def remove_white_preview_fill(image: Image.Image) -> Image.Image:
+    pixels = image.load()
+    width, height = image.size
+    protected_top = int(height * 0.34)
+    candidates: set[tuple[int, int]] = set()
+    for y in range(protected_top, height):
+        for x in range(width):
+            r, g, b, alpha = pixels[x, y]
+            if alpha == 0:
+                continue
+            brightness = max(r, g, b)
+            contrast = max(r, g, b) - min(r, g, b)
+            if brightness > 232 and contrast < 34:
+                candidates.add((x, y))
+
+    visited: set[tuple[int, int]] = set()
+    for start in list(candidates):
+        if start in visited:
+            continue
+        stack = [start]
+        component: list[tuple[int, int]] = []
+        visited.add(start)
+        while stack:
+            x, y = stack.pop()
+            component.append((x, y))
+            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+                point = (nx, ny)
+                if point in candidates and point not in visited:
+                    visited.add(point)
+                    stack.append(point)
+        if len(component) < 900:
+            continue
+        for x, y in component:
+            r, g, b, _alpha = pixels[x, y]
+            pixels[x, y] = (r, g, b, 0)
+    return image
+
+
+def soften_alpha(image: Image.Image) -> Image.Image:
+    alpha = image.getchannel("A")
+    alpha = alpha.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(radius=0.55))
+    image.putalpha(alpha)
+    return image
+
+
+def alpha_bbox(image: Image.Image) -> tuple[int, int, int, int]:
+    alpha = image.getchannel("A")
+    bbox = alpha.point(lambda value: 255 if value > 8 else 0).getbbox()
+    if bbox is None:
+        return (0, 0, image.width, image.height)
+    return bbox
+
+
+def place_preview_image(source: Image.Image, size: int) -> Image.Image:
+    bbox = alpha_bbox(source)
+    crop = source.crop(bbox)
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    target_width = int(size * 0.88)
+    target_height = int(size * 0.74)
+    scale = min(target_width / crop.width, target_height / crop.height)
+    scaled_size = (max(1, int(crop.width * scale)), max(1, int(crop.height * scale)))
+    crop = crop.resize(scaled_size, Image.Resampling.LANCZOS)
+    x = (size - scaled_size[0]) // 2
+    y = int(size * 0.52 - scaled_size[1] / 2)
+    canvas.alpha_composite(crop, (x, max(0, y)))
+    return canvas
+
+
+def write_asset_preview(path: Path, source_path: Path, variant: Variant, small: bool) -> bool:
+    if not source_path.exists():
+        return False
+    source = Image.open(source_path)
+    cutout = remove_light_preview_background(source)
+    if variant.key in {"camo", "desert"}:
+        cutout = remove_white_preview_fill(cutout)
+    cutout = soften_alpha(cutout)
+    size = 256 if small else 2048
+    save_rgba_with_alpha_sidecar(place_preview_image(cutout, size), path)
+    return True
+
+
 def write_preview(path: Path, aircraft: AircraftLivery, variant: Variant, small: bool = False) -> None:
+    if aircraft.key == "mb339" and write_asset_preview(path, MB339_PREVIEW_SOURCES[variant.key], variant, small):
+        return
     if aircraft.key == "f15e":
         draw_f15e_preview(path, variant, small=small)
     else:
