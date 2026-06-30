@@ -483,14 +483,14 @@ def draw_reflection(source: Image.Image, opacity: float = 0.22) -> Image.Image:
     return reflection.filter(ImageFilter.GaussianBlur(radius=1.2))
 
 
-def draw_asset_reflection(source: Image.Image, opacity: float = 0.20) -> Image.Image:
+def draw_asset_reflection(source: Image.Image, opacity: float = 0.20, fade_depth: float = 0.78) -> Image.Image:
     reflection = source.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
     alpha = reflection.getchannel("A").point(lambda value: int(value * opacity))
     width, height = reflection.size
     fade = Image.new("L", (width, height), 0)
     fade_draw = ImageDraw.Draw(fade)
     for y in range(height):
-        fade_draw.line((0, y, width, y), fill=max(0, int(255 * (1 - y / max(height * 0.78, 1)))))
+        fade_draw.line((0, y, width, y), fill=max(0, int(255 * (1 - y / max(height * fade_depth, 1)))))
     alpha = Image.composite(alpha, Image.new("L", (width, height), 0), fade)
     reflection.putalpha(alpha)
     return reflection.filter(ImageFilter.GaussianBlur(radius=0.75))
@@ -716,7 +716,13 @@ def place_preview_image(source: Image.Image, size: int) -> Image.Image:
     return canvas
 
 
-def place_preview_with_generated_reflection(source: Image.Image, size: int, split: float = 0.60) -> Image.Image:
+def place_preview_with_generated_reflection(
+    source: Image.Image,
+    size: int,
+    split: float = 0.60,
+    reflection_opacity: float = 0.22,
+    reflection_fade_depth: float = 0.78,
+) -> Image.Image:
     bbox = alpha_bbox(source)
     crop = source.crop(bbox)
     aircraft = crop.crop((0, 0, crop.width, max(1, int(crop.height * split))))
@@ -731,11 +737,15 @@ def place_preview_with_generated_reflection(source: Image.Image, size: int, spli
     aircraft = aircraft.resize(scaled_size, Image.Resampling.LANCZOS)
 
     x = (size - scaled_size[0]) // 2
-    y = int(size * 0.49 - scaled_size[1] / 2)
+    y = int(size * 0.46 - scaled_size[1] / 2)
     canvas.alpha_composite(aircraft, (x, max(0, y)))
 
-    reflection = draw_asset_reflection(aircraft, opacity=0.22)
-    reflection_y = max(0, y + scaled_size[1] - int(size * 0.035))
+    reflection = draw_asset_reflection(
+        aircraft,
+        opacity=reflection_opacity,
+        fade_depth=reflection_fade_depth,
+    )
+    reflection_y = max(0, y + scaled_size[1] - int(size * 0.012))
     canvas.alpha_composite(reflection, (x, reflection_y))
     return canvas
 
@@ -745,12 +755,21 @@ def write_asset_preview(path: Path, source_path: Path, variant: Variant, small: 
         return False
     source = Image.open(source_path)
     cutout = remove_light_preview_background(source)
-    if variant.key in {"camo", "desert", "ruby_red", "gold_bling"}:
+    if variant.key in {"black", "camo", "desert", "ruby_red", "gold_bling"}:
         cutout = remove_white_preview_fill(cutout)
     cutout = soften_alpha(cutout)
     size = 256 if small else 2048
     if variant.key == "gold_bling":
-        save_rgba_with_alpha_sidecar(place_preview_with_generated_reflection(cutout, size, split=0.58), path)
+        save_rgba_with_alpha_sidecar(
+            place_preview_with_generated_reflection(
+                cutout,
+                size,
+                split=0.58,
+                reflection_opacity=0.45,
+                reflection_fade_depth=1.15,
+            ),
+            path,
+        )
         return True
     save_rgba_with_alpha_sidecar(place_preview_image(cutout, size), path)
     return True
