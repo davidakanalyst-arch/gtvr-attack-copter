@@ -784,7 +784,12 @@ def write_strike_preview(path: Path, source_path: Path, variant: Variant, small:
     if not source_path.exists():
         return False
     source = Image.open(source_path)
-    cutout = source.convert("RGBA")
+    if variant.key == "black":
+        cutout = source.convert("RGBA")
+    else:
+        cutout = source.convert("RGBA")
+        alpha_source = Image.open(F15E_PREVIEW_SOURCES["black"]).convert("RGBA")
+        cutout.putalpha(alpha_source.getchannel("A").filter(ImageFilter.GaussianBlur(0.45)))
     cutout = soften_alpha(cutout)
     size = 256 if small else 2048
     save_rgba_with_alpha_sidecar(place_preview_image(cutout, size), path)
