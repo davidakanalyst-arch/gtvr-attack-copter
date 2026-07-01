@@ -65,6 +65,11 @@ MB339_PREVIEW_SOURCES = {
     "camo": MENU_PREVIEW_DIR / "gtvr_assault_camo_source.jpg",
     "desert": MENU_PREVIEW_DIR / "gtvr_assault_desert_source.jpg",
 }
+F15E_PREVIEW_SOURCES = {
+    "black": MENU_PREVIEW_DIR / "gtvr_strike_black_source.png",
+    "camo": MENU_PREVIEW_DIR / "gtvr_strike_camo_source.png",
+    "desert": MENU_PREVIEW_DIR / "gtvr_strike_desert_source.png",
+}
 LJ45_PREVIEW_SOURCES = {
     "ruby_red": MENU_PREVIEW_DIR / "gtvr_ruby_red_learjet_source.jpg",
 }
@@ -775,7 +780,20 @@ def write_asset_preview(path: Path, source_path: Path, variant: Variant, small: 
     return True
 
 
+def write_strike_preview(path: Path, source_path: Path, variant: Variant, small: bool) -> bool:
+    if not source_path.exists():
+        return False
+    source = Image.open(source_path)
+    cutout = source.convert("RGBA")
+    cutout = soften_alpha(cutout)
+    size = 256 if small else 2048
+    save_rgba_with_alpha_sidecar(place_preview_image(cutout, size), path)
+    return True
+
+
 def write_preview(path: Path, aircraft: AircraftLivery, variant: Variant, small: bool = False) -> None:
+    if aircraft.key == "f15e" and write_strike_preview(path, F15E_PREVIEW_SOURCES[variant.key], variant, small):
+        return
     if aircraft.key == "mb339" and write_asset_preview(path, MB339_PREVIEW_SOURCES[variant.key], variant, small):
         return
     if aircraft.key == "lj45" and write_asset_preview(path, LJ45_PREVIEW_SOURCES[variant.key], variant, small):
