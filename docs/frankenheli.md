@@ -9,7 +9,8 @@ The current v2 build is stable-first. It uses:
 - the generated GTVR attack-copter shell from `source-model/gtvr_attack_copter_shell.obj`,
 - the open community Edgley Optica package as a readable slow-flight, runway, sound, gear, and control donor,
 - a generated Aerofly `.tmb` whose geometry names match the donor `.tmd`,
-- patched propeller graphics that move the visible rotor to the roof while retaining the donor's stable forward prop physics.
+- patched propeller graphics that move the visible main rotor to the roof while retaining the donor's stable forward prop physics,
+- a separate animated tail-rotor graphics block driven by the donor propeller angle.
 
 The archived v1 Bleriot build proved that a non-EC135 custom package could be selected and loaded from an in-air continuation, but it was not useful: fresh runway starts could black-screen and the vertical-thrust hack was not meaningfully controllable.
 
@@ -48,4 +49,4 @@ C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_wraith_heli
 - `local-aircraft-packages/` stays ignored because it contains copied third-party aircraft scaffold files and compiled Aerofly binaries.
 - The tracked source of truth is the builder script plus the generated OBJ/MTL source model.
 - `tools/build_gtvr_frankenheli.py` remains as a record of the failed Bleriot vertical-thrust experiment.
-- This package is expected to need flight tuning. It is a deliberate Frankenstein path to escape the locked EC135/R22 `.tmq` helicopter core.
+- The current MSFS-shell package looks like a helicopter but still flies like the Optica donor. A true helicopter-control pass needs a local-only R22/EC135 donor experiment or a readable rotorcraft `.tmd` graph, because the Optica controls remain fixed-wing.

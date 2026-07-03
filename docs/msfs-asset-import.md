@@ -24,13 +24,15 @@ The Aerofly converter completed and produced a compiled shell model.
 `tools/build_gtvr_wraith_msfs.py` then bridges the imported MSFS exterior into the existing Optica-based `GTVR Wraith Heli` package by:
 
 - importing the MSFS body into the Optica `Cabin` geometry name,
+- filtering imported main/tail rotor nodes from that static body,
+- placing a generated tail rotor into the Optica `Empennage` geometry slot and animating it with a dedicated tail-rotor graphics block,
 - emitting empty geometry slots for every other Optica geometry reference,
 - retaining the existing Wraith animated main-rotor placeholder,
 - assembling a local test package at `local-aircraft-packages\gtvr_wraith_heli`.
 
 Do not use tiny placeholder triangles for unused donor geometry names. Aerofly still applies each donor object's transform, so visible placeholders turn into a cloud of scattered fragments around the aircraft. Empty patch lists are accepted by the converter and keep those donor geometry names invisible.
 
-Also do not triangle-sample the MSFS body by keeping every Nth face. That makes the source model compile, but it shreds the visible aircraft into disconnected fragments. The current UH-60 Wraith test imports the full body mesh, rotates it 180 degrees around the vertical axis so the visual nose matches the Optica flight graph, keeps the UH-60 tail rotor visible, and filters out non-aircraft accessory nodes such as the firefighting bambi bucket, cargo hook, hoist, sling/load helpers, water effects, and baked MSFS main-rotor nodes.
+Also do not triangle-sample the MSFS body by keeping every Nth face. That makes the source model compile, but it shreds the visible aircraft into disconnected fragments. The current UH-60 Wraith test imports the full body mesh, rotates it 180 degrees around the vertical axis so the visual nose matches the Optica flight graph, filters out static MSFS rotor and accessory nodes, and adds the generated Wraith tail rotor back as an animated graphics object. It also filters out non-aircraft accessory nodes such as the firefighting bambi bucket, cargo hook, hoist, sling/load helpers, water effects, and baked MSFS rotor nodes.
 
 The currently installed live test build used:
 

@@ -23,6 +23,7 @@ from build_gtvr_wraith_optica import (
     DISPLAY_NAME,
     MAIN_ROTOR_PIVOT,
     PACKAGE_DIR,
+    TAIL_ROTOR_GEOMETRY,
     VISUAL_Z_OFFSET,
     extract_geometry_names,
     patch_tmc,
@@ -50,7 +51,7 @@ SOURCE_DIR = SOURCE_ROOT / AIRCRAFT_NAME
 BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_msfs_build_user"
 DEFAULT_MSFS_HELI_DIR = Path.home() / "Downloads" / "MSFS Helis"
 DEFAULT_SKIP_ROTORS = (
-    r"(main[_ ]?rotor|rotor_main|prop_blur|rotor1|"
+    r"(main[_ ]?rotor|tail[_ ]?rotor|rear[_ ]?rotor|rotor_main|prop_blur|rotor1|"
     r"bambi|bucket|water_face|cargo|hook|hoist|sling|rope|load)"
 )
 
@@ -311,13 +312,15 @@ def prepare_source(args: argparse.Namespace) -> None:
 
     add_flat_materials(materials, SOURCE_DIR)
     main_rotor, tail_rotor = legacy_rotor_patch_maps()
-    cabin = merge_patch_maps(clone_import_patch_map(imported, yaw_180=args.yaw_180), tail_rotor)
+    cabin = clone_import_patch_map(imported, yaw_180=args.yaw_180)
 
     geometry_names = extract_geometry_names(args.donor / "optica.tmd")
     geometries: dict[str, dict[str, Patch]] = {}
     for geometry_name in geometry_names:
         if geometry_name == "Cabin":
             geometries[geometry_name] = cabin
+        elif geometry_name == TAIL_ROTOR_GEOMETRY:
+            geometries[geometry_name] = clone_patch_map(tail_rotor)
         elif geometry_name in {"Prop", "PropBlurFast"}:
             geometries[geometry_name] = clone_patch_map(main_rotor)
         else:

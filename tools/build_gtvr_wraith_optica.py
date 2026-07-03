@@ -34,6 +34,8 @@ PACKAGE_DIR = ROOT / "local-aircraft-packages" / AIRCRAFT_NAME
 # slightly higher, so this keeps the visual skids near ground level on fresh spawn.
 VISUAL_Z_OFFSET = 0.35
 MAIN_ROTOR_PIVOT = (0.2, 0.0, 2.55 + VISUAL_Z_OFFSET)
+TAIL_ROTOR_GEOMETRY = "Empennage"
+TAIL_ROTOR_PIVOT = (-5.92, 0.0, 0.55 + VISUAL_Z_OFFSET)
 
 
 def extract_geometry_names(tmd_path: Path) -> list[str]:
@@ -145,6 +147,7 @@ def patch_tmd(path: Path) -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
     text = text.replace("Edgley EA-7 Optica", DISPLAY_NAME)
     text = text.replace("Edgley Optica", DISPLAY_NAME)
+    text = text.replace(" DuctEngine Empennage Extinguisher ", " DuctEngine Extinguisher ", 1)
 
     text = patch_block(
         text,
@@ -214,6 +217,20 @@ def patch_tmd(path: Path) -> None:
             "<[float64][Radius][0.606]>": "<[float64][Radius][4.9]>",
         },
     )
+    tail_pivot = vector(TAIL_ROTOR_PIVOT)
+    tail_graphics = f"""            <[rotatingbodygraphics][TailRotor][]
+                <[string8][GeometryList][ {TAIL_ROTOR_GEOMETRY} ]>
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[uint32][AngleID][EnginePropeller.RotationAngle]>
+                <[tmvector3d][Axis][1.0 0.0 0.0]>
+                <[tmvector3d][Pivot][{tail_pivot}]>
+            >
+"""
+    marker = "            <[bendingbodygraphics][RightWing][]"
+    if marker not in text:
+        raise ValueError("Could not insert tail rotor graphics block; RightWing marker not found")
+    text = text.replace(marker, tail_graphics + marker, 1)
 
     text = text.replace("<[bool][InstantCrash][true]>", "<[bool][InstantCrash][false]>", 1)
     path.write_text(text, encoding="utf-8")
@@ -446,13 +463,14 @@ def prepare_source(donor: Path) -> None:
         base["Fuselage"],
         base["LeftSkid"],
         base["RightSkid"],
-        base["TailRotor"],
     )
 
     geometries: dict[str, dict[str, Patch]] = {}
     for name in extract_geometry_names(donor_tmd):
         if name == "Cabin":
             geometries[name] = clone_patch_map(visible_shell)
+        elif name == TAIL_ROTOR_GEOMETRY:
+            geometries[name] = clone_patch_map(base["TailRotor"])
         elif name in {"Prop", "PropBlurFast"}:
             geometries[name] = clone_patch_map(base["MainRotor"])
         else:
