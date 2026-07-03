@@ -97,6 +97,11 @@ def vector(values: tuple[float, float, float]) -> str:
 
 def patch_tmc(path: Path) -> None:
     text = path.read_text(encoding="utf-8", errors="replace")
+    text = text.replace(
+        "<[list_vector2_float64][[FlapSettings]",
+        "<[list_vector2_float64][FlapSettings]",
+        1,
+    )
     text = re.sub(r"<\[stringt8c\]\[ICAO\]\[[^\]]*\]>", "<[stringt8c][ICAO][GTWH]>", text, count=1)
     text = re.sub(
         r"<\[string8\]\[DisplayName\]\[[^\]]*\]>",
@@ -157,6 +162,27 @@ def patch_tmd(path: Path) -> None:
             "<[tmvector3d][Direction][0.99 0.0 -0.2]>": "<[tmvector3d][Direction][0.99 0.0 -0.16]>",
         },
     )
+    text = patch_block(
+        text,
+        "<[multibody_joint][PropellerJoint][]",
+        {
+            "<[float64][InitialVelocity][72.0]>": "<[float64][InitialVelocity][125.0]>",
+        },
+    )
+    text = patch_block(
+        text,
+        "<[input_lever][ThrottleInput][]",
+        {
+            "<[string8][Message][Controls.Throttle1]>": "<[string8][Message][Controls.Throttle1]>\n                <[float64][Value][0.28]>",
+        },
+    )
+    text = patch_block(
+        text,
+        "<[servolinear][ServoThrottle][]",
+        {
+            "<[float64][Position][0.0]>": "<[float64][Position][0.28]>",
+        },
+    )
 
     # The Optica physics prop remains forward-facing for stable runway starts,
     # but the graphics are moved onto the custom roof rotor.
@@ -191,6 +217,170 @@ def patch_tmd(path: Path) -> None:
 
     text = text.replace("<[bool][InstantCrash][true]>", "<[bool][InstantCrash][false]>", 1)
     path.write_text(text, encoding="utf-8")
+
+
+def state_tmd(
+    *,
+    throttle: float,
+    mixture: float,
+    prop_velocity: float,
+    magnetos: float,
+    fuel_on: float,
+    flaps: float,
+    elevator_trim: float,
+    parking_brake: float,
+    lights: bool,
+) -> str:
+    light_value = "1.0" if lights else "0.0"
+    return f"""<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmuniverse][DynamicObjects][]
+
+            // engine and rotor
+            <[input_lever][ThrottleInput][]
+                <[float64][Value][{throttle:.2f}]>
+            >
+            <[servolinear][ServoThrottle][]
+                <[float64][Position][{throttle:.2f}]>
+            >
+            <[input_lever][MixtureLever][]
+                <[float64][Value][{mixture:.2f}]>
+            >
+            <[multibody_joint][PropellerJoint][]
+                <[float64][Velocity][{prop_velocity:.1f}]>
+            >
+            <[input_discrete_momentary][Magnetos][]
+                <[float64][Value][{magnetos:.1f}]>
+            >
+            <[input_switch][MasterBatterySwitch][]
+                <[float64][Value][{fuel_on:.1f}]>
+            >
+            <[input_switch][AvionicsSwitch][]
+                <[float64][Value][{fuel_on:.1f}]>
+            >
+            <[input_switch][AlternatorSwitch][]
+                <[float64][Value][{fuel_on:.1f}]>
+            >
+            <[input_switch][ElectricalFuelPumpSwitch][]
+                <[float64][Value][{fuel_on:.1f}]>
+            >
+            <[input_switch][FuelSelectorInput][]
+                <[float64][Value][{fuel_on:.1f}]>
+            >
+
+            // flight controls
+            <[input_default][FlapsInput][]
+                <[float64][Value][{flaps:.2f}]>
+            >
+            <[servoclassic][ServoFlaps][]
+                <[float64][Position][{flaps:.2f}]>
+            >
+            <[input_default][ElevatorTrimInput][]
+                <[float64][Value][{elevator_trim:.3f}]>
+            >
+            <[input_default][AileronTrim][]
+                <[float64][Value][0.0]>
+            >
+            <[input_default][RudderTrimInput][]
+                <[float64][Value][0.0]>
+            >
+            <[input_lever][ParkingBrakeInput][]
+                <[float64][Value][{parking_brake:.1f}]>
+            >
+
+            // lights
+            <[input_switch][StrobeLightSwitch][]
+                <[float64][Value][{light_value}]>
+            >
+            <[input_switch][BeaconLightSwitch][]
+                <[float64][Value][{light_value}]>
+            >
+            <[input_switch][NavigationLightSwitch][]
+                <[float64][Value][{light_value}]>
+            >
+            <[input_switch][LandingLightSwitch][]
+                <[float64][Value][{light_value}]>
+            >
+            <[input_switch][TaxiLightSwitch][]
+                <[float64][Value][{light_value}]>
+            >
+        >
+    >
+>
+"""
+
+
+def write_wraith_state_files(package_dir: Path) -> None:
+    states = {
+        "cold": state_tmd(
+            throttle=0.0,
+            mixture=0.0,
+            prop_velocity=0.0,
+            magnetos=0.0,
+            fuel_on=0.0,
+            flaps=0.0,
+            elevator_trim=0.0,
+            parking_brake=1.0,
+            lights=False,
+        ),
+        "start": state_tmd(
+            throttle=0.24,
+            mixture=1.0,
+            prop_velocity=110.0,
+            magnetos=3.0,
+            fuel_on=1.0,
+            flaps=0.2,
+            elevator_trim=-0.02,
+            parking_brake=1.0,
+            lights=True,
+        ),
+        "takeoff": state_tmd(
+            throttle=0.34,
+            mixture=1.0,
+            prop_velocity=125.0,
+            magnetos=3.0,
+            fuel_on=1.0,
+            flaps=0.4,
+            elevator_trim=-0.02,
+            parking_brake=0.0,
+            lights=True,
+        ),
+        "clean": state_tmd(
+            throttle=0.30,
+            mixture=1.0,
+            prop_velocity=120.0,
+            magnetos=3.0,
+            fuel_on=1.0,
+            flaps=0.0,
+            elevator_trim=0.0,
+            parking_brake=0.0,
+            lights=True,
+        ),
+        "flaps": state_tmd(
+            throttle=0.28,
+            mixture=1.0,
+            prop_velocity=115.0,
+            magnetos=3.0,
+            fuel_on=1.0,
+            flaps=0.6,
+            elevator_trim=-0.03,
+            parking_brake=0.0,
+            lights=True,
+        ),
+        "landing": state_tmd(
+            throttle=0.24,
+            mixture=1.0,
+            prop_velocity=105.0,
+            magnetos=3.0,
+            fuel_on=1.0,
+            flaps=0.8,
+            elevator_trim=-0.04,
+            parking_brake=0.0,
+            lights=True,
+        ),
+    }
+    for suffix, text in states.items():
+        (package_dir / f"{AIRCRAFT_NAME}_{suffix}.tmd").write_text(text, encoding="utf-8")
 
 
 def write_aircraft_source_tmc(path: Path) -> None:
@@ -263,7 +453,7 @@ def prepare_source(donor: Path) -> None:
     for name in extract_geometry_names(donor_tmd):
         if name == "Cabin":
             geometries[name] = clone_patch_map(visible_shell)
-        elif name == "Prop":
+        elif name in {"Prop", "PropBlurFast"}:
             geometries[name] = clone_patch_map(base["MainRotor"])
         else:
             geometries[name] = clone_patch_map(dummy)
@@ -306,6 +496,8 @@ def assemble_package(donor: Path) -> None:
     old_tmb = PACKAGE_DIR / f"{DONOR_NAME}.tmb"
     if old_tmb.exists():
         old_tmb.unlink()
+    for old_state in PACKAGE_DIR.glob(f"{DONOR_NAME}_*.tmd"):
+        old_state.unlink()
 
     shutil.copy2(converted_tmb, PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmb")
     for texture in converted.glob("*.ttx"):
@@ -313,6 +505,7 @@ def assemble_package(donor: Path) -> None:
 
     patch_tmc(PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmc")
     patch_tmd(PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmd")
+    write_wraith_state_files(PACKAGE_DIR)
     write_option_tmc(PACKAGE_DIR / "option.tmc")
     (PACKAGE_DIR / "_GTVR_WRAITH_OPTICA_V2.txt").write_text(
         "\n".join(
