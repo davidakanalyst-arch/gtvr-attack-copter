@@ -30,7 +30,7 @@ The Aerofly converter completed and produced a compiled shell model.
 
 Do not use tiny placeholder triangles for unused donor geometry names. Aerofly still applies each donor object's transform, so visible placeholders turn into a cloud of scattered fragments around the aircraft. Empty patch lists are accepted by the converter and keep those donor geometry names invisible.
 
-Also do not triangle-sample the MSFS body by keeping every Nth face. That makes the source model compile, but it shreds the visible aircraft into disconnected fragments. The current UH-60 Wraith test imports the full body mesh and filters out non-aircraft accessory nodes such as the firefighting bambi bucket, cargo hook, hoist, sling/load helpers, water effects, and baked MSFS rotor nodes.
+Also do not triangle-sample the MSFS body by keeping every Nth face. That makes the source model compile, but it shreds the visible aircraft into disconnected fragments. The current UH-60 Wraith test imports the full body mesh, rotates it 180 degrees around the vertical axis so the visual nose matches the Optica flight graph, keeps the UH-60 tail rotor visible, and filters out non-aircraft accessory nodes such as the firefighting bambi bucket, cargo hook, hoist, sling/load helpers, water effects, and baked MSFS main-rotor nodes.
 
 The currently installed live test build used:
 

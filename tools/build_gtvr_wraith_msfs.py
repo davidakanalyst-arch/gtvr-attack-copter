@@ -50,12 +50,41 @@ SOURCE_DIR = SOURCE_ROOT / AIRCRAFT_NAME
 BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_msfs_build_user"
 DEFAULT_MSFS_HELI_DIR = Path.home() / "Downloads" / "MSFS Helis"
 DEFAULT_SKIP_ROTORS = (
-    r"(main[_ ]?rotor|tail[_ ]?rotor|rotor_main|prop_blur|rotor1|rear rotor|blade|"
+    r"(main[_ ]?rotor|rotor_main|prop_blur|rotor1|"
     r"bambi|bucket|water_face|cargo|hook|hoist|sling|rope|load)"
 )
 
 
-def clone_import_patch_map(patches: dict[str, Patch]) -> dict[str, Patch]:
+def clone_import_patch_map(patches: dict[str, Patch], *, yaw_180: bool = False) -> dict[str, Patch]:
+    if not yaw_180:
+        return {
+            name: Patch(
+                material_name=patch.material_name,
+                vertices=list(patch.vertices),
+                indices=list(patch.indices),
+                face_attributes=list(patch.face_attributes),
+            )
+            for name, patch in patches.items()
+        }
+
+    cloned: dict[str, Patch] = {}
+    for name, patch in patches.items():
+        vertices = list(patch.vertices)
+        for offset in range(0, len(vertices), 8):
+            vertices[offset] = -vertices[offset]
+            vertices[offset + 1] = -vertices[offset + 1]
+            vertices[offset + 3] = -vertices[offset + 3]
+            vertices[offset + 4] = -vertices[offset + 4]
+        cloned[name] = Patch(
+            material_name=patch.material_name,
+            vertices=vertices,
+            indices=list(patch.indices),
+            face_attributes=list(patch.face_attributes),
+        )
+    return cloned
+
+
+def clone_patch_map(patches: dict[str, Patch]) -> dict[str, Patch]:
     return {
         name: Patch(
             material_name=patch.material_name,
@@ -282,7 +311,7 @@ def prepare_source(args: argparse.Namespace) -> None:
 
     add_flat_materials(materials, SOURCE_DIR)
     main_rotor, tail_rotor = legacy_rotor_patch_maps()
-    cabin = merge_patch_maps(clone_import_patch_map(imported), tail_rotor)
+    cabin = merge_patch_maps(clone_import_patch_map(imported, yaw_180=args.yaw_180), tail_rotor)
 
     geometry_names = extract_geometry_names(args.donor / "optica.tmd")
     geometries: dict[str, dict[str, Patch]] = {}
@@ -290,7 +319,7 @@ def prepare_source(args: argparse.Namespace) -> None:
         if geometry_name == "Cabin":
             geometries[geometry_name] = cabin
         elif geometry_name in {"Prop", "PropBlurFast"}:
-            geometries[geometry_name] = clone_import_patch_map(main_rotor)
+            geometries[geometry_name] = clone_patch_map(main_rotor)
         else:
             geometries[geometry_name] = empty_geometry()
 
@@ -396,6 +425,8 @@ def main() -> int:
     parser.add_argument("--max-texture-size", type=int, default=1024)
     parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--skip-node-regex", default=DEFAULT_SKIP_ROTORS)
+    parser.add_argument("--no-yaw-180", dest="yaw_180", action="store_false")
+    parser.set_defaults(yaw_180=True)
     parser.add_argument("--prepare-source", action="store_true")
     parser.add_argument("--assemble-package", action="store_true")
     args = parser.parse_args()
