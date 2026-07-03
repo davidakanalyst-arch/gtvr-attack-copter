@@ -30,12 +30,14 @@ The Aerofly converter completed and produced a compiled shell model.
 
 Do not use tiny placeholder triangles for unused donor geometry names. Aerofly still applies each donor object's transform, so visible placeholders turn into a cloud of scattered fragments around the aircraft. Empty patch lists are accepted by the converter and keep those donor geometry names invisible.
 
+Also do not triangle-sample the MSFS body by keeping every Nth face. That makes the source model compile, but it shreds the visible aircraft into disconnected fragments. The current UH-60 Wraith test imports the full body mesh and filters out non-aircraft accessory nodes such as the firefighting bambi bucket, cargo hook, hoist, sling/load helpers, water effects, and baked MSFS rotor nodes.
+
 The currently installed live test build used:
 
 ```powershell
-python tools\build_gtvr_wraith_msfs.py --prepare-source --preset uh60 --max-faces 100000 --max-texture-size 1024
+python tools\build_gtvr_wraith_msfs.py --prepare-source --preset uh60 --max-faces 700000 --max-texture-size 1024
 python tools\run_aerofly_converter.py gtvr_wraith_heli tools\vendor\gtvr_wraith_msfs_source\aircraft --userfolder tools\vendor\gtvr_wraith_msfs_launch
-python tools\build_gtvr_wraith_msfs.py --assemble-package --preset uh60 --max-faces 100000 --max-texture-size 1024
+python tools\build_gtvr_wraith_msfs.py --assemble-package --preset uh60 --max-faces 700000 --max-texture-size 1024
 ```
 
 and was copied to:

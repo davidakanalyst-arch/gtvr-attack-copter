@@ -49,7 +49,10 @@ SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_msfs_source" / "aircraft"
 SOURCE_DIR = SOURCE_ROOT / AIRCRAFT_NAME
 BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_msfs_build_user"
 DEFAULT_MSFS_HELI_DIR = Path.home() / "Downloads" / "MSFS Helis"
-DEFAULT_SKIP_ROTORS = r"(main[_ ]?rotor|tail[_ ]?rotor|rotor_main|prop_blur|rotor1|rear rotor|blade)"
+DEFAULT_SKIP_ROTORS = (
+    r"(main[_ ]?rotor|tail[_ ]?rotor|rotor_main|prop_blur|rotor1|rear rotor|blade|"
+    r"bambi|bucket|water_face|cargo|hook|hoist|sling|rope|load)"
+)
 
 
 def clone_import_patch_map(patches: dict[str, Patch]) -> dict[str, Patch]:
