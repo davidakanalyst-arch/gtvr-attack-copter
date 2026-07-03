@@ -24,6 +24,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `docs/repaint-workflow.md` - safe tactical repaint conversion and install workflow.
 - `docs/livery-library.md` - local drag-and-drop livery library notes for EC135, F-15E, MB-339, and future aircraft.
 - `docs/frankenheli.md` - non-EC135 Frankenstein rotorcraft build notes for `GTVR Wraith Heli`.
+- `docs/msfs-asset-import.md` - local MSFS helicopter glTF/DDS import findings and Wraith shell bridge workflow.
 - `blender/create_gtvr_attack_copter_scene.py` - builds a Blender source scene from the named OBJ.
 - `tools/generate_attack_copter_obj.py` - source generator for the first exterior shell concept.
 - `tools/build_blender_source.py` - runs Blender in background to create the `.blend` source scene when Blender is installed.
@@ -35,6 +36,8 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `tools/build_gtvr_aircraft_liveries.py` - generates and assembles F-15E Strike and MB-339 Assault repaint packages.
 - `tools/build_gtvr_frankenheli.py` - archived v1 Bleriot donor experiment; selectable-in-air, but unstable and not suitable for runway starts.
 - `tools/build_gtvr_wraith_optica.py` - current stable-first non-EC135 Wraith builder using the Optica slow-flight graph with the custom helicopter exterior.
+- `tools/build_msfs_shell_source.py` - imports local MSFS helicopter glTF/DDS sources into an Aerofly converter source project.
+- `tools/build_gtvr_wraith_msfs.py` - builds the Optica-based Wraith package with a local MSFS helicopter exterior shell.
 - `tools/run_aerofly_converter.py` - drives the Aerofly converter GUI using the discovered launch contract.
 - `tools/install_gtvr_repaint_textures.py` - installs converted attack repaint textures and previews with backups.
 - `tools/install_gtvr_overlay_object.py` - diagnostic-only pilot-slot installer; refuses to patch live aircraft by default.
@@ -44,8 +47,8 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 
 ## Next Build Steps
 
-1. Test `GTVR Wraith Heli` v2 from a fresh runway start; it should prioritize loading and controllability over helicopter-pure physics.
+1. Test the MSFS-shell `GTVR Wraith Heli` from a fresh runway start; it should prove whether the imported UH-60 exterior bridge is visually viable in FS4.
 2. Use `GTVR Attack Black`, `GTVR Attack Camo`, and `GTVR Attack Desert` as the safe EC135 repaint path.
 3. Treat the standalone EC135-derived `gtvr_attack_copter` aircraft as a drag-copy archive only.
 4. Treat the `gtvr_attack_shell` pilot-slot overlay as a failed diagnostic: it triggered the FS4 fallback STOP model and removed helicopter sound/dynamics.
-5. Tune the Wraith's donor flight graph only after the Optica-based package proves it can load from the runway without a black screen.
+5. Do not confuse the MSFS exterior import with a real helicopter flight-model conversion; the current Wraith still inherits Optica controls, sounds, and cockpit camera behavior.
