@@ -33,7 +33,8 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `tools/build_gtvr_repaint_source.py` - generates source PNGs for the camo, black, and desert attack repaints.
 - `tools/build_gtvr_menu_preview_source.py` - builds converter source files for custom aircraft selection preview images.
 - `tools/build_gtvr_aircraft_liveries.py` - generates and assembles F-15E Strike and MB-339 Assault repaint packages.
-- `tools/build_gtvr_frankenheli.py` - builds a non-EC135 experimental custom military rotorcraft package from the generated shell plus an open donor aircraft graph.
+- `tools/build_gtvr_frankenheli.py` - archived v1 Bleriot donor experiment; selectable-in-air, but unstable and not suitable for runway starts.
+- `tools/build_gtvr_wraith_optica.py` - current stable-first non-EC135 Wraith builder using the Optica slow-flight graph with the custom helicopter exterior.
 - `tools/run_aerofly_converter.py` - drives the Aerofly converter GUI using the discovered launch contract.
 - `tools/install_gtvr_repaint_textures.py` - installs converted attack repaint textures and previews with backups.
 - `tools/install_gtvr_overlay_object.py` - diagnostic-only pilot-slot installer; refuses to patch live aircraft by default.
@@ -43,8 +44,8 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 
 ## Next Build Steps
 
-1. Test `GTVR Wraith Heli` as the non-EC135 Frankenstein path.
+1. Test `GTVR Wraith Heli` v2 from a fresh runway start; it should prioritize loading and controllability over helicopter-pure physics.
 2. Use `GTVR Attack Black`, `GTVR Attack Camo`, and `GTVR Attack Desert` as the safe EC135 repaint path.
 3. Treat the standalone EC135-derived `gtvr_attack_copter` aircraft as a drag-copy archive only.
 4. Treat the `gtvr_attack_shell` pilot-slot overlay as a failed diagnostic: it triggered the FS4 fallback STOP model and removed helicopter sound/dynamics.
-5. Tune the Wraith's donor flight graph after the first in-game load/fly test.
+5. Tune the Wraith's donor flight graph only after the Optica-based package proves it can load from the runway without a black screen.
