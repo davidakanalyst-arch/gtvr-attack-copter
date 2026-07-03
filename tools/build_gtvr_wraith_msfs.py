@@ -7,8 +7,6 @@ import shutil
 from pathlib import Path
 from zipfile import ZipFile
 
-from PIL import Image
-
 from build_gtvr_source_project import (
     MATERIALS,
     Patch as SourcePatch,
@@ -87,21 +85,8 @@ def merge_patch_maps(*patch_maps: dict[str, Patch]) -> dict[str, Patch]:
     return merged
 
 
-def dummy_patch(material_name: str = "gtvr_dummy") -> dict[str, Patch]:
-    patch = Patch(material_name)
-    points = [
-        (0.0, 0.0, 0.0),
-        (0.002, 0.0, 0.0),
-        (0.0, 0.002, 0.0),
-        (0.0, 0.0, 0.002),
-    ]
-    faces = [(0, 1, 2), (0, 3, 1), (1, 3, 2), (2, 3, 0)]
-    for point in points:
-        patch.vertices.extend([point[0], point[1], point[2], 0.0, 0.0, 1.0, 0.0, 0.0])
-    for face in faces:
-        patch.indices.extend(face)
-        patch.face_attributes.append(0)
-    return {material_name: patch}
+def empty_geometry() -> dict[str, Patch]:
+    return {}
 
 
 def legacy_rotor_patch_maps() -> tuple[dict[str, Patch], dict[str, Patch]]:
@@ -133,15 +118,6 @@ def add_flat_materials(materials: dict[int, Material], out_dir: Path) -> None:
             color=(*settings["color"], 255),
         )
         next_index += 1
-
-    if not any(material.name == "gtvr_dummy" for material in materials.values()):
-        Image.new("RGBA", (8, 8), (0, 0, 0, 0)).save(out_dir / "gtvr_dummy.png")
-        materials[next_index] = Material(
-            name="gtvr_dummy",
-            texture_name="gtvr_dummy",
-            source_uri="generated-transparent-dummy",
-            color=(0, 0, 0, 0),
-        )
 
 
 def used_materials(materials: dict[int, Material], geometries: dict[str, dict[str, Patch]]) -> list[Material]:
@@ -313,7 +289,7 @@ def prepare_source(args: argparse.Namespace) -> None:
         elif geometry_name in {"Prop", "PropBlurFast"}:
             geometries[geometry_name] = clone_import_patch_map(main_rotor)
         else:
-            geometries[geometry_name] = dummy_patch()
+            geometries[geometry_name] = empty_geometry()
 
     write_aircraft_source_tmc(SOURCE_DIR / f"{AIRCRAFT_NAME}.tmc")
     write_minimal_tmd(SOURCE_DIR / f"{AIRCRAFT_NAME}.tmd", sorted(geometries))

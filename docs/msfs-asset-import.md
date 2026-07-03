@@ -24,9 +24,11 @@ The Aerofly converter completed and produced a compiled shell model.
 `tools/build_gtvr_wraith_msfs.py` then bridges the imported MSFS exterior into the existing Optica-based `GTVR Wraith Heli` package by:
 
 - importing the MSFS body into the Optica `Cabin` geometry name,
-- emitting transparent dummy geometry for every other Optica geometry reference,
+- emitting empty geometry slots for every other Optica geometry reference,
 - retaining the existing Wraith animated main-rotor placeholder,
 - assembling a local test package at `local-aircraft-packages\gtvr_wraith_heli`.
+
+Do not use tiny placeholder triangles for unused donor geometry names. Aerofly still applies each donor object's transform, so visible placeholders turn into a cloud of scattered fragments around the aircraft. Empty patch lists are accepted by the converter and keep those donor geometry names invisible.
 
 The currently installed live test build used:
 
@@ -47,4 +49,3 @@ C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_wraith_heli
 This improves the exterior shell path only. It does not solve the helicopter flight model because the package still uses the Optica donor graph. Controls, ground behavior, sound semantics, and cockpit camera behavior remain inherited from Optica unless a real Aerofly helicopter graph is found or built.
 
 The MSFS source archives and generated converter output stay local-only. Do not commit or redistribute imported MSFS assets.
-
