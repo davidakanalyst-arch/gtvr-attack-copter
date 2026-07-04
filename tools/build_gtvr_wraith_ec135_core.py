@@ -47,10 +47,27 @@ MISSING_GEOMETRY_LOG = ROOT / "tools" / "vendor" / "ec135_log_missing_geometry_n
 MSFS_IMPORT_GROUND_Z = -1.05
 VISUAL_TARGET_GROUND_Z = -1.72
 VISUAL_BODY_LIFT = 0.28
-VISUAL_GEAR_MIN_Z = -1.72
+VISUAL_GEAR_MIN_Z = -1.705
 VISUAL_X_OFFSET = -3.2
 VISUAL_Y_OFFSET = 0.0
 LOW_NON_TIRE_Z_CUTOFF = -1.32
+LOW_CONTACT_SPHERES = (
+    "( 1.896 1.128 -1.667 0.05) "
+    "( 1.896 -1.128 -1.667 0.05) "
+    "(-0.876 1.128 -1.668 0.05) "
+    "(-0.876 -1.128 -1.668 0.05) "
+    "(-8.82 0.0 -1.668 0.05)"
+)
+HIGH_CONTACT_SPHERES = (
+    "( 1.896956 1.128562 -1.877823 0.05) "
+    "( 1.896956 -1.128562 -1.877823 0.05) "
+    "(-0.876772 1.128558 -1.87855 0.05) "
+    "(-0.876772 -1.128558 -1.87855 0.05) "
+    "(-8.82 0.0 -1.87855 0.05)"
+)
+LOW_TAIL_CONTACT_Z = -1.717823
+HIGH_TAIL_CONTACT_Z = -1.927823
+TAIL_CONTACT_X = -8.82
 DEFAULT_BODY_SKIP_NODE_REGEX = (
     rf"({DEFAULT_SKIP_ROTORS}|^Ski_C$|^ski TAIL\.001$|^Ski(?:_L|_R| L/R\.\d+)$|^Cube\.102$|^Cube\.152$)"
 )
@@ -64,7 +81,7 @@ DEFAULT_SKIP_MATERIAL_REGEX = (
     r"decal|rainfx|sensorglass|glass_ext|glass_nav|glass_red_bcn|eots|flir|sensor_bly)"
 )
 GEAR_NODE_REGEX = (
-    r"^(C_ger_Assy|Rear_gear|Strut_rear|REAR_WHEEL_STILL|NurbsPath|"
+    r"^(C_ger_Assy|Rear_gear|Strut_rear|REAR_WHEEL_STILL|"
     r"Strut\.(001|002)|Assy\.(002|003)|"
     r"Cylinder\.(012|029|030|031|034|036|050|052|054|056|058|071|072|073|074|075|076|077|078|079|080|082|083|084|085)|"
     r"Cube\.(011|024|025|026|027|028|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
@@ -450,10 +467,51 @@ def patch_tmc(path: Path) -> None:
     )
     text = re.sub(
         r"<\[list_vector4_float64\]\[ContactSpheres\]\[[^\]]*\]>",
-        "<[list_vector4_float64][ContactSpheres][ ( 1.896 1.128 -1.667 0.05) ( 1.896 -1.128 -1.667 0.05) (-0.876 1.128 -1.668 0.05) (-0.876 -1.128 -1.668 0.05) ]>",
+        f"<[list_vector4_float64][ContactSpheres][ {LOW_CONTACT_SPHERES} ]>",
         text,
         count=1,
     )
+    path.write_text(text, encoding="utf-8")
+
+
+def patch_contact_spheres(path: Path, spheres: str) -> None:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    text = re.sub(
+        r"<\[list_vector4_float64\]\[ContactSpheres\]\[[^\]]*\]>",
+        f"<[list_vector4_float64][ContactSpheres][ {spheres} ]>",
+        text,
+        count=1,
+    )
+    path.write_text(text, encoding="utf-8")
+
+
+def patch_tail_skid_contact(path: Path, z: float) -> None:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if "CollisionTailSkid" in text:
+        return
+
+    tail_block = f"""
+            <[skid][CollisionTailSkid][]
+                <[string8][Body][Fuselage]>
+                <[float64][K][750000.0]>
+                <[float64][D][2000.0]>
+                <[tmvector3d][R0][ {TAIL_CONTACT_X:.3f} 0.0 {z:.6f} ]>
+                <[tmvector3d][X0][ 1.0 0.0 0.0 ]>
+                <[float64][Length][0.7]>
+            >
+"""
+    marker = "        >\n        <[pointer_list_tmgraphics][GraphicObjects][]"
+    if marker in text:
+        text = text.replace(marker, tail_block + marker, 1)
+    else:
+        text, replacements = re.subn(
+            r"(\r?\n\s*>\s*\r?\n\s*<\[pointer_list_tmgraphics\]\[GraphicObjects\]\[\]>)",
+            "\n" + tail_block + r"\1",
+            text,
+            count=1,
+        )
+        if replacements == 0:
+            raise ValueError(f"Could not find DynamicObjects/GraphicObjects boundary in {path}")
     path.write_text(text, encoding="utf-8")
 
 
@@ -509,6 +567,10 @@ def assemble_package(_: argparse.Namespace) -> None:
         if texture.stem.startswith("preview") or texture.stem in texture_stems:
             shutil.copy2(texture, PACKAGE_DIR / texture.name)
     patch_tmc(PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmc")
+    patch_contact_spheres(PACKAGE_DIR / "lowskids" / "option.tmc", LOW_CONTACT_SPHERES)
+    patch_contact_spheres(PACKAGE_DIR / "highskids" / "option.tmc", HIGH_CONTACT_SPHERES)
+    patch_tail_skid_contact(PACKAGE_DIR / "lowskids" / "system.tmd", LOW_TAIL_CONTACT_Z)
+    patch_tail_skid_contact(PACKAGE_DIR / "highskids" / "system.tmd", HIGH_TAIL_CONTACT_Z)
     (PACKAGE_DIR / "_GTVR_WRAITH_EC135_CORE.txt").write_text(
         "\n".join(
             [
