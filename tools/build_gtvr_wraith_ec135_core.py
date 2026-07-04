@@ -89,6 +89,7 @@ REAR_GEAR_NODE_REGEX = (
 )
 REAR_GEAR_SOURCE_WHEEL_X = -8.82
 REAR_FUSELAGE_GEAR_X = -3.8
+REAR_VISUAL_GEAR_Z_OFFSET = 0.10
 
 BASE_GEOMETRIES = {
     "Fuselage",
@@ -422,7 +423,7 @@ def build_body(
         rear_gear,
         args.visual_x_offset + args.rear_visual_gear_x - REAR_GEAR_SOURCE_WHEEL_X,
         args.visual_y_offset,
-        args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
+        args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift + args.rear_visual_gear_z_offset,
     )
     body = remove_low_non_tire_faces(body, args.low_non_tire_z_cutoff)
     visual_gear = merge_patch_maps(front_gear, rear_gear)
@@ -503,6 +504,7 @@ def patch_tmc(path: Path) -> None:
         text,
         count=1,
     )
+    text = re.sub(r"\n\s*<\[string8\]\[Pilot\]\[[^\]]*\]>", "", text, count=1)
     path.write_text(text, encoding="utf-8")
 
 
@@ -589,6 +591,7 @@ def main() -> int:
     parser.add_argument("--visual-body-lift", type=float, default=VISUAL_BODY_LIFT)
     parser.add_argument("--visual-gear-min-z", type=float, default=VISUAL_GEAR_MIN_Z)
     parser.add_argument("--rear-visual-gear-x", type=float, default=REAR_FUSELAGE_GEAR_X)
+    parser.add_argument("--rear-visual-gear-z-offset", type=float, default=REAR_VISUAL_GEAR_Z_OFFSET)
     parser.add_argument("--visual-x-offset", type=float, default=VISUAL_X_OFFSET)
     parser.add_argument("--visual-y-offset", type=float, default=VISUAL_Y_OFFSET)
     parser.add_argument("--low-non-tire-z-cutoff", type=float, default=LOW_NON_TIRE_Z_CUTOFF)
