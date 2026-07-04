@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 import shutil
 from pathlib import Path
@@ -48,6 +47,7 @@ MISSING_GEOMETRY_LOG = ROOT / "tools" / "vendor" / "ec135_log_missing_geometry_n
 MSFS_IMPORT_GROUND_Z = -1.05
 VISUAL_TARGET_GROUND_Z = -1.72
 VISUAL_BODY_LIFT = 0.28
+VISUAL_GEAR_MIN_Z = -1.58
 VISUAL_X_OFFSET = -3.2
 VISUAL_Y_OFFSET = 0.0
 LOW_NON_TIRE_Z_CUTOFF = -1.32
@@ -60,6 +60,15 @@ DEFAULT_SKIP_MATERIAL_REGEX = (
     r"(ski|platform|occluder|void|gltfvalidator|^cabin$|cpit|glass_cpit|^pit$|"
     r"cyclic|gauge|blackint|metal_efb|metal_claw|gun_click|^tire$|^static_parts$|"
     r"decal|rainfx|sensorglass|glass_ext|glass_nav|glass_red_bcn|eots|flir|sensor_bly)"
+)
+GEAR_NODE_REGEX = (
+    r"^(C_ger_Assy|Rear_gear|Strut_rear|REAR_WHEEL_STILL|NurbsPath|"
+    r"Cylinder\.(012|029|030|031|034|036|050|052|054|056|058|071|072|073|074|075|076|077|078|079|080|082|083|084|085)|"
+    r"Cube\.(011|024|025|026|027|028|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
+    r"Tire_new(?:_rim|_bolts)?\.(001|002)|"
+    r"Strut\.(001|002)|Assy\.(002|003)|Caliper\.(001|002|003|004)|"
+    r"Cablecutter_Frnt\.(001|002)|NurbsPath\.(001|002|003|004)|"
+    r"Clip\.(001|002|003|004|005|006|007|008|009|010))$"
 )
 
 BASE_GEOMETRIES = {
@@ -170,92 +179,27 @@ def merge_patch_maps(*patch_maps: dict[str, Patch]) -> dict[str, Patch]:
     return merged
 
 
-def add_vertex(patch: Patch, point: tuple[float, float, float], normal: tuple[float, float, float]) -> None:
-    patch.vertices.extend([point[0], point[1], point[2], normal[0], normal[1], normal[2], 0.0, 0.0])
+def patch_bounds(patches: dict[str, Patch]) -> tuple[list[float], list[float]] | None:
+    mins = [float("inf"), float("inf"), float("inf")]
+    maxs = [float("-inf"), float("-inf"), float("-inf")]
+    found = False
+    for patch in patches.values():
+        for offset in range(0, len(patch.vertices), 8):
+            found = True
+            for axis in range(3):
+                value = patch.vertices[offset + axis]
+                mins[axis] = min(mins[axis], value)
+                maxs[axis] = max(maxs[axis], value)
+    return (mins, maxs) if found else None
 
 
-def add_quad(
-    patch: Patch,
-    points: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]],
-    normal: tuple[float, float, float],
-) -> None:
-    base = len(patch.vertices) // 8
-    for point in points:
-        add_vertex(patch, point, normal)
-    patch.indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
-    patch.face_attributes.extend([0, 0])
-
-
-def add_box(
-    patch: Patch,
-    *,
-    center: tuple[float, float, float],
-    size: tuple[float, float, float],
-) -> None:
-    cx, cy, cz = center
-    sx, sy, sz = (axis * 0.5 for axis in size)
-    x0, x1 = cx - sx, cx + sx
-    y0, y1 = cy - sy, cy + sy
-    z0, z1 = cz - sz, cz + sz
-    add_quad(patch, ((x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)), (1.0, 0.0, 0.0))
-    add_quad(patch, ((x0, y1, z0), (x0, y0, z0), (x0, y0, z1), (x0, y1, z1)), (-1.0, 0.0, 0.0))
-    add_quad(patch, ((x0, y1, z0), (x1, y1, z0), (x1, y1, z1), (x0, y1, z1)), (0.0, 1.0, 0.0))
-    add_quad(patch, ((x1, y0, z0), (x0, y0, z0), (x0, y0, z1), (x1, y0, z1)), (0.0, -1.0, 0.0))
-    add_quad(patch, ((x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)), (0.0, 0.0, 1.0))
-    add_quad(patch, ((x0, y1, z0), (x1, y1, z0), (x1, y0, z0), (x0, y0, z0)), (0.0, 0.0, -1.0))
-
-
-def add_cylinder_y(
-    patch: Patch,
-    *,
-    center: tuple[float, float, float],
-    radius: float,
-    width: float,
-    segments: int = 24,
-) -> None:
-    cx, cy, cz = center
-    y0, y1 = cy - width * 0.5, cy + width * 0.5
-    for index in range(segments):
-        a0 = math.tau * index / segments
-        a1 = math.tau * (index + 1) / segments
-        x0, z0 = cx + math.cos(a0) * radius, cz + math.sin(a0) * radius
-        x1, z1 = cx + math.cos(a1) * radius, cz + math.sin(a1) * radius
-        normal = normalize_vector((math.cos((a0 + a1) * 0.5), 0.0, math.sin((a0 + a1) * 0.5)))
-        add_quad(patch, ((x0, y0, z0), (x1, y0, z1), (x1, y1, z1), (x0, y1, z0)), normal)
-
-        base = len(patch.vertices) // 8
-        add_vertex(patch, (cx, y0, cz), (0.0, -1.0, 0.0))
-        add_vertex(patch, (x1, y0, z1), (0.0, -1.0, 0.0))
-        add_vertex(patch, (x0, y0, z0), (0.0, -1.0, 0.0))
-        patch.indices.extend([base, base + 1, base + 2])
-        patch.face_attributes.append(0)
-
-        base = len(patch.vertices) // 8
-        add_vertex(patch, (cx, y1, cz), (0.0, 1.0, 0.0))
-        add_vertex(patch, (x0, y1, z0), (0.0, 1.0, 0.0))
-        add_vertex(patch, (x1, y1, z1), (0.0, 1.0, 0.0))
-        patch.indices.extend([base, base + 1, base + 2])
-        patch.face_attributes.append(0)
-
-
-def visual_landing_gear_patch_map() -> dict[str, Patch]:
-    tires = Patch("matte_graphite")
-    metal = Patch("dark_metal")
-    # These wheels sit on the existing hidden contact footprint. They are graphics only.
-    gear_points = [
-        (1.896, 1.128, 0.155),
-        (1.896, -1.128, 0.155),
-        (-0.876, 1.128, 0.175),
-        (-0.876, -1.128, 0.175),
-    ]
-    for x, y, radius in gear_points:
-        wheel_z = -1.717 + radius
-        side = 1.0 if y > 0 else -1.0
-        add_cylinder_y(tires, center=(x, y, wheel_z), radius=radius, width=0.125)
-        add_box(metal, center=(x, y, -1.335), size=(0.09, 0.09, 0.36))
-        add_box(metal, center=(x, y - side * 0.22, -1.405), size=(0.11, 0.44, 0.07))
-        add_box(metal, center=(x, y - side * 0.46, -1.185), size=(0.34, 0.24, 0.12))
-    return {"matte_graphite": tires, "dark_metal": metal}
+def lift_patch_map_min_z(patches: dict[str, Patch], min_z: float) -> None:
+    bounds = patch_bounds(patches)
+    if not bounds:
+        return
+    z_delta = min_z - bounds[0][2]
+    if z_delta > 0.0:
+        translate_patch_map(patches, 0.0, 0.0, z_delta)
 
 
 def reference_frame(gltf: dict, buffers: list[bytes], mesh_nodes: list[tuple[int, list[float]]]) -> tuple[float, float, float]:
@@ -385,6 +329,16 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
             z_offset=z_offset,
             node_regex=TAIL_ROTOR_NODE_REGEX,
         )
+        gear_imported = build_selected_nodes(
+            gltf=gltf,
+            buffers=buffers,
+            mesh_nodes=all_mesh_nodes,
+            materials=materials,
+            center_x=center_x,
+            center_y=center_y,
+            z_offset=z_offset,
+            node_regex=GEAR_NODE_REGEX,
+        )
         imported, source_faces, imported_faces, _bounds_min, _bounds_max = build_patches(
             gltf=gltf,
             buffers=buffers,
@@ -395,6 +349,7 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
         )
     body = filter_patch_materials(clone_import_patch_map(imported, yaw_180=args.yaw_180), args.skip_material_regex)
     tail_rotor = clone_import_patch_map(tail_rotor_imported, yaw_180=args.yaw_180)
+    visual_gear = clone_import_patch_map(gear_imported, yaw_180=args.yaw_180)
     translate_patch_map(
         body,
         args.visual_x_offset,
@@ -407,8 +362,15 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
         args.visual_y_offset,
         args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
     )
+    translate_patch_map(
+        visual_gear,
+        args.visual_x_offset,
+        args.visual_y_offset,
+        args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
+    )
+    lift_patch_map_min_z(visual_gear, args.visual_gear_min_z)
     body = remove_low_non_tire_faces(body, args.low_non_tire_z_cutoff)
-    body = merge_patch_maps(body, visual_landing_gear_patch_map())
+    body = merge_patch_maps(body, visual_gear)
     return materials, body, tail_rotor, source_faces, imported_faces
 
 
@@ -556,6 +518,7 @@ def main() -> int:
     parser.add_argument("--skip-material-regex", default=DEFAULT_SKIP_MATERIAL_REGEX)
     parser.add_argument("--visual-ground-z", type=float, default=VISUAL_TARGET_GROUND_Z)
     parser.add_argument("--visual-body-lift", type=float, default=VISUAL_BODY_LIFT)
+    parser.add_argument("--visual-gear-min-z", type=float, default=VISUAL_GEAR_MIN_Z)
     parser.add_argument("--visual-x-offset", type=float, default=VISUAL_X_OFFSET)
     parser.add_argument("--visual-y-offset", type=float, default=VISUAL_Y_OFFSET)
     parser.add_argument("--low-non-tire-z-cutoff", type=float, default=LOW_NON_TIRE_Z_CUTOFF)
