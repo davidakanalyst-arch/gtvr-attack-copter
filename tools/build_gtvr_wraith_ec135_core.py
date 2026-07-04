@@ -58,7 +58,8 @@ LOW_CONTACT_SPHERES = (
     "(-0.876 -1.128 -1.668 0.05)"
 )
 DEFAULT_BODY_SKIP_NODE_REGEX = (
-    rf"({DEFAULT_SKIP_ROTORS}|^Ski_C$|^ski TAIL\.001$|^Ski(?:_L|_R| L/R\.\d+)$|^Cube\.102$|^Cube\.152$)"
+    rf"({DEFAULT_SKIP_ROTORS}|^Ski_C$|^ski TAIL\.001$|^Ski(?:_L|_R| L/R\.\d+)$|"
+    r"^Tailwheel\.\d+$|^NurbsPath(?:\.\d+)?$|^Cube\.102$|^Cube\.152$)"
 )
 TAIL_ROTOR_NODE_REGEX = (
     r"^(Tail_Rotor\.(00[1-9]|0[1-2][0-9]|032)|Tail_Rotor_Still[1-4])$"
@@ -69,14 +70,15 @@ DEFAULT_SKIP_MATERIAL_REGEX = (
     r"cyclic|gauge|blackint|metal_efb|metal_claw|gun_click|^tire$|^static_parts$|"
     r"decal|rainfx|sensorglass|glass_ext|glass_nav|glass_red_bcn|eots|flir|sensor_bly)"
 )
-GEAR_NODE_REGEX = (
-    r"^(C_ger_Assy|Rear_gear|Strut_rear|REAR_WHEEL_STILL|"
-    r"Strut\.(001|002)|Assy\.(002|003)|"
-    r"Cylinder\.(012|029|030|031|034|036|050|052|054|056|058|071|072|073|074|075|076|077|078|079|080|082|083|084|085)|"
-    r"Cube\.(011|024|025|026|027|028|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
+FRONT_GEAR_NODE_REGEX = (
+    r"^(Strut\.(001|002)|Assy\.(002|003)|"
+    r"Cylinder\.(012|029|030|031|034|036|082|083|084|085)|"
+    r"Cube\.(011|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
     r"Tire_new(?:_rim|_bolts)?\.(001|002)|"
     r"Caliper\.(001|002|003|004))$"
 )
+FRONT_GEAR_SOURCE_WHEEL_X = -0.04
+VISUAL_QUAD_GEAR_XS = (1.896, -0.876)
 
 BASE_GEOMETRIES = {
     "Fuselage",
@@ -216,6 +218,17 @@ def stretch_patch_map_min_z(patches: dict[str, Patch], min_z: float) -> None:
             patch.vertices[offset + 2] = current_max_z - (current_max_z - patch.vertices[offset + 2]) * scale
 
 
+def duplicate_patch_map_at_x(
+    patches: dict[str, Patch], source_x: float, target_xs: tuple[float, ...]
+) -> dict[str, Patch]:
+    copies = []
+    for target_x in target_xs:
+        copied = copy_patch_map(patches)
+        translate_patch_map(copied, target_x - source_x, 0.0, 0.0)
+        copies.append(copied)
+    return merge_patch_maps(*copies)
+
+
 def reference_frame(gltf: dict, buffers: list[bytes], mesh_nodes: list[tuple[int, list[float]]]) -> tuple[float, float, float]:
     mins = [float("inf"), float("inf"), float("inf")]
     maxs = [float("-inf"), float("-inf"), float("-inf")]
@@ -351,7 +364,7 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
             center_x=center_x,
             center_y=center_y,
             z_offset=z_offset,
-            node_regex=GEAR_NODE_REGEX,
+            node_regex=FRONT_GEAR_NODE_REGEX,
         )
         imported, source_faces, imported_faces, _bounds_min, _bounds_max = build_patches(
             gltf=gltf,
@@ -383,6 +396,7 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
         args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
     )
     stretch_patch_map_min_z(visual_gear, args.visual_gear_min_z)
+    visual_gear = duplicate_patch_map_at_x(visual_gear, FRONT_GEAR_SOURCE_WHEEL_X, VISUAL_QUAD_GEAR_XS)
     body = remove_low_non_tire_faces(body, args.low_non_tire_z_cutoff)
     body = merge_patch_maps(body, visual_gear)
     return materials, body, tail_rotor, source_faces, imported_faces
