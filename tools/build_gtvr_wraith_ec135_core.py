@@ -47,7 +47,7 @@ MISSING_GEOMETRY_LOG = ROOT / "tools" / "vendor" / "ec135_log_missing_geometry_n
 MSFS_IMPORT_GROUND_Z = -1.05
 VISUAL_TARGET_GROUND_Z = -1.72
 VISUAL_BODY_LIFT = 0.28
-VISUAL_GEAR_MIN_Z = -1.58
+VISUAL_GEAR_MIN_Z = -1.72
 VISUAL_X_OFFSET = -3.2
 VISUAL_Y_OFFSET = 0.0
 LOW_NON_TIRE_Z_CUTOFF = -1.32
@@ -194,13 +194,20 @@ def patch_bounds(patches: dict[str, Patch]) -> tuple[list[float], list[float]] |
     return (mins, maxs) if found else None
 
 
-def lift_patch_map_min_z(patches: dict[str, Patch], min_z: float) -> None:
+def stretch_patch_map_min_z(patches: dict[str, Patch], min_z: float) -> None:
     bounds = patch_bounds(patches)
     if not bounds:
         return
-    z_delta = min_z - bounds[0][2]
-    if z_delta > 0.0:
-        translate_patch_map(patches, 0.0, 0.0, z_delta)
+    current_min_z = bounds[0][2]
+    current_max_z = bounds[1][2]
+    if abs(current_max_z - current_min_z) < 1e-6:
+        translate_patch_map(patches, 0.0, 0.0, min_z - current_min_z)
+        return
+
+    scale = (current_max_z - min_z) / (current_max_z - current_min_z)
+    for patch in patches.values():
+        for offset in range(0, len(patch.vertices), 8):
+            patch.vertices[offset + 2] = current_max_z - (current_max_z - patch.vertices[offset + 2]) * scale
 
 
 def reference_frame(gltf: dict, buffers: list[bytes], mesh_nodes: list[tuple[int, list[float]]]) -> tuple[float, float, float]:
@@ -369,7 +376,7 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
         args.visual_y_offset,
         args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
     )
-    lift_patch_map_min_z(visual_gear, args.visual_gear_min_z)
+    stretch_patch_map_min_z(visual_gear, args.visual_gear_min_z)
     body = remove_low_non_tire_faces(body, args.low_non_tire_z_cutoff)
     body = merge_patch_maps(body, visual_gear)
     return materials, body, tail_rotor, source_faces, imported_faces
