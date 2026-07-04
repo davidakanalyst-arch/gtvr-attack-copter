@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -46,6 +47,7 @@ STOCK_EC135 = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Aerofly FS 4 
 MISSING_GEOMETRY_LOG = ROOT / "tools" / "vendor" / "ec135_log_missing_geometry_names.txt"
 MSFS_IMPORT_GROUND_Z = -1.05
 VISUAL_TARGET_GROUND_Z = -1.72
+VISUAL_BODY_LIFT = 0.28
 VISUAL_X_OFFSET = -3.2
 VISUAL_Y_OFFSET = 0.0
 LOW_NON_TIRE_Z_CUTOFF = -1.32
@@ -56,7 +58,8 @@ TAIL_ROTOR_NODE_REGEX = (
 DEFAULT_MAX_FACES = 700_000
 DEFAULT_SKIP_MATERIAL_REGEX = (
     r"(ski|platform|occluder|void|gltfvalidator|^cabin$|cpit|glass_cpit|^pit$|"
-    r"cyclic|gauge|blackint|metal_efb|metal_claw|gun_click|^tire$|^static_parts$)"
+    r"cyclic|gauge|blackint|metal_efb|metal_claw|gun_click|^tire$|^static_parts$|"
+    r"decal|rainfx|sensorglass|glass_ext|glass_nav|glass_red_bcn|eots|flir|sensor_bly)"
 )
 
 BASE_GEOMETRIES = {
@@ -153,6 +156,106 @@ def remove_low_non_tire_faces(patches: dict[str, Patch], z_cutoff: float) -> dic
         if kept.indices:
             filtered[name] = kept
     return filtered
+
+
+def merge_patch_maps(*patch_maps: dict[str, Patch]) -> dict[str, Patch]:
+    merged: dict[str, Patch] = {}
+    for patch_map in patch_maps:
+        for material_name, source in patch_map.items():
+            target = merged.setdefault(material_name, Patch(material_name))
+            vertex_offset = len(target.vertices) // 8
+            target.vertices.extend(source.vertices)
+            target.indices.extend(index + vertex_offset for index in source.indices)
+            target.face_attributes.extend(source.face_attributes)
+    return merged
+
+
+def add_vertex(patch: Patch, point: tuple[float, float, float], normal: tuple[float, float, float]) -> None:
+    patch.vertices.extend([point[0], point[1], point[2], normal[0], normal[1], normal[2], 0.0, 0.0])
+
+
+def add_quad(
+    patch: Patch,
+    points: tuple[tuple[float, float, float], tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]],
+    normal: tuple[float, float, float],
+) -> None:
+    base = len(patch.vertices) // 8
+    for point in points:
+        add_vertex(patch, point, normal)
+    patch.indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+    patch.face_attributes.extend([0, 0])
+
+
+def add_box(
+    patch: Patch,
+    *,
+    center: tuple[float, float, float],
+    size: tuple[float, float, float],
+) -> None:
+    cx, cy, cz = center
+    sx, sy, sz = (axis * 0.5 for axis in size)
+    x0, x1 = cx - sx, cx + sx
+    y0, y1 = cy - sy, cy + sy
+    z0, z1 = cz - sz, cz + sz
+    add_quad(patch, ((x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)), (1.0, 0.0, 0.0))
+    add_quad(patch, ((x0, y1, z0), (x0, y0, z0), (x0, y0, z1), (x0, y1, z1)), (-1.0, 0.0, 0.0))
+    add_quad(patch, ((x0, y1, z0), (x1, y1, z0), (x1, y1, z1), (x0, y1, z1)), (0.0, 1.0, 0.0))
+    add_quad(patch, ((x1, y0, z0), (x0, y0, z0), (x0, y0, z1), (x1, y0, z1)), (0.0, -1.0, 0.0))
+    add_quad(patch, ((x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)), (0.0, 0.0, 1.0))
+    add_quad(patch, ((x0, y1, z0), (x1, y1, z0), (x1, y0, z0), (x0, y0, z0)), (0.0, 0.0, -1.0))
+
+
+def add_cylinder_y(
+    patch: Patch,
+    *,
+    center: tuple[float, float, float],
+    radius: float,
+    width: float,
+    segments: int = 24,
+) -> None:
+    cx, cy, cz = center
+    y0, y1 = cy - width * 0.5, cy + width * 0.5
+    for index in range(segments):
+        a0 = math.tau * index / segments
+        a1 = math.tau * (index + 1) / segments
+        x0, z0 = cx + math.cos(a0) * radius, cz + math.sin(a0) * radius
+        x1, z1 = cx + math.cos(a1) * radius, cz + math.sin(a1) * radius
+        normal = normalize_vector((math.cos((a0 + a1) * 0.5), 0.0, math.sin((a0 + a1) * 0.5)))
+        add_quad(patch, ((x0, y0, z0), (x1, y0, z1), (x1, y1, z1), (x0, y1, z0)), normal)
+
+        base = len(patch.vertices) // 8
+        add_vertex(patch, (cx, y0, cz), (0.0, -1.0, 0.0))
+        add_vertex(patch, (x1, y0, z1), (0.0, -1.0, 0.0))
+        add_vertex(patch, (x0, y0, z0), (0.0, -1.0, 0.0))
+        patch.indices.extend([base, base + 1, base + 2])
+        patch.face_attributes.append(0)
+
+        base = len(patch.vertices) // 8
+        add_vertex(patch, (cx, y1, cz), (0.0, 1.0, 0.0))
+        add_vertex(patch, (x0, y1, z0), (0.0, 1.0, 0.0))
+        add_vertex(patch, (x1, y1, z1), (0.0, 1.0, 0.0))
+        patch.indices.extend([base, base + 1, base + 2])
+        patch.face_attributes.append(0)
+
+
+def visual_landing_gear_patch_map() -> dict[str, Patch]:
+    tires = Patch("matte_graphite")
+    metal = Patch("dark_metal")
+    # These wheels sit on the existing hidden contact footprint. They are graphics only.
+    gear_points = [
+        (1.896, 1.128, 0.155),
+        (1.896, -1.128, 0.155),
+        (-0.876, 1.128, 0.175),
+        (-0.876, -1.128, 0.175),
+    ]
+    for x, y, radius in gear_points:
+        wheel_z = -1.717 + radius
+        side = 1.0 if y > 0 else -1.0
+        add_cylinder_y(tires, center=(x, y, wheel_z), radius=radius, width=0.125)
+        add_box(metal, center=(x, y, -1.335), size=(0.09, 0.09, 0.36))
+        add_box(metal, center=(x, y - side * 0.22, -1.405), size=(0.11, 0.44, 0.07))
+        add_box(metal, center=(x, y - side * 0.46, -1.185), size=(0.34, 0.24, 0.12))
+    return {"matte_graphite": tires, "dark_metal": metal}
 
 
 def reference_frame(gltf: dict, buffers: list[bytes], mesh_nodes: list[tuple[int, list[float]]]) -> tuple[float, float, float]:
@@ -296,15 +399,16 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
         body,
         args.visual_x_offset,
         args.visual_y_offset,
-        args.visual_ground_z - MSFS_IMPORT_GROUND_Z,
+        args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
     )
     translate_patch_map(
         tail_rotor,
         args.visual_x_offset,
         args.visual_y_offset,
-        args.visual_ground_z - MSFS_IMPORT_GROUND_Z,
+        args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
     )
     body = remove_low_non_tire_faces(body, args.low_non_tire_z_cutoff)
+    body = merge_patch_maps(body, visual_landing_gear_patch_map())
     return materials, body, tail_rotor, source_faces, imported_faces
 
 
@@ -316,7 +420,10 @@ def prepare_source(args: argparse.Namespace) -> None:
 
     materials, body, tail_rotor, source_faces, imported_faces = build_body(args)
     add_flat_materials(materials, SOURCE_DIR)
-    main_rotor, tail_rotor = legacy_rotor_patch_maps()
+    main_rotor, fallback_tail_rotor = legacy_rotor_patch_maps()
+    translate_patch_map(main_rotor, 0.0, 0.0, args.visual_body_lift)
+    translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
+    visual_tail_rotor = tail_rotor or fallback_tail_rotor
 
     geometries: dict[str, dict[str, Patch]] = {}
     for geometry_name in read_geometry_names():
@@ -325,7 +432,7 @@ def prepare_source(args: argparse.Namespace) -> None:
         elif geometry_name in {"RotorBlade0", "RotorBlade1", "RotorBlade2", "RotorBlade3"}:
             geometries[geometry_name] = clone_patch_map(main_rotor)
         elif geometry_name == "TailBlade0":
-            geometries[geometry_name] = copy_patch_map(tail_rotor)
+            geometries[geometry_name] = copy_patch_map(visual_tail_rotor)
         elif geometry_name.startswith("TailBlade") or geometry_name in {"TailRotorHub", "TailRotorCont"}:
             geometries[geometry_name] = {}
         else:
@@ -448,6 +555,7 @@ def main() -> int:
     parser.add_argument("--skip-node-regex", default=DEFAULT_SKIP_ROTORS)
     parser.add_argument("--skip-material-regex", default=DEFAULT_SKIP_MATERIAL_REGEX)
     parser.add_argument("--visual-ground-z", type=float, default=VISUAL_TARGET_GROUND_Z)
+    parser.add_argument("--visual-body-lift", type=float, default=VISUAL_BODY_LIFT)
     parser.add_argument("--visual-x-offset", type=float, default=VISUAL_X_OFFSET)
     parser.add_argument("--visual-y-offset", type=float, default=VISUAL_Y_OFFSET)
     parser.add_argument("--low-non-tire-z-cutoff", type=float, default=LOW_NON_TIRE_Z_CUTOFF)
