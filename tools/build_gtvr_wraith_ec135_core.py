@@ -59,7 +59,12 @@ LOW_CONTACT_SPHERES = (
 )
 DEFAULT_BODY_SKIP_NODE_REGEX = (
     rf"({DEFAULT_SKIP_ROTORS}|^Ski_C$|^ski TAIL\.001$|^Ski(?:_L|_R| L/R\.\d+)$|"
-    r"^Tailwheel\.\d+$|^NurbsPath(?:\.\d+)?$|^Cube\.102$|^Cube\.152$)"
+    r"^Tailwheel\.\d+$|^NurbsPath(?:\.\d+)?$|^Cube\.102$|^Cube\.152$|"
+    r"^Strut\.(001|002)$|^Assy\.(002|003)$|"
+    r"^Cylinder\.(012|029|030|031|034|036|050|052|054|056|058|071|072|073|074|075|076|077|078|079|080|082|083|084|085)$|"
+    r"^Cube\.(011|024|025|026|027|028|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)$|"
+    r"^Tire_new(?:_rim|_bolts)?\.(001|002)$|^Caliper\.(001|002|003|004)$|"
+    r"^C_ger_Assy$|^Rear_gear$|^Strut_rear$|^REAR_WHEEL_STILL$)"
 )
 TAIL_ROTOR_NODE_REGEX = (
     r"^(Tail_Rotor\.(00[1-9]|0[1-2][0-9]|032)|Tail_Rotor_Still[1-4])$"
@@ -77,8 +82,13 @@ FRONT_GEAR_NODE_REGEX = (
     r"Tire_new(?:_rim|_bolts)?\.(001|002)|"
     r"Caliper\.(001|002|003|004))$"
 )
-FRONT_GEAR_SOURCE_WHEEL_X = -0.04
-VISUAL_QUAD_GEAR_XS = (1.896, -0.876)
+REAR_GEAR_NODE_REGEX = (
+    r"^(C_ger_Assy|Rear_gear|Strut_rear|REAR_WHEEL_STILL|"
+    r"Cylinder\.(050|052|054|056|058|071|072|073|074|075|076|077|078|079|080)|"
+    r"Cube\.(024|025|026|027|028))$"
+)
+REAR_GEAR_SOURCE_WHEEL_X = -8.82
+REAR_FUSELAGE_GEAR_X = -3.8
 
 BASE_GEOMETRIES = {
     "Fuselage",
@@ -326,7 +336,9 @@ def write_aircraft_source_tmc(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, Patch], dict[str, Patch], int, int]:
+def build_body(
+    args: argparse.Namespace,
+) -> tuple[dict[int, object], dict[str, Patch], dict[str, Patch], dict[str, Patch], int, int]:
     preset = PRESETS[args.preset]
     archive = args.archive or (args.msfs_dir / preset["archive"])
     gltf_path = args.gltf or preset["gltf"]
@@ -356,7 +368,7 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
             z_offset=z_offset,
             node_regex=TAIL_ROTOR_NODE_REGEX,
         )
-        gear_imported = build_selected_nodes(
+        front_gear_imported = build_selected_nodes(
             gltf=gltf,
             buffers=buffers,
             mesh_nodes=all_mesh_nodes,
@@ -365,6 +377,16 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
             center_y=center_y,
             z_offset=z_offset,
             node_regex=FRONT_GEAR_NODE_REGEX,
+        )
+        rear_gear_imported = build_selected_nodes(
+            gltf=gltf,
+            buffers=buffers,
+            mesh_nodes=all_mesh_nodes,
+            materials=materials,
+            center_x=center_x,
+            center_y=center_y,
+            z_offset=z_offset,
+            node_regex=REAR_GEAR_NODE_REGEX,
         )
         imported, source_faces, imported_faces, _bounds_min, _bounds_max = build_patches(
             gltf=gltf,
@@ -376,7 +398,8 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
         )
     body = filter_patch_materials(clone_import_patch_map(imported, yaw_180=args.yaw_180), args.skip_material_regex)
     tail_rotor = clone_import_patch_map(tail_rotor_imported, yaw_180=args.yaw_180)
-    visual_gear = clone_import_patch_map(gear_imported, yaw_180=args.yaw_180)
+    front_gear = clone_import_patch_map(front_gear_imported, yaw_180=args.yaw_180)
+    rear_gear = clone_import_patch_map(rear_gear_imported, yaw_180=args.yaw_180)
     translate_patch_map(
         body,
         args.visual_x_offset,
@@ -390,16 +413,20 @@ def build_body(args: argparse.Namespace) -> tuple[dict[int, object], dict[str, P
         args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
     )
     translate_patch_map(
-        visual_gear,
+        front_gear,
         args.visual_x_offset,
         args.visual_y_offset,
         args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
     )
-    stretch_patch_map_min_z(visual_gear, args.visual_gear_min_z)
-    visual_gear = duplicate_patch_map_at_x(visual_gear, FRONT_GEAR_SOURCE_WHEEL_X, VISUAL_QUAD_GEAR_XS)
+    translate_patch_map(
+        rear_gear,
+        args.visual_x_offset + args.rear_visual_gear_x - REAR_GEAR_SOURCE_WHEEL_X,
+        args.visual_y_offset,
+        args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift,
+    )
     body = remove_low_non_tire_faces(body, args.low_non_tire_z_cutoff)
-    body = merge_patch_maps(body, visual_gear)
-    return materials, body, tail_rotor, source_faces, imported_faces
+    visual_gear = merge_patch_maps(front_gear, rear_gear)
+    return materials, body, tail_rotor, visual_gear, source_faces, imported_faces
 
 
 def prepare_source(args: argparse.Namespace) -> None:
@@ -408,7 +435,7 @@ def prepare_source(args: argparse.Namespace) -> None:
     SOURCE_DIR.mkdir(parents=True, exist_ok=True)
     ensure_runtime_resources(SOURCE_ROOT)
 
-    materials, body, tail_rotor, source_faces, imported_faces = build_body(args)
+    materials, body, tail_rotor, visual_gear, source_faces, imported_faces = build_body(args)
     add_flat_materials(materials, SOURCE_DIR)
     main_rotor, fallback_tail_rotor = legacy_rotor_patch_maps()
     translate_patch_map(main_rotor, 0.0, 0.0, args.visual_body_lift)
@@ -419,6 +446,8 @@ def prepare_source(args: argparse.Namespace) -> None:
     for geometry_name in read_geometry_names():
         if geometry_name == "Fuselage":
             geometries[geometry_name] = copy_patch_map(body)
+        elif geometry_name == "SkidsMiddle":
+            geometries[geometry_name] = copy_patch_map(visual_gear)
         elif geometry_name in {"RotorBlade0", "RotorBlade1", "RotorBlade2", "RotorBlade3"}:
             geometries[geometry_name] = clone_patch_map(main_rotor)
         elif geometry_name == "TailBlade0":
@@ -559,6 +588,7 @@ def main() -> int:
     parser.add_argument("--visual-ground-z", type=float, default=VISUAL_TARGET_GROUND_Z)
     parser.add_argument("--visual-body-lift", type=float, default=VISUAL_BODY_LIFT)
     parser.add_argument("--visual-gear-min-z", type=float, default=VISUAL_GEAR_MIN_Z)
+    parser.add_argument("--rear-visual-gear-x", type=float, default=REAR_FUSELAGE_GEAR_X)
     parser.add_argument("--visual-x-offset", type=float, default=VISUAL_X_OFFSET)
     parser.add_argument("--visual-y-offset", type=float, default=VISUAL_Y_OFFSET)
     parser.add_argument("--low-non-tire-z-cutoff", type=float, default=LOW_NON_TIRE_Z_CUTOFF)
