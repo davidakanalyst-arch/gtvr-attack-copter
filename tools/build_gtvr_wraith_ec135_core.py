@@ -52,8 +52,7 @@ VISUAL_X_OFFSET = -3.2
 VISUAL_Y_OFFSET = 0.0
 LOW_NON_TIRE_Z_CUTOFF = -1.32
 TAIL_ROTOR_NODE_REGEX = (
-    r"^(Tail_Rotor\.001|Tail_Rotor\.002|Tail_Rotor\.003|Tail_Rotor\.005|"
-    r"Tail_Rotor\.032|Tail_Rotor_Still1)$"
+    r"^(Tail_Rotor\.(00[1-9]|0[1-2][0-9]|032)|Tail_Rotor_Still[1-4])$"
 )
 DEFAULT_MAX_FACES = 700_000
 DEFAULT_SKIP_MATERIAL_REGEX = (
@@ -62,13 +61,11 @@ DEFAULT_SKIP_MATERIAL_REGEX = (
     r"decal|rainfx|sensorglass|glass_ext|glass_nav|glass_red_bcn|eots|flir|sensor_bly)"
 )
 GEAR_NODE_REGEX = (
-    r"^(C_ger_Assy|Rear_gear|Strut_rear|REAR_WHEEL_STILL|NurbsPath|"
-    r"Cylinder\.(012|029|030|031|034|036|050|052|054|056|058|071|072|073|074|075|076|077|078|079|080|082|083|084|085)|"
-    r"Cube\.(011|024|025|026|027|028|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
+    r"^(Strut\.(001|002)|Assy\.(002|003)|"
+    r"Cylinder\.(012|029|030|031|034|036|082|083|084|085)|"
+    r"Cube\.(011|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
     r"Tire_new(?:_rim|_bolts)?\.(001|002)|"
-    r"Strut\.(001|002)|Assy\.(002|003)|Caliper\.(001|002|003|004)|"
-    r"Cablecutter_Frnt\.(001|002)|NurbsPath\.(001|002|003|004)|"
-    r"Clip\.(001|002|003|004|005|006|007|008|009|010))$"
+    r"Caliper\.(001|002|003|004))$"
 )
 
 BASE_GEOMETRIES = {
@@ -457,12 +454,7 @@ def assemble_package(_: argparse.Namespace) -> None:
     if not STOCK_EC135.exists():
         raise FileNotFoundError(f"Stock EC135 not found: {STOCK_EC135}")
 
-    preserved_previews: dict[str, bytes] = {}
     if PACKAGE_DIR.exists():
-        for preview_name in ("preview.ttx", "preview_small.ttx"):
-            preview_path = PACKAGE_DIR / preview_name
-            if preview_path.exists():
-                preserved_previews[preview_name] = preview_path.read_bytes()
         shutil.rmtree(PACKAGE_DIR)
     shutil.copytree(STOCK_EC135, PACKAGE_DIR, ignore=shutil.ignore_patterns(".git", ".github"))
 
@@ -483,11 +475,7 @@ def assemble_package(_: argparse.Namespace) -> None:
 
     shutil.copy2(converted_tmb, PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmb")
     for texture in converted.glob("*.ttx"):
-        if texture.name in {"preview.ttx", "preview_small.ttx"} and texture.name in preserved_previews:
-            continue
         shutil.copy2(texture, PACKAGE_DIR / texture.name)
-    for preview_name, content in preserved_previews.items():
-        (PACKAGE_DIR / preview_name).write_bytes(content)
     patch_tmc(PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmc")
     (PACKAGE_DIR / "_GTVR_WRAITH_EC135_CORE.txt").write_text(
         "\n".join(
