@@ -51,6 +51,9 @@ VISUAL_GEAR_MIN_Z = -1.58
 VISUAL_X_OFFSET = -3.2
 VISUAL_Y_OFFSET = 0.0
 LOW_NON_TIRE_Z_CUTOFF = -1.32
+DEFAULT_BODY_SKIP_NODE_REGEX = (
+    rf"({DEFAULT_SKIP_ROTORS}|^Ski_C$|^ski TAIL\.001$|^Ski(?:_L|_R| L/R\.\d+)$|^Cube\.102$|^Cube\.152$)"
+)
 TAIL_ROTOR_NODE_REGEX = (
     r"^(Tail_Rotor\.(00[1-9]|0[1-2][0-9]|032)|Tail_Rotor_Still[1-4])$"
 )
@@ -61,9 +64,10 @@ DEFAULT_SKIP_MATERIAL_REGEX = (
     r"decal|rainfx|sensorglass|glass_ext|glass_nav|glass_red_bcn|eots|flir|sensor_bly)"
 )
 GEAR_NODE_REGEX = (
-    r"^(Strut\.(001|002)|Assy\.(002|003)|"
-    r"Cylinder\.(012|029|030|031|034|036|082|083|084|085)|"
-    r"Cube\.(011|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
+    r"^(C_ger_Assy|Rear_gear|Strut_rear|REAR_WHEEL_STILL|NurbsPath|"
+    r"Strut\.(001|002)|Assy\.(002|003)|"
+    r"Cylinder\.(012|029|030|031|034|036|050|052|054|056|058|071|072|073|074|075|076|077|078|079|080|082|083|084|085)|"
+    r"Cube\.(011|024|025|026|027|028|029|030|031|032|033|034|035|036|037|038|039|040|041|042|043)|"
     r"Tire_new(?:_rim|_bolts)?\.(001|002)|"
     r"Caliper\.(001|002|003|004))$"
 )
@@ -446,6 +450,25 @@ def patch_tmc(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def read_source_texture_stems() -> set[str]:
+    model_tmc = SOURCE_DIR / "model.tmc"
+    if not model_tmc.exists():
+        return set()
+
+    stems: set[str] = set()
+    in_files = False
+    for raw_line in model_tmc.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if "<[list_string8][Files][" in line:
+            in_files = True
+            continue
+        if in_files and "]>" in line:
+            break
+        if in_files and line:
+            stems.add(line)
+    return stems
+
+
 def assemble_package(_: argparse.Namespace) -> None:
     converted = BUILD_USER / "aircraft" / AIRCRAFT_NAME
     converted_tmb = converted / f"{AIRCRAFT_NAME}.tmb"
@@ -474,8 +497,10 @@ def assemble_package(_: argparse.Namespace) -> None:
             old_path.rename(PACKAGE_DIR / new_name)
 
     shutil.copy2(converted_tmb, PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmb")
+    texture_stems = read_source_texture_stems()
     for texture in converted.glob("*.ttx"):
-        shutil.copy2(texture, PACKAGE_DIR / texture.name)
+        if texture.stem.startswith("preview") or texture.stem in texture_stems:
+            shutil.copy2(texture, PACKAGE_DIR / texture.name)
     patch_tmc(PACKAGE_DIR / f"{AIRCRAFT_NAME}.tmc")
     (PACKAGE_DIR / "_GTVR_WRAITH_EC135_CORE.txt").write_text(
         "\n".join(
@@ -502,7 +527,7 @@ def main() -> int:
     parser.add_argument("--max-faces", type=int, default=DEFAULT_MAX_FACES)
     parser.add_argument("--max-texture-size", type=int, default=1024)
     parser.add_argument("--scale", type=float, default=1.0)
-    parser.add_argument("--skip-node-regex", default=DEFAULT_SKIP_ROTORS)
+    parser.add_argument("--skip-node-regex", default=DEFAULT_BODY_SKIP_NODE_REGEX)
     parser.add_argument("--skip-material-regex", default=DEFAULT_SKIP_MATERIAL_REGEX)
     parser.add_argument("--visual-ground-z", type=float, default=VISUAL_TARGET_GROUND_Z)
     parser.add_argument("--visual-body-lift", type=float, default=VISUAL_BODY_LIFT)
