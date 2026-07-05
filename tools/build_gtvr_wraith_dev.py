@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -24,8 +25,13 @@ DEV_PACKAGE_DIR = ROOT / "local-aircraft-packages" / DEV_AIRCRAFT_NAME
 DEV_SOURCE_STAMP = DEV_SOURCE_DIR / "_GTVR_WRAITH_DEV_SOURCE_STAMP.txt"
 
 DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
+DEFAULT_INNER_SHELL_SKIP_MATERIAL_REGEX = (
+    r"(glass|window|windscreen|windshield|transparent|translucent|clear|alpha|"
+    r"opacity|lens|light|lamp|beacon|bcn|strobe|nav|slime|glow|flare)"
+)
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
+_ORIGINAL_BUILD_BODY = core.build_body
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -43,6 +49,7 @@ def configure_core_for_dev() -> None:
     core.BUILD_USER = DEV_BUILD_USER
     core.PACKAGE_DIR = DEV_PACKAGE_DIR
     core.patch_tmc = patch_dev_tmc
+    core.build_body = build_body_for_dev
     assert_dev_paths()
 
 
@@ -67,6 +74,72 @@ def converted_tmb() -> Path:
     return DEV_BUILD_USER / "aircraft" / DEV_AIRCRAFT_NAME / f"{DEV_AIRCRAFT_NAME}.tmb"
 
 
+def material_is_inner_shell_solid(material_name: str, skip_regex: str | None) -> bool:
+    if not skip_regex:
+        return True
+    return re.search(skip_regex, material_name, re.IGNORECASE) is None
+
+
+def append_reversed_face(
+    patch: core.Patch,
+    source_indices: list[int],
+    face_attribute: int,
+) -> None:
+    base_index = len(patch.vertices) // 8
+    for source_index in (source_indices[0], source_indices[2], source_indices[1]):
+        offset = source_index * 8
+        vertex = list(patch.vertices[offset : offset + 8])
+        vertex[3] = -vertex[3]
+        vertex[4] = -vertex[4]
+        vertex[5] = -vertex[5]
+        patch.vertices.extend(vertex)
+    patch.indices.extend([base_index, base_index + 1, base_index + 2])
+    patch.face_attributes.append(face_attribute)
+
+
+def make_patch_visible_from_inside(patch: core.Patch) -> int:
+    original_indices = list(patch.indices)
+    original_face_attributes = list(patch.face_attributes)
+    original_face_count = len(original_indices) // 3
+    for face_index in range(original_face_count):
+        start = face_index * 3
+        face_indices = original_indices[start : start + 3]
+        if len(face_indices) != 3:
+            continue
+        if original_face_attributes:
+            face_attribute = original_face_attributes[face_index]
+        else:
+            face_attribute = 0
+        append_reversed_face(patch, face_indices, face_attribute)
+    return original_face_count
+
+
+def make_inner_shell_opaque(body: dict[str, core.Patch], skip_regex: str | None) -> tuple[int, list[str]]:
+    duplicated_faces = 0
+    skipped_materials: list[str] = []
+    for material_name, patch in body.items():
+        if not material_is_inner_shell_solid(material_name, skip_regex):
+            skipped_materials.append(material_name)
+            continue
+        duplicated_faces += make_patch_visible_from_inside(patch)
+    return duplicated_faces, skipped_materials
+
+
+def build_body_for_dev(args: argparse.Namespace):
+    materials, body, tail_rotor, visual_gear, source_faces, imported_faces = _ORIGINAL_BUILD_BODY(args)
+    if args.inner_shell:
+        duplicated_faces, skipped_materials = make_inner_shell_opaque(
+            body,
+            args.inner_shell_skip_material_regex,
+        )
+        print(f"Dev inner shell: duplicated {duplicated_faces} solid faces for cockpit-side visibility.")
+        if skipped_materials:
+            skipped_preview = ", ".join(sorted(skipped_materials)[:12])
+            suffix = "..." if len(skipped_materials) > 12 else ""
+            print(f"Dev inner shell: skipped transparent/non-solid materials: {skipped_preview}{suffix}")
+    return materials, body, tail_rotor, visual_gear, source_faces, imported_faces
+
+
 def write_source_stamp() -> None:
     DEV_SOURCE_STAMP.write_text(
         "\n".join(
@@ -74,6 +147,7 @@ def write_source_stamp() -> None:
                 "GTVR Wraith Dev source prepared.",
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
+                "inner_shell=solid materials are duplicated inward by default",
                 "",
             ]
         ),
@@ -132,6 +206,7 @@ def write_dev_package_marker() -> None:
                 "Dev-only EC135-core Wraith iteration package.",
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
+                "Solid shell materials include inward-facing faces for cockpit-side opacity.",
                 "",
             ]
         ),
@@ -180,6 +255,18 @@ def add_core_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--low-non-tire-z-cutoff", type=float, default=core.LOW_NON_TIRE_Z_CUTOFF)
     parser.add_argument("--no-yaw-180", dest="yaw_180", action="store_false")
     parser.set_defaults(yaw_180=True)
+    parser.add_argument(
+        "--no-inner-shell",
+        dest="inner_shell",
+        action="store_false",
+        help="Do not duplicate solid shell faces inward for cockpit-side visibility.",
+    )
+    parser.set_defaults(inner_shell=True)
+    parser.add_argument(
+        "--inner-shell-skip-material-regex",
+        default=DEFAULT_INNER_SHELL_SKIP_MATERIAL_REGEX,
+        help="Material names matching this regex are not inward-duplicated.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:

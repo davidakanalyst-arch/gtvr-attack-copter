@@ -47,6 +47,7 @@ python tools\build_gtvr_wraith_dev.py --full --force-install
 That command:
 
 - prepares Aerofly converter source under `tools\vendor\gtvr_wraith_dev_source\aircraft\gtvr_wraith_dev`;
+- duplicates solid shell faces inward so opaque exterior panels are visible from the cockpit side;
 - runs the full Aerofly converter for model `gtvr_wraith_dev`;
 - assembles `local-aircraft-packages\gtvr_wraith_dev`;
 - installs only to `C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_wraith_dev`.
@@ -66,6 +67,16 @@ python tools\build_gtvr_wraith_dev.py --assemble-package --install --force-insta
 The assemble step checks that the converted dev `.tmb` is newer than the prepared dev source stamp. This prevents accidentally repackaging stale converter output after a geometry change.
 
 Only pass `--allow-stale-tmb` for a deliberate metadata/package-only reinstall where the compiled geometry is intentionally unchanged.
+
+## Cockpit-Side Shell Opacity
+
+`tools\build_gtvr_wraith_dev.py` defaults to adding reversed, inward-facing copies of solid shell triangles before conversion. This keeps opaque panels from disappearing or looking see-through from the inside cockpit view while leaving window, transparent, light, beacon, glow, and similar materials out of the inward copy pass.
+
+Disable this only for diagnostics:
+
+```powershell
+python tools\build_gtvr_wraith_dev.py --full --force-install --no-inner-shell
+```
 
 ## Promotion Rule
 
