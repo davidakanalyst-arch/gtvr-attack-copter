@@ -37,7 +37,7 @@ from build_msfs_shell_source import (
 
 ROOT = Path(__file__).resolve().parents[1]
 AIRCRAFT_NAME = "gtvr_wraith_ec135_core"
-DISPLAY_NAME = "GTVR Wraith EC135 Core"
+DISPLAY_NAME = "GTVR Wraith"
 SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_ec135_source" / "aircraft"
 SOURCE_DIR = SOURCE_ROOT / AIRCRAFT_NAME
 BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_ec135_build_user"
@@ -469,7 +469,7 @@ def prepare_source(args: argparse.Namespace) -> None:
     (SOURCE_DIR / "_GTVR_WRAITH_EC135_SOURCE.md").write_text(
         "\n".join(
             [
-                "# GTVR Wraith EC135 Core Source",
+                "# GTVR Wraith Source",
                 "",
                 "This source compiles a Wraith exterior with EC135 geometry names.",
                 f"- Geometry names emitted: `{len(geometries)}`",
@@ -491,7 +491,7 @@ def patch_tmc(path: Path) -> None:
     text = re.sub(r"<\[string8\]\[DisplayName\]\[[^\]]*\]>", f"<[string8][DisplayName][{DISPLAY_NAME}]>", text, count=1)
     text = re.sub(
         r"<\[string8\]\[DisplayNameFull\]\[[^\]]*\]>",
-        f"<[string8][DisplayNameFull][{DISPLAY_NAME} Local Test]>",
+        f"<[string8][DisplayNameFull][{DISPLAY_NAME}]>",
         text,
         count=1,
     )
