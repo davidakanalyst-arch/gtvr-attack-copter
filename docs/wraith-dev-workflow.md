@@ -26,7 +26,7 @@ Checked on 2026-07-05:
 - `gtvr_wraith_heli` is not installed in the Aerofly FS4 user aircraft folder.
 - `gtvr_wraith_dev.tmc` uses `DisplayName` and `DisplayNameFull` of `GTVR Wraith Dev`.
 - `gtvr_wraith_dev.tmc` uses ICAO `GTWD`.
-- `gtvr_wraith_dev.tmc` uses stock pilot `pilot_robert` to restore the earlier aft/side-window pilot seating alignment from the retired Wraith path.
+- `gtvr_wraith_dev.tmc` uses stock pilot `pilot_jason`; switching the EC135-core dev package to `pilot_robert` caused the Aerofly STOP fallback and must not be repeated on this path.
 - The installed dev `.tmb` intentionally differs from stable once dev-only geometry experiments, such as the matte black inner shell, are installed.
 - Both stable and dev use the proven contact spheres:
 
@@ -48,6 +48,7 @@ python tools\build_gtvr_wraith_dev.py --full --force-install
 That command:
 
 - prepares Aerofly converter source under `tools\vendor\gtvr_wraith_dev_source\aircraft\gtvr_wraith_dev`;
+- shifts the dev visual shell forward around the fixed working EC135 pilot so the pilot sits closer to the side-window area;
 - duplicates solid shell faces inward with a matte black material so opaque exterior panels are visible from the cockpit side;
 - runs the full Aerofly converter for model `gtvr_wraith_dev`;
 - assembles `local-aircraft-packages\gtvr_wraith_dev`;
@@ -81,7 +82,9 @@ python tools\build_gtvr_wraith_dev.py --full --force-install --no-inner-shell
 
 ## Pilot Position
 
-The retired `gtvr_wraith_heli` path used `pilot_robert`, which sat farther aft relative to the Wraith shell. The dev EC135-core package keeps the current shell work and patches only `gtvr_wraith_dev.tmc` to use `Pilot[pilot_robert]`, avoiding a rollback of the visual TMB work.
+Keep the EC135-core dev package on `Pilot[pilot_jason]`. A test that switched `gtvr_wraith_dev.tmc` to `Pilot[pilot_robert]`, copied from the retired plane-flight-model Wraith path, made Aerofly load the STOP fallback. Fix pilot seating relative to the Wraith shell through a safer dev-only shell/pilot alignment path, not by changing the pilot object reference.
+
+The current dev-only correction is `--pilot-alignment-x-delta 0.55`, which shifts the visual shell and rotors forward around the fixed EC135 pilot. Tune this number conservatively if the pilot still needs side-window alignment; keep the pilot object on `pilot_jason`.
 
 ## Promotion Rule
 

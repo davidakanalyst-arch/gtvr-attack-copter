@@ -18,7 +18,7 @@ STABLE_AIRCRAFT_NAME = "gtvr_wraith_ec135_core"
 DEV_AIRCRAFT_NAME = "gtvr_wraith_dev"
 DEV_DISPLAY_NAME = "GTVR Wraith Dev"
 DEV_ICAO = "GTWD"
-DEV_PILOT = "pilot_robert"
+DEV_PILOT = "pilot_jason"
 
 DEV_SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_dev_source" / "aircraft"
 DEV_SOURCE_DIR = DEV_SOURCE_ROOT / DEV_AIRCRAFT_NAME
@@ -35,9 +35,12 @@ DEFAULT_INNER_SHELL_SKIP_MATERIAL_REGEX = (
 INNER_SHELL_MATERIAL_NAME = "gtvr_inner_matte_black"
 INNER_SHELL_TEXTURE_NAME = "gtvr_inner_matte_black"
 INNER_SHELL_COLOR = (2, 2, 2)
+DEFAULT_PILOT_ALIGNMENT_X_DELTA = 0.55
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
+_ORIGINAL_LEGACY_ROTOR_PATCH_MAPS = core.legacy_rotor_patch_maps
+_current_pilot_alignment_x_delta = 0.0
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -57,6 +60,7 @@ def configure_core_for_dev() -> None:
     core.PACKAGE_DIR = DEV_PACKAGE_DIR
     core.patch_tmc = patch_dev_tmc
     core.build_body = build_body_for_dev
+    core.legacy_rotor_patch_maps = legacy_rotor_patch_maps_for_dev
     assert_dev_paths()
 
 
@@ -79,6 +83,33 @@ def assert_dev_paths() -> None:
 
 def converted_tmb() -> Path:
     return DEV_BUILD_USER / "aircraft" / DEV_AIRCRAFT_NAME / f"{DEV_AIRCRAFT_NAME}.tmb"
+
+
+def legacy_rotor_patch_maps_for_dev() -> tuple[dict[str, core.Patch], dict[str, core.Patch]]:
+    main_rotor, tail_rotor = _ORIGINAL_LEGACY_ROTOR_PATCH_MAPS()
+    if abs(_current_pilot_alignment_x_delta) > 1e-9:
+        core.translate_patch_map(main_rotor, _current_pilot_alignment_x_delta, 0.0, 0.0)
+        core.translate_patch_map(tail_rotor, _current_pilot_alignment_x_delta, 0.0, 0.0)
+    return main_rotor, tail_rotor
+
+
+def shift_visual_shell_for_pilot_alignment(
+    args: argparse.Namespace,
+    body: dict[str, core.Patch],
+    tail_rotor: dict[str, core.Patch],
+    visual_gear: dict[str, core.Patch],
+) -> None:
+    global _current_pilot_alignment_x_delta
+    _current_pilot_alignment_x_delta = args.pilot_alignment_x_delta
+    if abs(args.pilot_alignment_x_delta) < 1e-9:
+        return
+    core.translate_patch_map(body, args.pilot_alignment_x_delta, 0.0, 0.0)
+    core.translate_patch_map(tail_rotor, args.pilot_alignment_x_delta, 0.0, 0.0)
+    core.translate_patch_map(visual_gear, args.pilot_alignment_x_delta, 0.0, 0.0)
+    print(
+        "Dev pilot alignment: "
+        f"shifted visual shell + rotors by X {args.pilot_alignment_x_delta:.3f}m around {DEV_PILOT}."
+    )
 
 
 def material_is_inner_shell_solid(material_name: str, skip_regex: str | None) -> bool:
@@ -151,6 +182,7 @@ def make_inner_shell_opaque(body: dict[str, core.Patch], skip_regex: str | None)
 
 def build_body_for_dev(args: argparse.Namespace):
     materials, body, tail_rotor, visual_gear, source_faces, imported_faces = _ORIGINAL_BUILD_BODY(args)
+    shift_visual_shell_for_pilot_alignment(args, body, tail_rotor, visual_gear)
     if args.inner_shell:
         ensure_inner_shell_material(materials)
         duplicated_faces, skipped_materials = make_inner_shell_opaque(
@@ -176,6 +208,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
+                f"pilot_alignment_x_delta={_current_pilot_alignment_x_delta:.3f}",
                 "",
             ]
         ),
@@ -235,7 +268,8 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                f"Dev pilot uses {DEV_PILOT} to restore the earlier aft/side-window seating position.",
+                f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
+                f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
             ]
         ),
@@ -282,6 +316,12 @@ def add_core_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--visual-x-offset", type=float, default=core.VISUAL_X_OFFSET)
     parser.add_argument("--visual-y-offset", type=float, default=core.VISUAL_Y_OFFSET)
     parser.add_argument("--low-non-tire-z-cutoff", type=float, default=core.LOW_NON_TIRE_Z_CUTOFF)
+    parser.add_argument(
+        "--pilot-alignment-x-delta",
+        type=float,
+        default=DEFAULT_PILOT_ALIGNMENT_X_DELTA,
+        help="Dev-only visual shell X shift used to align the fixed EC135 pilot with the Wraith side window.",
+    )
     parser.add_argument("--no-yaw-180", dest="yaw_180", action="store_false")
     parser.set_defaults(yaw_180=True)
     parser.add_argument(
