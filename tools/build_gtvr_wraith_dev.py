@@ -40,6 +40,7 @@ DEFAULT_PILOT_ALIGNMENT_X_DELTA = 0.40
 DEFAULT_COCKPIT_X_DELTA = 0.0
 DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
+DISPLAY_FALLBACK_X_OFFSET = 0.006
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
@@ -51,6 +52,12 @@ COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_rubber": ((7, 7, 7), "generated-gtvr-dev-cockpit-rubber"),
     "gtvr_cockpit_button_green": ((10, 150, 78), "generated-gtvr-dev-cockpit-button-green"),
     "gtvr_cockpit_button_red": ((190, 28, 24), "generated-gtvr-dev-cockpit-button-red"),
+    "gtvr_glass_sky": ((18, 86, 134), "generated-gtvr-dev-glass-sky"),
+    "gtvr_glass_ground": ((96, 56, 32), "generated-gtvr-dev-glass-ground"),
+    "gtvr_glass_cyan": ((58, 220, 220), "generated-gtvr-dev-glass-cyan"),
+    "gtvr_glass_green": ((80, 235, 170), "generated-gtvr-dev-glass-green"),
+    "gtvr_glass_white": ((225, 245, 238), "generated-gtvr-dev-glass-white"),
+    "gtvr_glass_yellow": ((245, 210, 72), "generated-gtvr-dev-glass-yellow"),
 }
 COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
 COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
@@ -65,6 +72,8 @@ _current_cockpit_x_delta = DEFAULT_COCKPIT_X_DELTA
 _current_interior_forward_x_delta = DEFAULT_INTERIOR_FORWARD_X_DELTA
 _current_dash_forward_x_delta = DEFAULT_DASH_FORWARD_X_DELTA
 _current_animated_control_geometries: dict[str, dict[str, core.Patch]] = {}
+_current_live_display_geometries: dict[str, dict[str, core.Patch]] = {}
+_current_live_display_pivots: dict[str, tuple[float, float, float]] = {}
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -332,6 +341,19 @@ def animated_control_geometry(name: str) -> dict[str, core.Patch]:
     return _current_animated_control_geometries.setdefault(name, {})
 
 
+def live_display_geometry(name: str) -> dict[str, core.Patch]:
+    return _current_live_display_geometries.setdefault(name, {})
+
+
+def merge_patch_map_into(target: dict[str, core.Patch], source: dict[str, core.Patch]) -> None:
+    for material_name, source_patch in source.items():
+        target_patch = target.setdefault(material_name, core.Patch(material_name))
+        vertex_offset = len(target_patch.vertices) // 8
+        target_patch.vertices.extend(source_patch.vertices)
+        target_patch.indices.extend(index + vertex_offset for index in source_patch.indices)
+        target_patch.face_attributes.extend(source_patch.face_attributes)
+
+
 def vector_sub(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
     return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
@@ -479,6 +501,139 @@ def append_textured_panel(
     append_quad(patch, list(reversed(front)), (1.0, 0.0, 0.0), [(1.0, 1.0), (1.0, 0.0), (0.0, 0.0), (0.0, 1.0)])
 
 
+def append_triangle(
+    patch: core.Patch,
+    points: list[tuple[float, float, float]],
+    normal: tuple[float, float, float],
+) -> None:
+    base_index = len(patch.vertices) // 8
+    for point in points:
+        patch.vertices.extend([point[0], point[1], point[2], normal[0], normal[1], normal[2], 0.5, 0.5])
+    patch.indices.extend([base_index, base_index + 1, base_index + 2])
+    patch.face_attributes.append(0)
+
+
+def append_panel_rect(
+    body: dict[str, core.Patch],
+    material_name: str,
+    *,
+    x: float,
+    center_y: float,
+    center_z: float,
+    width_y: float,
+    height_z: float,
+) -> None:
+    half_w = width_y * 0.5
+    half_h = height_z * 0.5
+    patch = patch_for(body, material_name)
+    append_quad(
+        patch,
+        [
+            (x, center_y - half_w, center_z - half_h),
+            (x, center_y - half_w, center_z + half_h),
+            (x, center_y + half_w, center_z + half_h),
+            (x, center_y + half_w, center_z - half_h),
+        ],
+        (-1.0, 0.0, 0.0),
+    )
+
+
+def append_panel_line(
+    body: dict[str, core.Patch],
+    material_name: str,
+    *,
+    x: float,
+    start_y: float,
+    start_z: float,
+    end_y: float,
+    end_z: float,
+    thickness: float,
+) -> None:
+    dy = end_y - start_y
+    dz = end_z - start_z
+    length = math.sqrt(dy * dy + dz * dz)
+    if length < 1e-9:
+        append_panel_rect(
+            body,
+            material_name,
+            x=x,
+            center_y=start_y,
+            center_z=start_z,
+            width_y=thickness,
+            height_z=thickness,
+        )
+        return
+    offset_y = -dz / length * thickness * 0.5
+    offset_z = dy / length * thickness * 0.5
+    patch = patch_for(body, material_name)
+    append_quad(
+        patch,
+        [
+            (x, start_y + offset_y, start_z + offset_z),
+            (x, end_y + offset_y, end_z + offset_z),
+            (x, end_y - offset_y, end_z - offset_z),
+            (x, start_y - offset_y, start_z - offset_z),
+        ],
+        (-1.0, 0.0, 0.0),
+    )
+
+
+def append_panel_triangle(
+    body: dict[str, core.Patch],
+    material_name: str,
+    *,
+    x: float,
+    points_yz: list[tuple[float, float]],
+) -> None:
+    if len(points_yz) != 3:
+        raise ValueError("Panel triangle requires three Y/Z points")
+    patch = patch_for(body, material_name)
+    append_triangle(patch, [(x, y, z) for y, z in points_yz], (-1.0, 0.0, 0.0))
+
+
+def append_panel_ring(
+    body: dict[str, core.Patch],
+    material_name: str,
+    *,
+    x: float,
+    center_y: float,
+    center_z: float,
+    radius: float,
+    thickness: float,
+    segments: int = 24,
+) -> None:
+    previous: tuple[float, float] | None = None
+    first: tuple[float, float] | None = None
+    for index in range(segments + 1):
+        angle = index / segments * math.tau
+        point = (center_y + math.cos(angle) * radius, center_z + math.sin(angle) * radius)
+        if previous is not None:
+            append_panel_line(
+                body,
+                material_name,
+                x=x,
+                start_y=previous[0],
+                start_z=previous[1],
+                end_y=point[0],
+                end_z=point[1],
+                thickness=thickness,
+            )
+        elif first is None:
+            first = point
+        previous = point
+    if previous is not None and first is not None:
+        append_panel_line(
+            body,
+            material_name,
+            x=x,
+            start_y=previous[0],
+            start_z=previous[1],
+            end_y=first[0],
+            end_z=first[1],
+            thickness=thickness,
+        )
+
+
 def add_framed_screen(
     body: dict[str, core.Patch],
     *,
@@ -512,6 +667,184 @@ def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
             (panel_x - 0.035, brace_y * 0.92, -0.315),
             0.015,
         )
+
+
+def add_pfd_static_overlay(static: dict[str, core.Patch], *, x: float, y: float, z: float) -> None:
+    half_w = 0.165
+    half_h = 0.165
+    for line in (
+        (y - half_w, z - half_h, y + half_w, z - half_h),
+        (y - half_w, z + half_h, y + half_w, z + half_h),
+        (y - half_w, z - half_h, y - half_w, z + half_h),
+        (y + half_w, z - half_h, y + half_w, z + half_h),
+    ):
+        append_panel_line(
+            static,
+            "gtvr_glass_cyan",
+            x=x,
+            start_y=line[0],
+            start_z=line[1],
+            end_y=line[2],
+            end_z=line[3],
+            thickness=0.003,
+        )
+
+    for tape_y in (y - 0.126, y + 0.126):
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.032, start_z=z - 0.125, end_y=tape_y - 0.032, end_z=z + 0.125, thickness=0.002)
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y + 0.032, start_z=z - 0.125, end_y=tape_y + 0.032, end_z=z + 0.125, thickness=0.002)
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.032, start_z=z - 0.125, end_y=tape_y + 0.032, end_z=z - 0.125, thickness=0.002)
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.032, start_z=z + 0.125, end_y=tape_y + 0.032, end_z=z + 0.125, thickness=0.002)
+
+    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y - 0.048, start_z=z, end_y=y - 0.012, end_z=z, thickness=0.004)
+    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y + 0.012, start_z=z, end_y=y + 0.048, end_z=z, thickness=0.004)
+    append_panel_triangle(
+        static,
+        "gtvr_glass_yellow",
+        x=x,
+        points_yz=[(y - 0.010, z - 0.010), (y, z + 0.006), (y + 0.010, z - 0.010)],
+    )
+
+
+def add_pfd_horizon_layer(horizon: dict[str, core.Patch], *, x: float, y: float, z: float) -> None:
+    append_panel_rect(horizon, "gtvr_glass_sky", x=x, center_y=y, center_z=z + 0.052, width_y=0.150, height_z=0.108)
+    append_panel_rect(horizon, "gtvr_glass_ground", x=x, center_y=y, center_z=z - 0.052, width_y=0.150, height_z=0.108)
+    append_panel_line(horizon, "gtvr_glass_white", x=x, start_y=y - 0.074, start_z=z, end_y=y + 0.074, end_z=z, thickness=0.003)
+    for offset, width in ((-0.070, 0.040), (-0.035, 0.064), (0.035, 0.064), (0.070, 0.040)):
+        append_panel_line(
+            horizon,
+            "gtvr_glass_white",
+            x=x,
+            start_y=y - width * 0.5,
+            start_z=z + offset,
+            end_y=y + width * 0.5,
+            end_z=z + offset,
+            thickness=0.002,
+        )
+
+
+def add_pfd_tape_layer(
+    tape: dict[str, core.Patch],
+    *,
+    x: float,
+    y: float,
+    z: float,
+    side: str,
+) -> None:
+    for index in range(-5, 6):
+        tick_z = z + index * 0.026
+        tick_width = 0.048 if index % 2 == 0 else 0.032
+        material = "gtvr_glass_green" if index == 0 else "gtvr_glass_white"
+        if side == "left":
+            start_y = y - tick_width * 0.5
+            end_y = y + tick_width * 0.5
+        else:
+            start_y = y + tick_width * 0.5
+            end_y = y - tick_width * 0.5
+        append_panel_line(tape, material, x=x, start_y=start_y, start_z=tick_z, end_y=end_y, end_z=tick_z, thickness=0.0022)
+    append_panel_triangle(
+        tape,
+        "gtvr_glass_green",
+        x=x,
+        points_yz=[(y - 0.018, z - 0.010), (y + 0.018, z), (y - 0.018, z + 0.010)]
+        if side == "left"
+        else [(y + 0.018, z - 0.010), (y - 0.018, z), (y + 0.018, z + 0.010)],
+    )
+
+
+def add_pfd_heading_layer(heading: dict[str, core.Patch], *, x: float, y: float, z: float) -> None:
+    append_panel_ring(heading, "gtvr_glass_cyan", x=x, center_y=y, center_z=z, radius=0.030, thickness=0.0015, segments=20)
+    for angle in (0.0, math.pi * 0.5, math.pi, math.pi * 1.5):
+        inner = 0.020
+        outer = 0.034
+        append_panel_line(
+            heading,
+            "gtvr_glass_white",
+            x=x,
+            start_y=y + math.cos(angle) * inner,
+            start_z=z + math.sin(angle) * inner,
+            end_y=y + math.cos(angle) * outer,
+            end_z=z + math.sin(angle) * outer,
+            thickness=0.0018,
+        )
+    append_panel_triangle(
+        heading,
+        "gtvr_glass_yellow",
+        x=x,
+        points_yz=[(y - 0.006, z + 0.020), (y, z + 0.034), (y + 0.006, z + 0.020)],
+    )
+
+
+def add_live_pfd_display(*, screen_x: float, side_y: float, side_name: str) -> None:
+    x = screen_x - 0.018
+    z = -0.12
+    static = live_display_geometry(f"GTVR{side_name}PFDStatic")
+    horizon = live_display_geometry(f"GTVR{side_name}PFDHorizon")
+    speed_tape = live_display_geometry(f"GTVR{side_name}PFDSpeedTape")
+    alt_tape = live_display_geometry(f"GTVR{side_name}PFDAltTape")
+    heading = live_display_geometry(f"GTVR{side_name}PFDHeading")
+
+    _current_live_display_pivots[f"{side_name}PFD"] = (x, side_y, z)
+    _current_live_display_pivots[f"{side_name}PFDHeading"] = (x, side_y, z - 0.134)
+
+    add_pfd_static_overlay(static, x=x, y=side_y, z=z)
+    add_pfd_horizon_layer(horizon, x=x - 0.002, y=side_y, z=z)
+    add_pfd_tape_layer(speed_tape, x=x - 0.004, y=side_y - 0.126, z=z, side="left")
+    add_pfd_tape_layer(alt_tape, x=x - 0.004, y=side_y + 0.126, z=z, side="right")
+    add_pfd_heading_layer(heading, x=x - 0.004, y=side_y, z=z - 0.134)
+
+
+def add_live_map_display(*, screen_x: float) -> None:
+    x = screen_x - 0.018
+    y = 0.0
+    z = -0.12
+    static = live_display_geometry("GTVRMapStatic")
+    moving = live_display_geometry("GTVRMapMoving")
+
+    _current_live_display_pivots["Map"] = (x, y, z)
+
+    append_panel_rect(static, "gtvr_glass_green", x=x, center_y=y, center_z=z, width_y=0.010, height_z=0.036)
+    append_panel_triangle(
+        static,
+        "gtvr_glass_cyan",
+        x=x - 0.002,
+        points_yz=[(y - 0.014, z - 0.010), (y, z + 0.024), (y + 0.014, z - 0.010)],
+    )
+    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y - 0.052, start_z=z - 0.112, end_y=y, end_z=z, thickness=0.003)
+    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y, start_z=z, end_y=y + 0.074, end_z=z + 0.086, thickness=0.003)
+
+    append_panel_ring(moving, "gtvr_glass_green", x=x - 0.004, center_y=y, center_z=z, radius=0.118, thickness=0.002, segments=32)
+    append_panel_ring(moving, "gtvr_glass_cyan", x=x - 0.004, center_y=y, center_z=z, radius=0.062, thickness=0.0015, segments=24)
+    for grid in (-0.080, -0.040, 0.040, 0.080):
+        append_panel_line(moving, "gtvr_glass_green", x=x - 0.004, start_y=y + grid, start_z=z - 0.112, end_y=y + grid, end_z=z + 0.112, thickness=0.001)
+        append_panel_line(moving, "gtvr_glass_green", x=x - 0.004, start_y=y - 0.120, start_z=z + grid, end_y=y + 0.120, end_z=z + grid, thickness=0.001)
+    for angle in range(0, 360, 30):
+        radians = math.radians(angle)
+        inner = 0.102 if angle % 90 else 0.092
+        outer = 0.122
+        append_panel_line(
+            moving,
+            "gtvr_glass_white" if angle % 90 == 0 else "gtvr_glass_green",
+            x=x - 0.004,
+            start_y=y + math.cos(radians) * inner,
+            start_z=z + math.sin(radians) * inner,
+            end_y=y + math.cos(radians) * outer,
+            end_z=z + math.sin(radians) * outer,
+            thickness=0.002,
+        )
+
+
+def add_live_glass_displays(*, screen_x: float) -> None:
+    add_live_pfd_display(screen_x=screen_x, side_y=-0.39, side_name="Left")
+    add_live_pfd_display(screen_x=screen_x, side_y=0.39, side_name="Right")
+    add_live_map_display(screen_x=screen_x)
+
+
+def add_static_display_fallback(body: dict[str, core.Patch]) -> None:
+    """Keep readable screen symbology visible if the preserved EC135 TMQ ignores new graphics groups."""
+    for display_geometry in _current_live_display_geometries.values():
+        fallback = core.copy_patch_map(display_geometry)
+        core.translate_patch_map(fallback, DISPLAY_FALLBACK_X_OFFSET, 0.0, 0.0)
+        merge_patch_map_into(body, fallback)
 
 
 def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: float) -> None:
@@ -649,9 +982,12 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
 
 
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
-    global _current_animated_control_geometries, _current_cockpit_x_delta
+    global _current_animated_control_geometries, _current_live_display_geometries, _current_live_display_pivots
+    global _current_cockpit_x_delta
     global _current_dash_forward_x_delta, _current_interior_forward_x_delta
     _current_animated_control_geometries = {}
+    _current_live_display_geometries = {}
+    _current_live_display_pivots = {}
     _current_cockpit_x_delta = args.cockpit_x_delta
     _current_interior_forward_x_delta = args.interior_forward_x_delta
     _current_dash_forward_x_delta = args.dash_forward_x_delta
@@ -690,6 +1026,8 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
         width_y=0.30,
         height_z=0.34,
     )
+    add_live_glass_displays(screen_x=screen_x)
+    add_static_display_fallback(body)
 
     add_cyclic_controls(body, interior_x)
     add_collective_controls(body, interior_x)
@@ -697,7 +1035,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added upholstered seats, cyclics, collectives/throttles, pedals, "
-        "left/middle/right glass-style displays, a central cyclic bar and framed forward panel hardware."
+        "left/middle/right live glass-style displays, a central cyclic bar and framed forward panel hardware."
     )
 
 
@@ -787,70 +1125,70 @@ def visual_control_dynamic_objects() -> str:
 
     return f"""
             // GTVR generated cockpit visual controls
-            <[control_input][GTVRVisualCyclicPitchTravel][]
+            <[graphics_input][GTVRVisualCyclicPitchTravel][]
                 <[uint32][InputID][StickCyclicPitch.Output]>
                 <[float64][Scaling][0.2]>
             >
-            <[control_input][GTVRVisualCyclicRollTravel][]
+            <[graphics_input][GTVRVisualCyclicRollTravel][]
                 <[uint32][InputID][StickCyclicRoll.Output]>
                 <[float64][Scaling][0.2]>
             >
-            <[control_rotation][GTVRLeftStickNickTransform][]
+            <[graphics_rotation][GTVRLeftStickNickTransform][]
                 <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
             >
-            <[control_rotation][GTVRLeftStickTransform][]
+            <[graphics_rotation][GTVRLeftStickTransform][]
                 <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
                 <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
                 <[string8][InputTransform][GTVRLeftStickNickTransform.Output]>
             >
-            <[control_rotation][GTVRRightStickNickTransform][]
+            <[graphics_rotation][GTVRRightStickNickTransform][]
                 <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
             >
-            <[control_rotation][GTVRRightStickTransform][]
+            <[graphics_rotation][GTVRRightStickTransform][]
                 <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
                 <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
                 <[string8][InputTransform][GTVRRightStickNickTransform.Output]>
             >
-            <[control_input][GTVRVisualCollectiveTravel][]
+            <[graphics_input][GTVRVisualCollectiveTravel][]
                 <[uint32][InputID][CollectivePitchLever.Output]>
                 <[float64][Scaling][0.2]>
             >
-            <[control_rotation][GTVRLeftCollectiveTransform][]
+            <[graphics_rotation][GTVRLeftCollectiveTransform][]
                 <[string8][Input][GTVRVisualCollectiveTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(left_collective_pivot)} ]>
             >
-            <[control_rotation][GTVRRightCollectiveTransform][]
+            <[graphics_rotation][GTVRRightCollectiveTransform][]
                 <[string8][Input][GTVRVisualCollectiveTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(right_collective_pivot)} ]>
             >
-            <[control_input][GTVRVisualRudderPedalTravel][]
+            <[graphics_input][GTVRVisualRudderPedalTravel][]
                 <[uint32][InputID][ServoRudder.Output]>
                 <[float64][Scaling][0.15]>
             >
-            <[control_rotation][GTVRLLPedalTransform][]
+            <[graphics_rotation][GTVRLLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LL"])} ]>
             >
-            <[control_rotation][GTVRLRPedalTransform][]
+            <[graphics_rotation][GTVRLRPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LR"])} ]>
             >
-            <[control_rotation][GTVRRLPedalTransform][]
+            <[graphics_rotation][GTVRRLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RL"])} ]>
             >
-            <[control_rotation][GTVRRRPedalTransform][]
+            <[graphics_rotation][GTVRRRPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
                 <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RR"])} ]>
@@ -873,9 +1211,140 @@ def visual_control_graphics_objects() -> str:
     return "\n".join(lines)
 
 
+def live_display_static_geometry_names() -> list[str]:
+    names = [
+        "GTVRLeftPFDStatic",
+        "GTVRRightPFDStatic",
+        "GTVRMapStatic",
+    ]
+    return [name for name in names if name in _current_live_display_geometries and patch_map_has_faces(_current_live_display_geometries[name])]
+
+
+def live_display_graphics_objects() -> str:
+    if not _current_live_display_geometries:
+        return ""
+
+    left_pfd = _current_live_display_pivots.get("LeftPFD", (current_interior_x(2.47), -0.39, -0.12))
+    right_pfd = _current_live_display_pivots.get("RightPFD", (current_interior_x(2.47), 0.39, -0.12))
+    left_heading = _current_live_display_pivots.get("LeftPFDHeading", (left_pfd[0], left_pfd[1], left_pfd[2] - 0.134))
+    right_heading = _current_live_display_pivots.get("RightPFDHeading", (right_pfd[0], right_pfd[1], right_pfd[2] - 0.134))
+    map_pivot = _current_live_display_pivots.get("Map", (current_interior_x(2.47), 0.0, -0.12))
+    static_names = live_display_static_geometry_names()
+    static_block = ""
+    if static_names:
+        static_block = "\n".join(
+            [
+                "            <[rigidbodygraphics][GTVRGlassStaticGraphics][]",
+                "                <[uint32][PositionID][Fuselage.R]>",
+                "                <[uint32][OrientationID][Fuselage.Q]>",
+                f"                <[string8][GeometryList][ {' '.join(static_names)} ]>",
+                "            >",
+            ]
+        )
+
+    pfd_blocks: list[str] = []
+    for side_name, pivot, heading_pivot in (
+        ("Left", left_pfd, left_heading),
+        ("Right", right_pfd, right_heading),
+    ):
+        pfd_blocks.extend(
+            [
+                f"            <[graphics_rotation][GTVR{side_name}PFDBankTransform][]",
+                "                <[string8][Input][GTVRGlassBankInput.Output]>",
+                "                <[tmvector3d][Axis][ -1.0 0.0 0.0 ]>",
+                f"                <[tmvector3d][Pivot][ {fmt_vector(pivot)} ]>",
+                "            >",
+                f"            <[graphics_translation][GTVR{side_name}PFDPitchTransform][]",
+                "                <[string8][Input][GTVRGlassPitchMapping.Output]>",
+                "                <[tmvector3d][Axis][0.0 0.0 1.0]>",
+                f"                <[string8][InputTransform][GTVR{side_name}PFDBankTransform.Output]>",
+                "            >",
+                f"            <[rigidbodygraphics][GTVR{side_name}PFDHorizonGraphics][]",
+                f"                <[string8][GeometryList][ GTVR{side_name}PFDHorizon ]>",
+                "                <[uint32][PositionID][Fuselage.R]>",
+                "                <[uint32][OrientationID][Fuselage.Q]>",
+                f"                <[string8][InputTransform][GTVR{side_name}PFDPitchTransform.Output]>",
+                "            >",
+                f"            <[rigidbodygraphics][GTVR{side_name}PFDSpeedTapeGraphics][]",
+                f"                <[string8][GeometryList][ GTVR{side_name}PFDSpeedTape ]>",
+                "                <[uint32][PositionID][Fuselage.R]>",
+                "                <[uint32][OrientationID][Fuselage.Q]>",
+                "                <[string8][InputTransform][GTVRGlassAirspeedTapeTransform.Output]>",
+                "            >",
+                f"            <[rigidbodygraphics][GTVR{side_name}PFDAltTapeGraphics][]",
+                f"                <[string8][GeometryList][ GTVR{side_name}PFDAltTape ]>",
+                "                <[uint32][PositionID][Fuselage.R]>",
+                "                <[uint32][OrientationID][Fuselage.Q]>",
+                "                <[string8][InputTransform][GTVRGlassAltTapeTransform.Output]>",
+                "            >",
+                f"            <[hingedbodygraphics][GTVR{side_name}PFDHeadingGraphics][]",
+                f"                <[string8][GeometryList][ GTVR{side_name}PFDHeading ]>",
+                "                <[uint32][PositionID][Fuselage.R]>",
+                "                <[uint32][OrientationID][Fuselage.Q]>",
+                "                <[uint32][InputID][HeadingAngle.Output]>",
+                "                <[float64][Scaling][-0.017453]>",
+                "                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>",
+                f"                <[tmvector3d][Pivot][ {fmt_vector(heading_pivot)} ]>",
+                "            >",
+            ]
+        )
+
+    return "\n".join(
+        [
+            "            // GTVR live glass display inputs",
+            "            <[graphics_input][GTVRGlassBankInput][]",
+            "                <[uint32][InputID][BankAngle.Output]>",
+            "                <[float64][Scaling][-1.0]>",
+            "            >",
+            "            <[graphics_input][GTVRGlassPitchInput][]",
+            "                <[uint32][InputID][PitchAngle.Output]>",
+            "            >",
+            "            <[graphics_linear_interpolation][GTVRGlassPitchMapping][]",
+            "                <[string8][Input][GTVRGlassPitchInput.Output]>",
+            "                <[tmvector2d][Map][(-0.5 0.075) (0.0 0.0) (0.5 -0.075)]>",
+            "            >",
+            "            <[graphics_input][GTVRGlassAirspeedInput][]",
+            "                <[uint32][InputID][AirspeedIndicatorNeedle.Output]>",
+            "            >",
+            "            <[graphics_linear_interpolation][GTVRGlassAirspeedTapeMapping][]",
+            "                <[string8][Input][GTVRGlassAirspeedInput.Output]>",
+            "                <[tmvector2d][Map][(0.0 0.080) (30.0 0.0) (80.0 -0.080)]>",
+            "            >",
+            "            <[graphics_translation][GTVRGlassAirspeedTapeTransform][]",
+            "                <[string8][Input][GTVRGlassAirspeedTapeMapping.Output]>",
+            "                <[tmvector3d][Axis][0.0 0.0 1.0]>",
+            "            >",
+            "            <[graphics_input][GTVRGlassAltInput][]",
+            "                <[uint32][InputID][AltimeterNeedle.Output]>",
+            "            >",
+            "            <[graphics_linear_interpolation][GTVRGlassAltTapeMapping][]",
+            "                <[string8][Input][GTVRGlassAltInput.Output]>",
+            "                <[tmvector2d][Map][(0.0 0.080) (1000.0 0.0) (3000.0 -0.080)]>",
+            "            >",
+            "            <[graphics_translation][GTVRGlassAltTapeTransform][]",
+            "                <[string8][Input][GTVRGlassAltTapeMapping.Output]>",
+            "                <[tmvector3d][Axis][0.0 0.0 1.0]>",
+            "            >",
+            static_block,
+            *pfd_blocks,
+            "            <[hingedbodygraphics][GTVRMapMovingGraphics][]",
+            "                <[string8][GeometryList][ GTVRMapMoving ]>",
+            "                <[uint32][PositionID][Fuselage.R]>",
+            "                <[uint32][OrientationID][Fuselage.Q]>",
+            "                <[uint32][InputID][HeadingAngle.Output]>",
+            "                <[float64][Scaling][-0.017453]>",
+            "                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>",
+            f"                <[tmvector3d][Pivot][ {fmt_vector(map_pivot)} ]>",
+            "            >",
+        ]
+    )
+
+
 def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
-    animated_names = set(_current_animated_control_geometries)
+    animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
     static_geometry_names = [name for name in sorted(geometry_names) if name not in animated_names]
+    display_graphics = live_display_graphics_objects()
+    control_transforms = visual_control_dynamic_objects()
     graphic_objects = visual_control_graphics_objects()
     text = f"""<[file][][]
     <[modelmanager][][]
@@ -893,35 +1362,14 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
                 <[uint32][OrientationID][Fuselage.Q]>
                 <[string8][GeometryList][ {' '.join(static_geometry_names)} ]>
             >
+{display_graphics}
+{control_transforms}
 {graphic_objects}
         >
     >
 >
 """
     path.write_text(text, encoding="utf-8")
-
-
-def patch_dev_controls_tmd(path: Path) -> None:
-    if not control_graphic_groups():
-        return
-    begin_marker = "            // GTVR generated cockpit visual control transforms begin"
-    end_marker = "            // GTVR generated cockpit visual control transforms end"
-    control_objects = visual_control_dynamic_objects().strip("\n")
-    block = f"{begin_marker}\n{control_objects}\n{end_marker}"
-    text = path.read_text(encoding="utf-8", errors="replace")
-    text = re.sub(
-        rf"\n{re.escape(begin_marker)}.*?{re.escape(end_marker)}",
-        "",
-        text,
-        flags=re.DOTALL,
-    )
-    if block in text:
-        return
-    updated = re.sub(r"\n        >\s*\n    >\s*\n>\s*$", f"\n{block}\n        >\n    >\n>\n", text, count=1)
-    if updated == text:
-        raise RuntimeError(f"Could not find controls.tmd ControlObjects closing block in {path}")
-    path.write_text(updated, encoding="utf-8")
-    print(f"Patched dev controls transforms: {path}")
 
 
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
@@ -937,13 +1385,17 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
     visual_tail_rotor = tail_rotor or fallback_tail_rotor
 
-    animated_names = set(_current_animated_control_geometries)
+    animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
     geometries: dict[str, dict[str, core.Patch]] = {}
     for geometry_name in core.read_geometry_names():
         if geometry_name == "Fuselage":
             geometries[geometry_name] = core.copy_patch_map(body)
         elif geometry_name in animated_names:
-            geometries[geometry_name] = core.copy_patch_map(_current_animated_control_geometries[geometry_name])
+            source_geometry = _current_animated_control_geometries.get(
+                geometry_name,
+                _current_live_display_geometries.get(geometry_name, {}),
+            )
+            geometries[geometry_name] = core.copy_patch_map(source_geometry)
         elif geometry_name == "SkidsMiddle":
             geometries[geometry_name] = core.copy_patch_map(visual_gear)
         elif geometry_name in {"RotorBlade0", "RotorBlade1", "RotorBlade2", "RotorBlade3"}:
@@ -956,6 +1408,8 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
             geometries[geometry_name] = {}
 
     for geometry_name, patches in _current_animated_control_geometries.items():
+        geometries.setdefault(geometry_name, core.copy_patch_map(patches))
+    for geometry_name, patches in _current_live_display_geometries.items():
         geometries.setdefault(geometry_name, core.copy_patch_map(patches))
 
     core.write_aircraft_source_tmc(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmc")
@@ -971,6 +1425,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
                 "This source compiles the dev Wraith exterior with generated cockpit visuals.",
                 f"- Geometry names emitted: `{len(geometries)}`",
                 f"- Animated control geometry groups: `{len(control_graphic_groups())}`",
+                f"- Live glass display geometry groups: `{len(_current_live_display_geometries)}`",
                 f"- MSFS source faces: `{source_faces}`",
                 f"- Imported faces: `{imported_faces}`",
                 "",
@@ -981,6 +1436,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     print(f"Wrote dev Wraith source: {core.SOURCE_DIR}")
     print(f"Geometry names emitted: {len(geometries)}")
     print(f"Animated control geometry groups: {len(control_graphic_groups())}")
+    print(f"Live glass display geometry groups: {len(_current_live_display_geometries)}")
     print(f"Imported body faces: {imported_faces}")
 
 
@@ -992,8 +1448,10 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated upholstered seats, R22-style controls, pedals and left/middle/right glass-style panels",
+                "cockpit_kit=generated upholstered seats, R22-style controls, pedals and left/middle/right live glass-style panels",
                 "animated_controls=cyclics, collectives and pedal meshes are emitted as dev-only graphics with input transforms",
+                "live_glass=attitude, airspeed, altitude and heading overlay geometry is bound to Aerofly outputs",
+                "glass_fallback=static display symbology is also merged into the visible dash mesh behind the live layers",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
                 f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
@@ -1045,9 +1503,6 @@ def run_converter(timeout: float) -> int:
 
 
 def write_dev_package_marker() -> None:
-    controls_tmd = DEV_PACKAGE_DIR / "controls.tmd"
-    if controls_tmd.exists():
-        patch_dev_controls_tmd(controls_tmd)
     stable_marker = DEV_PACKAGE_DIR / "_GTVR_WRAITH_EC135_CORE.txt"
     if stable_marker.exists():
         stable_marker.unlink()
@@ -1060,8 +1515,10 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes forward-shifted upholstered seats, R22-style cyclic, collectives/throttles, pedals and left/middle/right glass-style panels.",
+                "Generated cockpit kit includes forward-shifted upholstered seats, R22-style cyclic, collectives/throttles, pedals and left/middle/right live glass-style panels.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD.",
+                "Generated glass overlays bind attitude, airspeed, altitude and heading graphics to Aerofly outputs.",
+                "A recessed static copy of the display symbology is merged into the visible dash mesh as an EC135-TMQ-safe fallback.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
