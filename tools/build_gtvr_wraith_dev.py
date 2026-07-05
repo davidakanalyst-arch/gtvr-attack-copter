@@ -45,6 +45,8 @@ COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
     "gtvr_cockpit_dark_gray": ((22, 24, 25), "generated-gtvr-dev-cockpit-dark-gray"),
     "gtvr_cockpit_seat": ((18, 20, 22), "generated-gtvr-dev-cockpit-seat"),
+    "gtvr_cockpit_seat_highlight": ((36, 39, 40), "generated-gtvr-dev-cockpit-seat-highlight"),
+    "gtvr_cockpit_seat_shadow": ((9, 10, 11), "generated-gtvr-dev-cockpit-seat-shadow"),
     "gtvr_cockpit_metal": ((88, 92, 92), "generated-gtvr-dev-cockpit-metal"),
     "gtvr_cockpit_rubber": ((7, 7, 7), "generated-gtvr-dev-cockpit-rubber"),
     "gtvr_cockpit_button_green": ((10, 150, 78), "generated-gtvr-dev-cockpit-button-green"),
@@ -467,7 +469,7 @@ def append_textured_panel(
         (x, y + half_w, z - half_h),
     ]
     append_quad(patch, front, (-1.0, 0.0, 0.0), [(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)])
-    append_quad(patch, list(reversed(front)), (1.0, 0.0, 0.0), [(0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)])
+    append_quad(patch, list(reversed(front)), (1.0, 0.0, 0.0), [(1.0, 1.0), (1.0, 0.0), (0.0, 0.0), (0.0, 1.0)])
 
 
 def add_framed_screen(
@@ -489,15 +491,11 @@ def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
 
     append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, 0.080), (0.13, 1.22, 0.070))
     append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, -0.330), (0.13, 1.22, 0.075))
-    append_box(body, "gtvr_cockpit_black", (rail_x, -0.625, -0.125), (0.13, 0.070, 0.430))
-    append_box(body, "gtvr_cockpit_black", (rail_x, 0.625, -0.125), (0.13, 0.070, 0.430))
 
     for post_y in (-0.155, 0.155):
         append_box(body, "gtvr_cockpit_dark_gray", (rail_x, post_y, -0.125), (0.12, 0.048, 0.390))
 
     append_box(body, "gtvr_cockpit_dark_gray", (dash_x(2.23), 0.0, -0.405), (0.30, 1.06, 0.080))
-    append_box(body, "gtvr_cockpit_black", (dash_x(2.32), -0.505, -0.235), (0.16, 0.050, 0.250))
-    append_box(body, "gtvr_cockpit_black", (dash_x(2.32), 0.505, -0.235), (0.16, 0.050, 0.250))
 
     for brace_y in (-0.52, 0.52):
         append_cylinder_between(
@@ -507,6 +505,131 @@ def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
             (panel_x - 0.035, brace_y * 0.92, -0.315),
             0.015,
         )
+
+
+def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: float) -> None:
+    append_box(body, "gtvr_cockpit_black", (base_x + 0.02, seat_y, -0.735), (0.56, 0.39, 0.070))
+    append_box(body, "gtvr_cockpit_seat", (base_x, seat_y, -0.660), (0.53, 0.36, 0.105))
+    append_box(body, "gtvr_cockpit_seat_highlight", (base_x + 0.025, seat_y, -0.595), (0.40, 0.255, 0.030))
+    append_box(body, "gtvr_cockpit_seat_shadow", (base_x + 0.020, seat_y, -0.570), (0.340, 0.020, 0.018))
+    append_cylinder_between(
+        body,
+        "gtvr_cockpit_seat_highlight",
+        (base_x + 0.275, seat_y - 0.160, -0.615),
+        (base_x + 0.275, seat_y + 0.160, -0.615),
+        0.045,
+        segments=18,
+    )
+    for side in (-1.0, 1.0):
+        bolster_y = seat_y + side * 0.205
+        append_box(body, "gtvr_cockpit_seat_shadow", (base_x, bolster_y, -0.620), (0.48, 0.050, 0.100))
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_seat_highlight",
+            (base_x - 0.220, bolster_y, -0.615),
+            (base_x + 0.210, bolster_y, -0.615),
+            0.032,
+            segments=16,
+        )
+
+    back_x = base_x - 0.305
+    append_box(body, "gtvr_cockpit_seat_shadow", (back_x - 0.030, seat_y, -0.355), (0.100, 0.390, 0.575))
+    append_box(body, "gtvr_cockpit_seat", (back_x, seat_y, -0.350), (0.115, 0.350, 0.540))
+    append_box(body, "gtvr_cockpit_seat_highlight", (back_x + 0.060, seat_y, -0.355), (0.035, 0.255, 0.390))
+    for side in (-1.0, 1.0):
+        bolster_y = seat_y + side * 0.205
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_seat_shadow",
+            (back_x + 0.040, bolster_y, -0.600),
+            (back_x + 0.040, bolster_y, -0.145),
+            0.035,
+            segments=16,
+        )
+    append_box(body, "gtvr_cockpit_seat", (back_x - 0.020, seat_y, -0.015), (0.135, 0.280, 0.155))
+    append_box(body, "gtvr_cockpit_seat_highlight", (back_x + 0.055, seat_y, 0.005), (0.030, 0.205, 0.090))
+    append_cylinder_between(
+        body,
+        "gtvr_cockpit_seat_shadow",
+        (back_x - 0.040, seat_y - 0.120, -0.080),
+        (back_x - 0.040, seat_y + 0.120, -0.080),
+        0.020,
+        segments=14,
+    )
+
+
+def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
+    append_cylinder_between(
+        body,
+        "gtvr_cockpit_metal",
+        (interior_x(2.09), 0.0, -0.66),
+        (interior_x(2.18), 0.0, -0.32),
+        0.025,
+        segments=22,
+    )
+    append_cylinder_between(
+        body,
+        "gtvr_cockpit_metal",
+        (interior_x(2.18), -0.36, -0.32),
+        (interior_x(2.18), 0.36, -0.32),
+        0.021,
+        segments=22,
+    )
+    for stick_y in (-0.36, 0.36):
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_metal",
+            (interior_x(2.18), stick_y, -0.32),
+            (interior_x(2.25), stick_y, -0.20),
+            0.019,
+            segments=20,
+        )
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_rubber",
+            (interior_x(2.235), stick_y, -0.210),
+            (interior_x(2.355), stick_y, -0.090),
+            0.040,
+            segments=22,
+        )
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_metal",
+            (interior_x(2.230), stick_y, -0.215),
+            (interior_x(2.260), stick_y, -0.185),
+            0.046,
+            segments=22,
+        )
+        append_box(body, "gtvr_cockpit_rubber", (interior_x(2.320), stick_y, -0.110), (0.090, 0.072, 0.034))
+        append_box(body, "gtvr_cockpit_button_red", (interior_x(2.365), stick_y - 0.027, -0.075), (0.030, 0.018, 0.014))
+        append_box(body, "gtvr_cockpit_button_green", (interior_x(2.365), stick_y + 0.027, -0.075), (0.030, 0.018, 0.014))
+
+
+def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
+    for start_y, end_y in ((-0.58, -0.11), (0.58, 0.63)):
+        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.67), start_y, -0.66), (interior_x(2.08), end_y, -0.49), 0.023, segments=20)
+        append_cylinder_between(body, "gtvr_cockpit_rubber", (interior_x(2.035), end_y, -0.505), (interior_x(2.175), end_y, -0.450), 0.032, segments=22)
+        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y - 0.038, -0.50), (interior_x(2.15), end_y - 0.038, -0.472), 0.018, segments=16)
+        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y + 0.038, -0.50), (interior_x(2.15), end_y + 0.038, -0.472), 0.018, segments=16)
+        append_box(body, "gtvr_cockpit_button_green", (interior_x(2.172), end_y - 0.027, -0.425), (0.024, 0.018, 0.014))
+        append_box(body, "gtvr_cockpit_button_red", (interior_x(2.172), end_y + 0.027, -0.425), (0.024, 0.018, 0.014))
+
+
+def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
+    for seat_y in (-0.40, 0.40):
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_metal",
+            (interior_x(1.95), seat_y - 0.16, -0.735),
+            (interior_x(1.95), seat_y + 0.16, -0.735),
+            0.014,
+            segments=16,
+        )
+        for pedal_offset in (-0.12, 0.12):
+            pedal_y = seat_y + pedal_offset
+            append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.96), pedal_y, -0.73), (interior_x(2.21), pedal_y, -0.60), 0.016, segments=16)
+            append_box(body, "gtvr_cockpit_rubber", (interior_x(2.275), pedal_y, -0.550), (0.080, 0.135, 0.115))
+            append_box(body, "gtvr_cockpit_seat_shadow", (interior_x(2.300), pedal_y, -0.535), (0.020, 0.105, 0.095))
 
 
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
@@ -527,10 +650,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     append_box(body, "gtvr_cockpit_black", (interior_x(1.94), 0.0, -0.37), (0.40, 0.18, 0.11))
 
     for seat_y in (-0.40, 0.40):
-        append_box(body, "gtvr_cockpit_seat", (interior_x(1.28), seat_y, -0.67), (0.58, 0.42, 0.13))
-        append_box(body, "gtvr_cockpit_seat", (interior_x(0.98), seat_y, -0.37), (0.13, 0.42, 0.58))
-        append_box(body, "gtvr_cockpit_black", (interior_x(0.91), seat_y, -0.01), (0.11, 0.34, 0.18))
-        append_box(body, "gtvr_cockpit_dark_gray", (interior_x(1.35), seat_y, -0.575), (0.42, 0.32, 0.035))
+        add_upholstered_seat(body, interior_x(1.28), seat_y)
 
     screen_x = dash_x(2.47)
     for side_y in (-0.39, 0.39):
@@ -552,46 +672,12 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
         height_z=0.34,
     )
 
-    for center_y in (-0.07, 0.07):
-        append_cylinder_between(
-            body,
-            "gtvr_cockpit_metal",
-            (dash_x(2.44), center_y, -0.125),
-            (dash_x(2.425), center_y, -0.125),
-            0.052,
-            segments=18,
-        )
-        append_cylinder_between(
-            body,
-            "gtvr_cockpit_rubber",
-            (dash_x(2.418), center_y, -0.125),
-            (dash_x(2.405), center_y, -0.125),
-            0.038,
-            segments=18,
-        )
-
-    append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.09), 0.0, -0.66), (interior_x(2.18), 0.0, -0.32), 0.024)
-    append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.18), -0.36, -0.32), (interior_x(2.18), 0.36, -0.32), 0.020)
-    for stick_y in (-0.36, 0.36):
-        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.18), stick_y, -0.32), (interior_x(2.25), stick_y, -0.20), 0.019)
-        append_cylinder_between(body, "gtvr_cockpit_rubber", (interior_x(2.25), stick_y, -0.20), (interior_x(2.34), stick_y, -0.11), 0.042)
-        append_box(body, "gtvr_cockpit_button_red", (interior_x(2.325), stick_y - 0.027, -0.088), (0.032, 0.018, 0.014))
-        append_box(body, "gtvr_cockpit_button_green", (interior_x(2.325), stick_y + 0.027, -0.088), (0.032, 0.018, 0.014))
-
-    for start_y, end_y in ((-0.58, -0.11), (0.58, 0.63)):
-        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.67), start_y, -0.66), (interior_x(2.08), end_y, -0.49), 0.022)
-        append_cylinder_between(body, "gtvr_cockpit_rubber", (interior_x(2.04), end_y, -0.505), (interior_x(2.16), end_y, -0.455), 0.030)
-        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y - 0.035, -0.50), (interior_x(2.14), end_y - 0.035, -0.475), 0.017)
-        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y + 0.035, -0.50), (interior_x(2.14), end_y + 0.035, -0.475), 0.017)
-
-    for seat_y in (-0.40, 0.40):
-        for pedal_offset in (-0.12, 0.12):
-            pedal_y = seat_y + pedal_offset
-            append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.96), pedal_y, -0.73), (interior_x(2.21), pedal_y, -0.60), 0.016)
-            append_box(body, "gtvr_cockpit_rubber", (interior_x(2.26), pedal_y, -0.56), (0.055, 0.13, 0.10))
+    add_cyclic_controls(body, interior_x)
+    add_collective_controls(body, interior_x)
+    add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added seats, cyclics, collectives/throttles, pedals, "
+        "Dev cockpit kit: added upholstered seats, cyclics, collectives/throttles, pedals, "
         "left/middle/right glass-style displays, a central cyclic bar and framed forward panel hardware."
     )
 
@@ -639,7 +725,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated seats, R22-style controls, pedals and left/middle/right glass-style panels",
+                "cockpit_kit=generated upholstered seats, R22-style controls, pedals and left/middle/right glass-style panels",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
                 f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
                 f"pilot_alignment_x_delta={_current_pilot_alignment_x_delta:.3f}",
@@ -702,7 +788,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes forward-shifted seats, R22-style cyclic, collectives/throttles, pedals and left/middle/right glass-style panels.",
+                "Generated cockpit kit includes forward-shifted upholstered seats, R22-style cyclic, collectives/throttles, pedals and left/middle/right glass-style panels.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
