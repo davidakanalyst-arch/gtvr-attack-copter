@@ -40,6 +40,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `tools/build_msfs_shell_source.py` - imports local MSFS helicopter glTF/DDS sources into an Aerofly converter source project.
 - `tools/build_gtvr_wraith_msfs.py` - builds the Optica-based Wraith package with a local MSFS helicopter exterior shell.
 - `tools/build_gtvr_wraith_dev.py` - dev-only EC135-core Wraith build/install wrapper; runs the full converter before assembling geometry changes.
+- `tools/promote_wraith_dev_to_stable.py` - explicit promotion path from `GTVR Wraith Dev` to the stable `GTVR Wraith` package/install.
 - `tools/run_aerofly_converter.py` - drives the Aerofly converter GUI using the discovered launch contract.
 - `tools/install_gtvr_repaint_textures.py` - installs converted attack repaint textures and previews with backups.
 - `tools/install_gtvr_overlay_object.py` - diagnostic-only pilot-slot installer; refuses to patch live aircraft by default.
@@ -52,5 +53,6 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 1. Keep the installed `GTVR Wraith` stable aircraft untouched unless the task explicitly says to update stable.
 2. Iterate on `GTVR Wraith Dev` with `python tools\build_gtvr_wraith_dev.py --full --force-install`.
 3. Run the full Aerofly converter for geometry changes; do not reassemble stale `.tmb` output.
-4. Treat the standalone EC135-derived `gtvr_attack_copter` aircraft as a drag-copy archive only.
-5. Treat the `gtvr_attack_shell` pilot-slot overlay and old `gtvr_wraith_heli` route as failed or retired diagnostics.
+4. Promote dev to stable only after explicit approval with `python tools\promote_wraith_dev_to_stable.py --force-local --install --force-install`.
+5. Treat the standalone EC135-derived `gtvr_attack_copter` aircraft as a drag-copy archive only.
+6. Treat the `gtvr_attack_shell` pilot-slot overlay and old `gtvr_wraith_heli` route as failed or retired diagnostics.

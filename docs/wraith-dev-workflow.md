@@ -89,3 +89,11 @@ The current dev-only correction is `--pilot-alignment-x-delta 0.40`, which shift
 ## Promotion Rule
 
 Treat `GTVR Wraith Dev` as the workbench. Promote changes to `GTVR Wraith` only after an explicit stable-update request, and then preserve the stable flight model, sounds, landing behavior, and contact spheres unless the requested change specifically says otherwise.
+
+When stable promotion is explicitly authorized, use:
+
+```powershell
+python tools\promote_wraith_dev_to_stable.py --force-local --install --force-install
+```
+
+That command copies the current `gtvr_wraith_dev` package to `gtvr_wraith_ec135_core`, renames the aircraft files, restores stable identity strings (`GTWE`, `GTVR Wraith`), validates the proven contact spheres and `pilot_jason`, then installs only to the stable Aerofly FS4 aircraft folder.
