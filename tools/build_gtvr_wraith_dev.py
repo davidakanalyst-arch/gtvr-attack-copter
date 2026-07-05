@@ -41,7 +41,7 @@ DEFAULT_COCKPIT_X_DELTA = 0.0
 DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
-CONTROL_MATTE_BLACK_MATERIAL = INNER_SHELL_MATERIAL_NAME
+CONTROL_MATTE_BLACK_MATERIAL = "gtvr_cockpit_black"
 SEAT_Z_LIFT = 0.16
 HIDDEN_DEV_CLICKSPOT_RE = re.compile(
     r"^(?:pilotstick|copilotstick|stick|pilotpushtotalk|copilotpushtotalk|"
@@ -833,15 +833,6 @@ def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
     for post_y in (-0.155, 0.155):
         append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (rail_x, post_y, -0.125), (0.12, 0.048, 0.390))
 
-    for brace_y in (-0.52, 0.52):
-        append_cylinder_between(
-            body,
-            CONTROL_MATTE_BLACK_MATERIAL,
-            (dash_x(2.18), brace_y, -0.430),
-            (panel_x - 0.035, brace_y * 0.92, -0.315),
-            0.015,
-        )
-
 
 def add_pfd_static_overlay(static: dict[str, core.Patch], *, x: float, y: float, z: float) -> None:
     half_w = 0.165
@@ -1146,26 +1137,26 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
 
 
 def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
-    for stick_y in (-0.30, 0.30):
-        control = body
-        boot_x = interior_x(1.58)
+    for stick_y, geometry_name in ((-0.30, "GTVRLeftCyclicStick"), (0.30, "GTVRRightCyclicStick")):
+        control = animated_control_geometry(geometry_name)
+        boot_x = interior_x(2.08)
         boot_z = -0.755
         grip_x = interior_x(1.90)
         grip_z = -0.235
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (boot_x - 0.045, stick_y - 0.052, boot_z),
-            (boot_x + 0.045, stick_y + 0.052, boot_z),
-            0.030,
+            (boot_x - 0.055, stick_y - 0.065, boot_z),
+            (boot_x + 0.055, stick_y + 0.065, boot_z),
+            0.034,
             segments=28,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (boot_x, stick_y, boot_z + 0.015),
+            (boot_x, stick_y, boot_z + 0.020),
             (grip_x, stick_y, grip_z),
-            0.022,
+            0.024,
             segments=32,
         )
         append_cylinder_between(
@@ -1321,7 +1312,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added raised upholstered seats, floor-mounted matte-black cyclics, left-side collectives, "
+        "Dev cockpit kit: added raised upholstered seats, animated floor-mounted matte-black cyclics, left-side collectives, "
         "forward rounded pedals and left/middle/right live glass-style displays."
     )
 
@@ -1375,6 +1366,8 @@ def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
 
 def control_graphic_groups() -> list[tuple[str, list[str], str]]:
     candidates = [
+        ("GTVRLeftCyclicGraphics", ["GTVRLeftCyclicStick"], "GTVRLeftCyclicTransform.Output"),
+        ("GTVRRightCyclicGraphics", ["GTVRRightCyclicStick"], "GTVRRightCyclicTransform.Output"),
         ("GTVRLeftCollectiveGraphics", ["LeftCollectiveLever"], "GTVRLeftCollectiveTransform.Output"),
         ("GTVRRightCollectiveGraphics", ["RightCollectiveLever"], "GTVRRightCollectiveTransform.Output"),
         ("GTVRLLPedalGraphics", ["LLPedal"], "GTVRLLPedalTransform.Output"),
@@ -1397,6 +1390,8 @@ def visual_control_dynamic_objects() -> str:
     if not control_graphic_groups():
         return ""
 
+    left_cyclic_pivot = (current_interior_x(2.08), -0.30, -0.755)
+    right_cyclic_pivot = (current_interior_x(2.08), 0.30, -0.755)
     left_collective_pivot = (current_interior_x(1.34), -0.16, -0.565)
     right_collective_pivot = (current_interior_x(1.34), 0.64, -0.565)
     pedal_pivots = {
@@ -1408,6 +1403,36 @@ def visual_control_dynamic_objects() -> str:
 
     return f"""
             // GTVR generated cockpit visual controls
+            <[graphics_input][GTVRVisualCyclicPitchTravel][]
+                <[uint32][InputID][StickCyclicPitch.Output]>
+                <[float64][Scaling][0.16]>
+            >
+            <[graphics_input][GTVRVisualCyclicRollTravel][]
+                <[uint32][InputID][StickCyclicRoll.Output]>
+                <[float64][Scaling][0.16]>
+            >
+            <[graphics_rotation][GTVRLeftCyclicPitchTransform][]
+                <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
+            >
+            <[graphics_rotation][GTVRLeftCyclicTransform][]
+                <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
+                <[string8][InputTransform][GTVRLeftCyclicPitchTransform.Output]>
+            >
+            <[graphics_rotation][GTVRRightCyclicPitchTransform][]
+                <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
+            >
+            <[graphics_rotation][GTVRRightCyclicTransform][]
+                <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
+                <[string8][InputTransform][GTVRRightCyclicPitchTransform.Output]>
+            >
             <[graphics_input][GTVRVisualCollectiveTravel][]
                 <[uint32][InputID][CollectivePitchLever.Output]>
                 <[float64][Scaling][0.2]>
@@ -1424,7 +1449,7 @@ def visual_control_dynamic_objects() -> str:
             >
             <[graphics_input][GTVRVisualRudderPedalTravel][]
                 <[uint32][InputID][ServoRudder.Output]>
-                <[float64][Scaling][-0.15]>
+                <[float64][Scaling][0.15]>
             >
             <[graphics_rotation][GTVRLLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
@@ -1707,8 +1732,8 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated raised upholstered seats, no lower shelf, floor-mounted matte-black cyclics, left-side collectives, forward pedals and left/middle/right live glass-style panels",
-                "animated_controls=collective and pedal meshes are emitted as dev-only graphics; cyclics are fixed until a verified cyclic-only visual input is available; inherited EC135 visible handle clickspots are suppressed in the dev package",
+                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted matte-black cyclics, left-side collectives, forward pedals and left/middle/right live glass-style panels",
+                "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible handle clickspots are suppressed in the dev package",
                 "live_glass=attitude, airspeed, altitude and heading overlay geometry is bound to Aerofly outputs",
                 "stock_display_surfaces=DisplayPFDL DisplayPFDR and DisplayNDL are populated for the preserved EC135 TMQ display path",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
@@ -1775,8 +1800,8 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab, floor-mounted matte-black cyclics, left-side collective placement, forward rounded pedals and left/middle/right live glass-style panels.",
-                "Generated collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics are fixed/floor-mounted to avoid cross-binding with collective movement.",
+                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted matte-black cyclics, left-side collective placement, forward rounded pedals and left/middle/right live glass-style panels.",
+                "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated glass overlays bind attitude, airspeed, altitude and heading graphics to Aerofly outputs.",
                 "Stock EC135 display geometry groups DisplayPFDL, DisplayPFDR and DisplayNDL are populated at the generated screen positions.",
