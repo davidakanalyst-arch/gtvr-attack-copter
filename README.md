@@ -25,6 +25,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `docs/livery-library.md` - local drag-and-drop livery library notes for EC135, F-15E, MB-339, and future aircraft.
 - `docs/frankenheli.md` - non-EC135 Frankenstein rotorcraft build notes for `GTVR Wraith Heli`.
 - `docs/msfs-asset-import.md` - local MSFS helicopter glTF/DDS import findings and Wraith shell bridge workflow.
+- `docs/wraith-dev-workflow.md` - current safe workflow for iterating on `GTVR Wraith Dev` without touching stable `GTVR Wraith`.
 - `blender/create_gtvr_attack_copter_scene.py` - builds a Blender source scene from the named OBJ.
 - `tools/generate_attack_copter_obj.py` - source generator for the first exterior shell concept.
 - `tools/build_blender_source.py` - runs Blender in background to create the `.blend` source scene when Blender is installed.
@@ -38,6 +39,7 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 - `tools/build_gtvr_wraith_optica.py` - current stable-first non-EC135 Wraith builder using the Optica slow-flight graph with the custom helicopter exterior.
 - `tools/build_msfs_shell_source.py` - imports local MSFS helicopter glTF/DDS sources into an Aerofly converter source project.
 - `tools/build_gtvr_wraith_msfs.py` - builds the Optica-based Wraith package with a local MSFS helicopter exterior shell.
+- `tools/build_gtvr_wraith_dev.py` - dev-only EC135-core Wraith build/install wrapper; runs the full converter before assembling geometry changes.
 - `tools/run_aerofly_converter.py` - drives the Aerofly converter GUI using the discovered launch contract.
 - `tools/install_gtvr_repaint_textures.py` - installs converted attack repaint textures and previews with backups.
 - `tools/install_gtvr_overlay_object.py` - diagnostic-only pilot-slot installer; refuses to patch live aircraft by default.
@@ -47,8 +49,8 @@ Goal: keep the enjoyable EC135-style glass-cockpit flying experience, then dress
 
 ## Next Build Steps
 
-1. Test the MSFS-shell `GTVR Wraith Heli` from a fresh runway start; it should prove whether the imported UH-60 exterior bridge is visually viable in FS4.
-2. Use `GTVR Attack Black`, `GTVR Attack Camo`, and `GTVR Attack Desert` as the safe EC135 repaint path.
-3. Treat the standalone EC135-derived `gtvr_attack_copter` aircraft as a drag-copy archive only.
-4. Treat the `gtvr_attack_shell` pilot-slot overlay as a failed diagnostic: it triggered the FS4 fallback STOP model and removed helicopter sound/dynamics.
-5. Do not confuse the MSFS exterior import with a real helicopter flight-model conversion; the current Wraith still inherits Optica controls, sounds, and cockpit camera behavior.
+1. Keep the installed `GTVR Wraith` stable aircraft untouched unless the task explicitly says to update stable.
+2. Iterate on `GTVR Wraith Dev` with `python tools\build_gtvr_wraith_dev.py --full --force-install`.
+3. Run the full Aerofly converter for geometry changes; do not reassemble stale `.tmb` output.
+4. Treat the standalone EC135-derived `gtvr_attack_copter` aircraft as a drag-copy archive only.
+5. Treat the `gtvr_attack_shell` pilot-slot overlay and old `gtvr_wraith_heli` route as failed or retired diagnostics.
