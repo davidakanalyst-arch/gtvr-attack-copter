@@ -61,8 +61,10 @@ _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
 _ORIGINAL_LEGACY_ROTOR_PATCH_MAPS = core.legacy_rotor_patch_maps
 _current_pilot_alignment_x_delta = 0.0
+_current_cockpit_x_delta = DEFAULT_COCKPIT_X_DELTA
 _current_interior_forward_x_delta = DEFAULT_INTERIOR_FORWARD_X_DELTA
 _current_dash_forward_x_delta = DEFAULT_DASH_FORWARD_X_DELTA
+_current_animated_control_geometries: dict[str, dict[str, core.Patch]] = {}
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -82,6 +84,7 @@ def configure_core_for_dev() -> None:
     core.PACKAGE_DIR = DEV_PACKAGE_DIR
     core.patch_tmc = patch_dev_tmc
     core.build_body = build_body_for_dev
+    core.prepare_source = prepare_source_for_dev
     core.legacy_rotor_patch_maps = legacy_rotor_patch_maps_for_dev
     assert_dev_paths()
 
@@ -323,6 +326,10 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
 
 def patch_for(body: dict[str, core.Patch], material_name: str) -> core.Patch:
     return body.setdefault(material_name, core.Patch(material_name))
+
+
+def animated_control_geometry(name: str) -> dict[str, core.Patch]:
+    return _current_animated_control_geometries.setdefault(name, {})
 
 
 def vector_sub(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -575,9 +582,10 @@ def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
         0.021,
         segments=22,
     )
-    for stick_y in (-0.36, 0.36):
+    for stick_y, geometry_name in ((-0.36, "LeftCyclicCont"), (0.36, "RightCyclicCont")):
+        control = animated_control_geometry(geometry_name)
         append_cylinder_between(
-            body,
+            control,
             "gtvr_cockpit_metal",
             (interior_x(2.18), stick_y, -0.32),
             (interior_x(2.25), stick_y, -0.20),
@@ -585,7 +593,7 @@ def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
             segments=20,
         )
         append_cylinder_between(
-            body,
+            control,
             "gtvr_cockpit_rubber",
             (interior_x(2.235), stick_y, -0.210),
             (interior_x(2.355), stick_y, -0.090),
@@ -593,30 +601,37 @@ def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
             segments=22,
         )
         append_cylinder_between(
-            body,
+            control,
             "gtvr_cockpit_metal",
             (interior_x(2.230), stick_y, -0.215),
             (interior_x(2.260), stick_y, -0.185),
             0.046,
             segments=22,
         )
-        append_box(body, "gtvr_cockpit_rubber", (interior_x(2.320), stick_y, -0.110), (0.090, 0.072, 0.034))
-        append_box(body, "gtvr_cockpit_button_red", (interior_x(2.365), stick_y - 0.027, -0.075), (0.030, 0.018, 0.014))
-        append_box(body, "gtvr_cockpit_button_green", (interior_x(2.365), stick_y + 0.027, -0.075), (0.030, 0.018, 0.014))
+        append_box(control, "gtvr_cockpit_rubber", (interior_x(2.320), stick_y, -0.110), (0.090, 0.072, 0.034))
+        append_box(control, "gtvr_cockpit_button_red", (interior_x(2.365), stick_y - 0.027, -0.075), (0.030, 0.018, 0.014))
+        append_box(control, "gtvr_cockpit_button_green", (interior_x(2.365), stick_y + 0.027, -0.075), (0.030, 0.018, 0.014))
 
 
 def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
-    for start_y, end_y in ((-0.58, -0.11), (0.58, 0.63)):
-        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.67), start_y, -0.66), (interior_x(2.08), end_y, -0.49), 0.023, segments=20)
-        append_cylinder_between(body, "gtvr_cockpit_rubber", (interior_x(2.035), end_y, -0.505), (interior_x(2.175), end_y, -0.450), 0.032, segments=22)
-        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y - 0.038, -0.50), (interior_x(2.15), end_y - 0.038, -0.472), 0.018, segments=16)
-        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y + 0.038, -0.50), (interior_x(2.15), end_y + 0.038, -0.472), 0.018, segments=16)
-        append_box(body, "gtvr_cockpit_button_green", (interior_x(2.172), end_y - 0.027, -0.425), (0.024, 0.018, 0.014))
-        append_box(body, "gtvr_cockpit_button_red", (interior_x(2.172), end_y + 0.027, -0.425), (0.024, 0.018, 0.014))
+    for start_y, end_y, geometry_name in (
+        (-0.58, -0.11, "LeftCollectiveLever"),
+        (0.58, 0.63, "RightCollectiveLever"),
+    ):
+        control = animated_control_geometry(geometry_name)
+        append_cylinder_between(control, "gtvr_cockpit_metal", (interior_x(1.67), start_y, -0.66), (interior_x(2.08), end_y, -0.49), 0.023, segments=20)
+        append_cylinder_between(control, "gtvr_cockpit_rubber", (interior_x(2.035), end_y, -0.505), (interior_x(2.175), end_y, -0.450), 0.032, segments=22)
+        append_cylinder_between(control, "gtvr_cockpit_metal", (interior_x(2.08), end_y - 0.038, -0.50), (interior_x(2.15), end_y - 0.038, -0.472), 0.018, segments=16)
+        append_cylinder_between(control, "gtvr_cockpit_metal", (interior_x(2.08), end_y + 0.038, -0.50), (interior_x(2.15), end_y + 0.038, -0.472), 0.018, segments=16)
+        append_box(control, "gtvr_cockpit_button_green", (interior_x(2.172), end_y - 0.027, -0.425), (0.024, 0.018, 0.014))
+        append_box(control, "gtvr_cockpit_button_red", (interior_x(2.172), end_y + 0.027, -0.425), (0.024, 0.018, 0.014))
 
 
 def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
-    for seat_y in (-0.40, 0.40):
+    for seat_y, left_name, right_name in (
+        (-0.40, "LLPedal", "LRPedal"),
+        (0.40, "RLPedal", "RRPedal"),
+    ):
         append_cylinder_between(
             body,
             "gtvr_cockpit_metal",
@@ -625,15 +640,19 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
             0.014,
             segments=16,
         )
-        for pedal_offset in (-0.12, 0.12):
+        for pedal_offset, geometry_name in ((-0.12, left_name), (0.12, right_name)):
             pedal_y = seat_y + pedal_offset
-            append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.96), pedal_y, -0.73), (interior_x(2.21), pedal_y, -0.60), 0.016, segments=16)
-            append_box(body, "gtvr_cockpit_rubber", (interior_x(2.275), pedal_y, -0.550), (0.080, 0.135, 0.115))
-            append_box(body, "gtvr_cockpit_seat_shadow", (interior_x(2.300), pedal_y, -0.535), (0.020, 0.105, 0.095))
+            pedal = animated_control_geometry(geometry_name)
+            append_cylinder_between(pedal, "gtvr_cockpit_metal", (interior_x(1.96), pedal_y, -0.73), (interior_x(2.21), pedal_y, -0.60), 0.016, segments=16)
+            append_box(pedal, "gtvr_cockpit_rubber", (interior_x(2.275), pedal_y, -0.550), (0.080, 0.135, 0.115))
+            append_box(pedal, "gtvr_cockpit_seat_shadow", (interior_x(2.300), pedal_y, -0.535), (0.020, 0.105, 0.095))
 
 
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
+    global _current_animated_control_geometries, _current_cockpit_x_delta
     global _current_dash_forward_x_delta, _current_interior_forward_x_delta
+    _current_animated_control_geometries = {}
+    _current_cockpit_x_delta = args.cockpit_x_delta
     _current_interior_forward_x_delta = args.interior_forward_x_delta
     _current_dash_forward_x_delta = args.dash_forward_x_delta
     if not args.cockpit_kit:
@@ -717,6 +736,254 @@ def build_body_for_dev(args: argparse.Namespace):
     return materials, body, tail_rotor, visual_gear, source_faces, imported_faces
 
 
+def current_interior_x(value: float) -> float:
+    return value + _current_cockpit_x_delta + _current_interior_forward_x_delta
+
+
+def fmt_vector(values: tuple[float, float, float]) -> str:
+    return " ".join(f"{value:.6g}" for value in values)
+
+
+def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
+    return any(patch.indices for patch in patches.values())
+
+
+def control_graphic_groups() -> list[tuple[str, list[str], str]]:
+    candidates = [
+        ("GTVRLeftCyclicGraphics", ["LeftCyclicCont"], "GTVRLeftStickTransform.Output"),
+        ("GTVRRightCyclicGraphics", ["RightCyclicCont"], "GTVRRightStickTransform.Output"),
+        ("GTVRLeftCollectiveGraphics", ["LeftCollectiveLever"], "GTVRLeftCollectiveTransform.Output"),
+        ("GTVRRightCollectiveGraphics", ["RightCollectiveLever"], "GTVRRightCollectiveTransform.Output"),
+        ("GTVRLLPedalGraphics", ["LLPedal"], "GTVRLLPedalTransform.Output"),
+        ("GTVRLRPedalGraphics", ["LRPedal"], "GTVRLRPedalTransform.Output"),
+        ("GTVRRLPedalGraphics", ["RLPedal"], "GTVRRLPedalTransform.Output"),
+        ("GTVRRRPedalGraphics", ["RRPedal"], "GTVRRRPedalTransform.Output"),
+    ]
+    groups: list[tuple[str, list[str], str]] = []
+    for graphic_name, geometry_names, transform_name in candidates:
+        if any(
+            geometry_name in _current_animated_control_geometries
+            and patch_map_has_faces(_current_animated_control_geometries[geometry_name])
+            for geometry_name in geometry_names
+        ):
+            groups.append((graphic_name, geometry_names, transform_name))
+    return groups
+
+
+def visual_control_dynamic_objects() -> str:
+    if not control_graphic_groups():
+        return ""
+
+    left_cyclic_pivot = (current_interior_x(2.18), -0.36, -0.32)
+    right_cyclic_pivot = (current_interior_x(2.18), 0.36, -0.32)
+    left_collective_pivot = (current_interior_x(1.67), -0.58, -0.66)
+    right_collective_pivot = (current_interior_x(1.67), 0.58, -0.66)
+    pedal_pivots = {
+        "LL": (current_interior_x(1.96), -0.52, -0.73),
+        "LR": (current_interior_x(1.96), -0.28, -0.73),
+        "RL": (current_interior_x(1.96), 0.28, -0.73),
+        "RR": (current_interior_x(1.96), 0.52, -0.73),
+    }
+
+    return f"""
+            // GTVR generated cockpit visual controls
+            <[control_input][GTVRVisualCyclicPitchTravel][]
+                <[uint32][InputID][StickCyclicPitch.Output]>
+                <[float64][Scaling][0.2]>
+            >
+            <[control_input][GTVRVisualCyclicRollTravel][]
+                <[uint32][InputID][StickCyclicRoll.Output]>
+                <[float64][Scaling][0.2]>
+            >
+            <[control_rotation][GTVRLeftStickNickTransform][]
+                <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
+            >
+            <[control_rotation][GTVRLeftStickTransform][]
+                <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
+                <[string8][InputTransform][GTVRLeftStickNickTransform.Output]>
+            >
+            <[control_rotation][GTVRRightStickNickTransform][]
+                <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
+            >
+            <[control_rotation][GTVRRightStickTransform][]
+                <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
+                <[string8][InputTransform][GTVRRightStickNickTransform.Output]>
+            >
+            <[control_input][GTVRVisualCollectiveTravel][]
+                <[uint32][InputID][CollectivePitchLever.Output]>
+                <[float64][Scaling][0.2]>
+            >
+            <[control_rotation][GTVRLeftCollectiveTransform][]
+                <[string8][Input][GTVRVisualCollectiveTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(left_collective_pivot)} ]>
+            >
+            <[control_rotation][GTVRRightCollectiveTransform][]
+                <[string8][Input][GTVRVisualCollectiveTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(right_collective_pivot)} ]>
+            >
+            <[control_input][GTVRVisualRudderPedalTravel][]
+                <[uint32][InputID][ServoRudder.Output]>
+                <[float64][Scaling][0.15]>
+            >
+            <[control_rotation][GTVRLLPedalTransform][]
+                <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LL"])} ]>
+            >
+            <[control_rotation][GTVRLRPedalTransform][]
+                <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LR"])} ]>
+            >
+            <[control_rotation][GTVRRLPedalTransform][]
+                <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RL"])} ]>
+            >
+            <[control_rotation][GTVRRRPedalTransform][]
+                <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RR"])} ]>
+            >"""
+
+
+def visual_control_graphics_objects() -> str:
+    lines: list[str] = []
+    for graphic_name, geometry_names, transform_name in control_graphic_groups():
+        lines.extend(
+            [
+                f"            <[rigidbodygraphics][{graphic_name}][]",
+                "                <[uint32][PositionID][Fuselage.R]>",
+                "                <[uint32][OrientationID][Fuselage.Q]>",
+                f"                <[string8][GeometryList][ {' '.join(geometry_names)} ]>",
+                f"                <[string8][InputTransform][{transform_name}]>",
+                "            >",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
+    animated_names = set(_current_animated_control_geometries)
+    static_geometry_names = [name for name in sorted(geometry_names) if name not in animated_names]
+    graphic_objects = visual_control_graphics_objects()
+    text = f"""<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmuniverse][DynamicObjects][]
+            <[rigidbody][Fuselage][]
+                <[float64][Mass][5000.0]>
+                <[tmvector3d][InertiaLength][4.5 1.5 1.5]>
+                <[tmvector3d][R0][0.0 0.0 0.0]>
+                <[tmmatrix3d][B0][1.0 0.0 0.0  0.0 1.0 0.0  0.0 0.0 1.0]>
+            >
+        >
+        <[pointer_list_tmgraphics][GraphicObjects][]
+            <[rigidbodygraphics][Fuselage][]
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[string8][GeometryList][ {' '.join(static_geometry_names)} ]>
+            >
+{graphic_objects}
+        >
+    >
+>
+"""
+    path.write_text(text, encoding="utf-8")
+
+
+def patch_dev_controls_tmd(path: Path) -> None:
+    if not control_graphic_groups():
+        return
+    begin_marker = "            // GTVR generated cockpit visual control transforms begin"
+    end_marker = "            // GTVR generated cockpit visual control transforms end"
+    control_objects = visual_control_dynamic_objects().strip("\n")
+    block = f"{begin_marker}\n{control_objects}\n{end_marker}"
+    text = path.read_text(encoding="utf-8", errors="replace")
+    text = re.sub(
+        rf"\n{re.escape(begin_marker)}.*?{re.escape(end_marker)}",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    if block in text:
+        return
+    updated = re.sub(r"\n        >\s*\n    >\s*\n>\s*$", f"\n{block}\n        >\n    >\n>\n", text, count=1)
+    if updated == text:
+        raise RuntimeError(f"Could not find controls.tmd ControlObjects closing block in {path}")
+    path.write_text(updated, encoding="utf-8")
+    print(f"Patched dev controls transforms: {path}")
+
+
+def prepare_source_for_dev(args: argparse.Namespace) -> None:
+    if core.SOURCE_DIR.exists():
+        shutil.rmtree(core.SOURCE_DIR)
+    core.SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+    core.ensure_runtime_resources(core.SOURCE_ROOT)
+
+    materials, body, tail_rotor, visual_gear, source_faces, imported_faces = core.build_body(args)
+    core.add_flat_materials(materials, core.SOURCE_DIR)
+    main_rotor, fallback_tail_rotor = core.legacy_rotor_patch_maps()
+    core.translate_patch_map(main_rotor, 0.0, 0.0, args.visual_body_lift)
+    core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
+    visual_tail_rotor = tail_rotor or fallback_tail_rotor
+
+    animated_names = set(_current_animated_control_geometries)
+    geometries: dict[str, dict[str, core.Patch]] = {}
+    for geometry_name in core.read_geometry_names():
+        if geometry_name == "Fuselage":
+            geometries[geometry_name] = core.copy_patch_map(body)
+        elif geometry_name in animated_names:
+            geometries[geometry_name] = core.copy_patch_map(_current_animated_control_geometries[geometry_name])
+        elif geometry_name == "SkidsMiddle":
+            geometries[geometry_name] = core.copy_patch_map(visual_gear)
+        elif geometry_name in {"RotorBlade0", "RotorBlade1", "RotorBlade2", "RotorBlade3"}:
+            geometries[geometry_name] = core.clone_patch_map(main_rotor)
+        elif geometry_name == "TailBlade0":
+            geometries[geometry_name] = core.copy_patch_map(visual_tail_rotor)
+        elif geometry_name.startswith("TailBlade") or geometry_name in {"TailRotorHub", "TailRotorCont"}:
+            geometries[geometry_name] = {}
+        else:
+            geometries[geometry_name] = {}
+
+    for geometry_name, patches in _current_animated_control_geometries.items():
+        geometries.setdefault(geometry_name, core.copy_patch_map(patches))
+
+    core.write_aircraft_source_tmc(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmc")
+    write_dev_visual_tmd(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmd", sorted(geometries))
+    core.write_tgi(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tgi", materials, geometries)
+    core.write_model_tmc(core.SOURCE_DIR / "model.tmc", materials, geometries, args.max_texture_size)
+    core.write_root_converter_config(core.SOURCE_ROOT / "config.tmc", core.SOURCE_ROOT, core.BUILD_USER)
+    (core.SOURCE_DIR / "_GTVR_WRAITH_DEV_SOURCE.md").write_text(
+        "\n".join(
+            [
+                "# GTVR Wraith Dev Source",
+                "",
+                "This source compiles the dev Wraith exterior with generated cockpit visuals.",
+                f"- Geometry names emitted: `{len(geometries)}`",
+                f"- Animated control geometry groups: `{len(control_graphic_groups())}`",
+                f"- MSFS source faces: `{source_faces}`",
+                f"- Imported faces: `{imported_faces}`",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(f"Wrote dev Wraith source: {core.SOURCE_DIR}")
+    print(f"Geometry names emitted: {len(geometries)}")
+    print(f"Animated control geometry groups: {len(control_graphic_groups())}")
+    print(f"Imported body faces: {imported_faces}")
+
+
 def write_source_stamp() -> None:
     DEV_SOURCE_STAMP.write_text(
         "\n".join(
@@ -726,6 +993,8 @@ def write_source_stamp() -> None:
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "cockpit_kit=generated upholstered seats, R22-style controls, pedals and left/middle/right glass-style panels",
+                "animated_controls=cyclics, collectives and pedal meshes are emitted as dev-only graphics with input transforms",
+                f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
                 f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
                 f"pilot_alignment_x_delta={_current_pilot_alignment_x_delta:.3f}",
@@ -776,6 +1045,9 @@ def run_converter(timeout: float) -> int:
 
 
 def write_dev_package_marker() -> None:
+    controls_tmd = DEV_PACKAGE_DIR / "controls.tmd"
+    if controls_tmd.exists():
+        patch_dev_controls_tmd(controls_tmd)
     stable_marker = DEV_PACKAGE_DIR / "_GTVR_WRAITH_EC135_CORE.txt"
     if stable_marker.exists():
         stable_marker.unlink()
@@ -789,6 +1061,7 @@ def write_dev_package_marker() -> None:
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Generated cockpit kit includes forward-shifted upholstered seats, R22-style cyclic, collectives/throttles, pedals and left/middle/right glass-style panels.",
+                "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
