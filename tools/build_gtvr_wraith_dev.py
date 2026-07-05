@@ -38,6 +38,7 @@ INNER_SHELL_TEXTURE_NAME = "gtvr_inner_matte_black"
 INNER_SHELL_COLOR = (2, 2, 2)
 DEFAULT_PILOT_ALIGNMENT_X_DELTA = 0.40
 DEFAULT_COCKPIT_X_DELTA = 0.0
+DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 
 COCKPIT_FLAT_MATERIALS = {
@@ -49,15 +50,16 @@ COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_button_green": ((10, 150, 78), "generated-gtvr-dev-cockpit-button-green"),
     "gtvr_cockpit_button_red": ((190, 28, 24), "generated-gtvr-dev-cockpit-button-red"),
 }
-COCKPIT_PFD_MATERIAL = "gtvr_cockpit_analog"
-COCKPIT_MAP_MATERIAL = "gtvr_cockpit_radio"
-COCKPIT_PFD_TEXTURE = "gtvr_cockpit_analog"
-COCKPIT_MAP_TEXTURE = "gtvr_cockpit_radio"
+COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
+COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
+COCKPIT_PFD_TEXTURE = "gtvr_cockpit_flight"
+COCKPIT_MAP_TEXTURE = "gtvr_cockpit_map"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
 _ORIGINAL_LEGACY_ROTOR_PATCH_MAPS = core.legacy_rotor_patch_maps
 _current_pilot_alignment_x_delta = 0.0
+_current_interior_forward_x_delta = DEFAULT_INTERIOR_FORWARD_X_DELTA
 _current_dash_forward_x_delta = DEFAULT_DASH_FORWARD_X_DELTA
 
 
@@ -219,118 +221,71 @@ def load_font(size: int):
     return ImageFont.load_default()
 
 
-def draw_centered_text(draw, center: tuple[int, int], text: str, font, fill: tuple[int, int, int]) -> None:
-    bbox = draw.textbbox((0, 0), text, font=font)
-    width = bbox[2] - bbox[0]
-    height = bbox[3] - bbox[1]
-    draw.text((center[0] - width * 0.5, center[1] - height * 0.5), text, font=font, fill=fill)
-
-
-def draw_round_gauge(
-    draw,
-    *,
-    center: tuple[int, int],
-    radius: int,
-    label: str,
-    value: str,
-    needle_degrees: float,
-    accent: tuple[int, int, int] = (220, 225, 218),
-) -> None:
-    x, y = center
-    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=(9, 10, 10), outline=(138, 143, 136), width=5)
-    draw.ellipse((x - radius + 10, y - radius + 10, x + radius - 10, y + radius - 10), outline=(48, 54, 52), width=2)
-    for index in range(13):
-        angle = math.radians(220 + index * (280 / 12))
-        tick_outer = radius - 12
-        tick_inner = radius - (24 if index % 3 == 0 else 18)
-        x0 = x + math.cos(angle) * tick_inner
-        y0 = y + math.sin(angle) * tick_inner
-        x1 = x + math.cos(angle) * tick_outer
-        y1 = y + math.sin(angle) * tick_outer
-        draw.line((x0, y0, x1, y1), fill=accent, width=3 if index % 3 == 0 else 2)
-
-    needle_angle = math.radians(needle_degrees)
-    needle_x = x + math.cos(needle_angle) * (radius - 28)
-    needle_y = y + math.sin(needle_angle) * (radius - 28)
-    draw.line((x, y, needle_x, needle_y), fill=(246, 68, 54), width=5)
-    draw.ellipse((x - 7, y - 7, x + 7, y + 7), fill=(205, 210, 202), outline=(20, 20, 20), width=2)
-
-    small = load_font(18)
-    tiny = load_font(14)
-    draw_centered_text(draw, (x, y - radius + 30), label, tiny, (188, 198, 190))
-    draw_centered_text(draw, (x, y + radius - 28), value, small, (236, 240, 230))
-
-
 def write_cockpit_pfd_texture(path: Path) -> None:
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGB", (512, 512), (5, 6, 6))
+    image = Image.new("RGB", (512, 512), (4, 8, 10))
     draw = ImageDraw.Draw(image)
-    title = load_font(30)
-    small = load_font(17)
+    small = load_font(21)
+    medium = load_font(30)
+    large = load_font(46)
 
-    draw.rounded_rectangle((18, 16, 494, 496), radius=18, fill=(15, 16, 16), outline=(96, 100, 96), width=4)
-    for x in (116, 256, 396):
-        draw.line((x, 52, x, 458), fill=(36, 38, 38), width=2)
-    draw.line((40, 256, 472, 256), fill=(36, 38, 38), width=2)
+    draw.rounded_rectangle((14, 12, 498, 500), radius=18, fill=(5, 12, 15), outline=(74, 190, 190), width=4)
+    draw.rectangle((118, 56, 394, 246), fill=(20, 94, 146))
+    draw.rectangle((118, 246, 394, 374), fill=(92, 56, 32))
+    draw.line((118, 246, 394, 246), fill=(238, 238, 215), width=4)
+    for offset in (-80, -40, 40, 80):
+        draw.line((196, 246 + offset, 316, 246 + offset), fill=(220, 230, 230), width=2)
+    draw.line((214, 246, 298, 246), fill=(255, 235, 90), width=5)
+    draw.polygon([(256, 206), (242, 230), (270, 230)], fill=(255, 235, 90))
 
-    gauges = [
-        ((128, 136), "IAS", "92 KT", -35),
-        ((256, 136), "ALT", "1420", 30),
-        ((384, 136), "VSI", "+200", -70),
-        ((128, 334), "RPM", "102%", 18),
-        ((256, 334), "MAP", "23.1", -18),
-        ((384, 334), "HDG", "084", -95),
-    ]
-    for center, label, value, needle in gauges:
-        draw_round_gauge(draw, center=center, radius=64, label=label, value=value, needle_degrees=needle)
+    draw.rectangle((25, 62, 105, 382), outline=(78, 220, 220), width=3)
+    draw.text((38, 26), "SPD", font=small, fill=(130, 240, 240))
+    for y, value in zip((88, 150, 212, 274, 336), ("130", "110", "090", "070", "050")):
+        draw.text((43, y), value, font=small, fill=(224, 255, 255))
+        draw.line((88, y + 14, 104, y + 14), fill=(224, 255, 255), width=2)
+    draw.rectangle((32, 216, 100, 274), outline=(255, 255, 255), width=3)
+    draw.text((47, 230), "092", font=medium, fill=(255, 255, 255))
 
-    draw_centered_text(draw, (256, 37), "WRAITH ANALOG", title, (226, 232, 220))
-    for index, (label, color) in enumerate(
-        (
-            ("LOW RPM", (190, 34, 26)),
-            ("GOV", (28, 150, 80)),
-            ("HYD", (210, 160, 42)),
-            ("FUEL", (28, 150, 80)),
-        )
-    ):
-        left = 74 + index * 92
-        draw.rounded_rectangle((left, 462, left + 72, 484), radius=5, fill=color)
-        draw_centered_text(draw, (left + 36, 473), label, small, (5, 6, 6))
+    draw.rectangle((407, 62, 487, 382), outline=(78, 220, 220), width=3)
+    draw.text((427, 26), "ALT", font=small, fill=(130, 240, 240))
+    for y, value in zip((88, 150, 212, 274, 336), ("1600", "1500", "1400", "1300", "1200")):
+        draw.text((416, y), value, font=small, fill=(224, 255, 255))
+        draw.line((407, y + 14, 423, y + 14), fill=(224, 255, 255), width=2)
+    draw.rectangle((413, 216, 483, 274), outline=(255, 255, 255), width=3)
+    draw.text((420, 232), "1420", font=small, fill=(255, 255, 255))
+
+    draw.text((178, 398), "WRAITH", font=large, fill=(114, 230, 190))
+    draw.text((154, 450), "ATT   IAS   ALT", font=medium, fill=(190, 230, 220))
     image.save(path)
 
 
 def write_cockpit_map_texture(path: Path) -> None:
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGB", (512, 512), (6, 7, 7))
+    image = Image.new("RGB", (512, 512), (1, 14, 12))
     draw = ImageDraw.Draw(image)
-    tiny = load_font(18)
-    small = load_font(23)
+    small = load_font(22)
     medium = load_font(32)
+    large = load_font(42)
 
-    draw.rounded_rectangle((22, 18, 490, 494), radius=16, fill=(13, 14, 14), outline=(91, 94, 90), width=4)
-    draw_centered_text(draw, (256, 43), "RADIO / ENGINE", medium, (226, 232, 220))
-
-    for row, label in enumerate(("COM1  122.800", "NAV1  110.30", "XPDR  7000")):
-        top = 78 + row * 58
-        draw.rounded_rectangle((62, top, 450, top + 40), radius=7, fill=(4, 24, 18), outline=(54, 82, 72), width=2)
-        draw.text((82, top + 8), label, font=small, fill=(112, 238, 176))
-
-    engine_gauges = [
-        ((116, 312), "FUEL", "64", -30),
-        ((256, 312), "OIL", "72", 35),
-        ((396, 312), "TEMP", "180", 10),
-    ]
-    for center, label, value, needle in engine_gauges:
-        draw_round_gauge(draw, center=center, radius=50, label=label, value=value, needle_degrees=needle, accent=(198, 208, 190))
-
-    switch_labels = ("BAT", "ALT", "FUEL", "CLUTCH", "LIGHT")
-    for index, label in enumerate(switch_labels):
-        cx = 78 + index * 90
-        draw.rounded_rectangle((cx - 28, 414, cx + 28, 448), radius=5, fill=(34, 36, 36), outline=(120, 124, 118), width=2)
-        draw.line((cx, 416, cx + 10, 446), fill=(220, 225, 214), width=5)
-        draw_centered_text(draw, (cx, 470), label, tiny, (210, 216, 206))
+    draw.rounded_rectangle((14, 12, 498, 500), radius=18, fill=(2, 16, 14), outline=(62, 205, 160), width=4)
+    for pos in range(42, 512, 46):
+        draw.line((pos, 60, pos, 430), fill=(14, 78, 64), width=1)
+        draw.line((34, pos, 478, pos), fill=(14, 78, 64), width=1)
+    draw.ellipse((70, 82, 442, 454), outline=(30, 155, 122), width=3)
+    draw.ellipse((154, 166, 358, 370), outline=(24, 105, 92), width=2)
+    draw.line((256, 92, 256, 444), fill=(54, 188, 144), width=2)
+    draw.line((72, 268, 440, 268), fill=(54, 188, 144), width=2)
+    route = [(118, 366), (178, 315), (232, 288), (298, 238), (378, 170)]
+    draw.line(route, fill=(245, 216, 70), width=6, joint="curve")
+    for point in route:
+        x, y = point
+        draw.ellipse((x - 8, y - 8, x + 8, y + 8), fill=(245, 216, 70))
+    draw.polygon([(256, 224), (238, 292), (256, 282), (274, 292)], fill=(70, 220, 255))
+    draw.text((34, 28), "ROLLING MAP", font=large, fill=(120, 245, 210))
+    draw.text((36, 452), "HDG 084", font=medium, fill=(220, 255, 220))
+    draw.text((364, 458), "GS 092", font=small, fill=(220, 255, 220))
     image.save(path)
 
 
@@ -352,15 +307,15 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
         materials[next_material_index(materials)] = Material(
             name=COCKPIT_PFD_MATERIAL,
             texture_name=COCKPIT_PFD_TEXTURE,
-            source_uri="generated-gtvr-dev-cockpit-analog",
-            color=(92, 96, 92, 255),
+            source_uri="generated-gtvr-dev-cockpit-flight",
+            color=(24, 170, 180, 255),
         )
     if not any(material.name == COCKPIT_MAP_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
             name=COCKPIT_MAP_MATERIAL,
             texture_name=COCKPIT_MAP_TEXTURE,
-            source_uri="generated-gtvr-dev-cockpit-radio",
-            color=(82, 92, 84, 255),
+            source_uri="generated-gtvr-dev-cockpit-map",
+            color=(20, 160, 120, 255),
         )
 
 
@@ -528,57 +483,64 @@ def add_framed_screen(
     append_textured_panel(body, material_name, center=(x - 0.008, y, z), width_y=width_y, height_z=height_z)
 
 
-def add_gauge_bezel(
-    body: dict[str, core.Patch],
-    *,
-    center: tuple[float, float, float],
-    radius: float,
-) -> None:
-    x, y, z = center
-    append_cylinder_between(
-        body,
-        "gtvr_cockpit_metal",
-        (x + 0.006, y, z),
-        (x - 0.022, y, z),
-        radius,
-        segments=24,
-        caps=False,
-    )
+def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
+    panel_x = dash_x(2.47)
+    rail_x = dash_x(2.45)
+
+    append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, 0.080), (0.13, 1.22, 0.070))
+    append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, -0.330), (0.13, 1.22, 0.075))
+    append_box(body, "gtvr_cockpit_black", (rail_x, -0.625, -0.125), (0.13, 0.070, 0.430))
+    append_box(body, "gtvr_cockpit_black", (rail_x, 0.625, -0.125), (0.13, 0.070, 0.430))
+
+    for post_y in (-0.155, 0.155):
+        append_box(body, "gtvr_cockpit_dark_gray", (rail_x, post_y, -0.125), (0.12, 0.048, 0.390))
+
+    append_box(body, "gtvr_cockpit_dark_gray", (dash_x(2.23), 0.0, -0.405), (0.30, 1.06, 0.080))
+    append_box(body, "gtvr_cockpit_black", (dash_x(2.32), -0.505, -0.235), (0.16, 0.050, 0.250))
+    append_box(body, "gtvr_cockpit_black", (dash_x(2.32), 0.505, -0.235), (0.16, 0.050, 0.250))
+
+    for brace_y in (-0.52, 0.52):
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_metal",
+            (dash_x(2.18), brace_y, -0.430),
+            (panel_x - 0.035, brace_y * 0.92, -0.315),
+            0.015,
+        )
 
 
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
-    global _current_dash_forward_x_delta
+    global _current_dash_forward_x_delta, _current_interior_forward_x_delta
+    _current_interior_forward_x_delta = args.interior_forward_x_delta
     _current_dash_forward_x_delta = args.dash_forward_x_delta
     if not args.cockpit_kit:
         return
     ensure_cockpit_materials(materials)
     x_delta = args.cockpit_x_delta
     x = lambda value: value + x_delta
+    interior_x = lambda value: x(value + args.interior_forward_x_delta)
     dash_x = lambda value: x(value + args.dash_forward_x_delta)
 
-    append_box(body, "gtvr_cockpit_dark_gray", (x(1.62), 0.0, -0.775), (1.55, 1.34, 0.055))
-    append_box(body, "gtvr_cockpit_black", (dash_x(2.30), 0.0, -0.18), (0.42, 1.20, 0.42))
-    append_box(body, "gtvr_cockpit_dark_gray", (x(1.78), 0.0, -0.55), (0.78, 0.22, 0.28))
-    append_box(body, "gtvr_cockpit_black", (x(1.94), 0.0, -0.37), (0.40, 0.18, 0.11))
+    append_box(body, "gtvr_cockpit_dark_gray", (interior_x(1.62), 0.0, -0.775), (1.55, 1.34, 0.055))
+    add_dashboard_frame(body, dash_x)
+    append_box(body, "gtvr_cockpit_dark_gray", (interior_x(1.78), 0.0, -0.55), (0.78, 0.22, 0.28))
+    append_box(body, "gtvr_cockpit_black", (interior_x(1.94), 0.0, -0.37), (0.40, 0.18, 0.11))
 
     for seat_y in (-0.40, 0.40):
-        append_box(body, "gtvr_cockpit_seat", (x(1.28), seat_y, -0.67), (0.58, 0.42, 0.13))
-        append_box(body, "gtvr_cockpit_seat", (x(0.98), seat_y, -0.37), (0.13, 0.42, 0.58))
-        append_box(body, "gtvr_cockpit_black", (x(0.91), seat_y, -0.01), (0.11, 0.34, 0.18))
-        append_box(body, "gtvr_cockpit_dark_gray", (x(1.35), seat_y, -0.575), (0.42, 0.32, 0.035))
+        append_box(body, "gtvr_cockpit_seat", (interior_x(1.28), seat_y, -0.67), (0.58, 0.42, 0.13))
+        append_box(body, "gtvr_cockpit_seat", (interior_x(0.98), seat_y, -0.37), (0.13, 0.42, 0.58))
+        append_box(body, "gtvr_cockpit_black", (interior_x(0.91), seat_y, -0.01), (0.11, 0.34, 0.18))
+        append_box(body, "gtvr_cockpit_dark_gray", (interior_x(1.35), seat_y, -0.575), (0.42, 0.32, 0.035))
 
     screen_x = dash_x(2.47)
-    for side_y in (-0.36, 0.36):
+    for side_y in (-0.39, 0.39):
         add_framed_screen(
             body,
             material_name=COCKPIT_PFD_MATERIAL,
             center=(screen_x, side_y, -0.12),
-            width_y=0.38,
+            width_y=0.34,
             height_z=0.34,
         )
-        for bezel_y in (side_y - 0.095, side_y, side_y + 0.095):
-            add_gauge_bezel(body, center=(screen_x - 0.02, bezel_y, -0.055), radius=0.046)
-            add_gauge_bezel(body, center=(screen_x - 0.02, bezel_y, -0.185), radius=0.046)
         append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y - 0.215, -0.12), (0.035, 0.026, 0.39))
         append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y + 0.215, -0.12), (0.035, 0.026, 0.39))
 
@@ -586,7 +548,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
         body,
         material_name=COCKPIT_MAP_MATERIAL,
         center=(screen_x, 0.0, -0.12),
-        width_y=0.22,
+        width_y=0.30,
         height_z=0.34,
     )
 
@@ -608,29 +570,29 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
             segments=18,
         )
 
-    append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.09), 0.0, -0.66), (x(2.18), 0.0, -0.32), 0.024)
-    append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.18), -0.36, -0.32), (x(2.18), 0.36, -0.32), 0.020)
+    append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.09), 0.0, -0.66), (interior_x(2.18), 0.0, -0.32), 0.024)
+    append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.18), -0.36, -0.32), (interior_x(2.18), 0.36, -0.32), 0.020)
     for stick_y in (-0.36, 0.36):
-        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.18), stick_y, -0.32), (x(2.25), stick_y, -0.20), 0.019)
-        append_cylinder_between(body, "gtvr_cockpit_rubber", (x(2.25), stick_y, -0.20), (x(2.34), stick_y, -0.11), 0.042)
-        append_box(body, "gtvr_cockpit_button_red", (x(2.325), stick_y - 0.027, -0.088), (0.032, 0.018, 0.014))
-        append_box(body, "gtvr_cockpit_button_green", (x(2.325), stick_y + 0.027, -0.088), (0.032, 0.018, 0.014))
+        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.18), stick_y, -0.32), (interior_x(2.25), stick_y, -0.20), 0.019)
+        append_cylinder_between(body, "gtvr_cockpit_rubber", (interior_x(2.25), stick_y, -0.20), (interior_x(2.34), stick_y, -0.11), 0.042)
+        append_box(body, "gtvr_cockpit_button_red", (interior_x(2.325), stick_y - 0.027, -0.088), (0.032, 0.018, 0.014))
+        append_box(body, "gtvr_cockpit_button_green", (interior_x(2.325), stick_y + 0.027, -0.088), (0.032, 0.018, 0.014))
 
     for start_y, end_y in ((-0.58, -0.11), (0.58, 0.63)):
-        append_cylinder_between(body, "gtvr_cockpit_metal", (x(1.67), start_y, -0.66), (x(2.08), end_y, -0.49), 0.022)
-        append_cylinder_between(body, "gtvr_cockpit_rubber", (x(2.04), end_y, -0.505), (x(2.16), end_y, -0.455), 0.030)
-        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.08), end_y - 0.035, -0.50), (x(2.14), end_y - 0.035, -0.475), 0.017)
-        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.08), end_y + 0.035, -0.50), (x(2.14), end_y + 0.035, -0.475), 0.017)
+        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.67), start_y, -0.66), (interior_x(2.08), end_y, -0.49), 0.022)
+        append_cylinder_between(body, "gtvr_cockpit_rubber", (interior_x(2.04), end_y, -0.505), (interior_x(2.16), end_y, -0.455), 0.030)
+        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y - 0.035, -0.50), (interior_x(2.14), end_y - 0.035, -0.475), 0.017)
+        append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(2.08), end_y + 0.035, -0.50), (interior_x(2.14), end_y + 0.035, -0.475), 0.017)
 
     for seat_y in (-0.40, 0.40):
         for pedal_offset in (-0.12, 0.12):
             pedal_y = seat_y + pedal_offset
-            append_cylinder_between(body, "gtvr_cockpit_metal", (x(1.96), pedal_y, -0.73), (x(2.21), pedal_y, -0.60), 0.016)
-            append_box(body, "gtvr_cockpit_rubber", (x(2.26), pedal_y, -0.56), (0.055, 0.13, 0.10))
+            append_cylinder_between(body, "gtvr_cockpit_metal", (interior_x(1.96), pedal_y, -0.73), (interior_x(2.21), pedal_y, -0.60), 0.016)
+            append_box(body, "gtvr_cockpit_rubber", (interior_x(2.26), pedal_y, -0.56), (0.055, 0.13, 0.10))
 
     print(
         "Dev cockpit kit: added seats, cyclics, collectives/throttles, pedals, "
-        "R22-style analogue panels, a central cyclic bar and forward panel hardware."
+        "left/middle/right glass-style displays, a central cyclic bar and framed forward panel hardware."
     )
 
 
@@ -677,7 +639,8 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated seats, R22-style controls, pedals and forward analogue panels",
+                "cockpit_kit=generated seats, R22-style controls, pedals and left/middle/right glass-style panels",
+                f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
                 f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
                 f"pilot_alignment_x_delta={_current_pilot_alignment_x_delta:.3f}",
                 "",
@@ -739,7 +702,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes seats, R22-style cyclic, collectives/throttles, pedals and forward analogue panels.",
+                "Generated cockpit kit includes forward-shifted seats, R22-style cyclic, collectives/throttles, pedals and left/middle/right glass-style panels.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
@@ -798,7 +761,13 @@ def add_core_args(parser: argparse.ArgumentParser) -> None:
         "--cockpit-x-delta",
         type=float,
         default=DEFAULT_COCKPIT_X_DELTA,
-        help="Dev-only X tuning offset for generated cockpit seats, controls and displays.",
+        help="Dev-only X tuning offset for the whole generated cockpit kit.",
+    )
+    parser.add_argument(
+        "--interior-forward-x-delta",
+        type=float,
+        default=DEFAULT_INTERIOR_FORWARD_X_DELTA,
+        help="Dev-only extra forward X offset for seats, cyclic, collectives, pedals and floor. Does not move the dash or pilot.",
     )
     parser.add_argument(
         "--dash-forward-x-delta",
