@@ -38,6 +38,7 @@ INNER_SHELL_TEXTURE_NAME = "gtvr_inner_matte_black"
 INNER_SHELL_COLOR = (2, 2, 2)
 DEFAULT_PILOT_ALIGNMENT_X_DELTA = 0.40
 DEFAULT_COCKPIT_X_DELTA = 0.0
+DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
@@ -57,6 +58,7 @@ _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
 _ORIGINAL_LEGACY_ROTOR_PATCH_MAPS = core.legacy_rotor_patch_maps
 _current_pilot_alignment_x_delta = 0.0
+_current_dash_forward_x_delta = DEFAULT_DASH_FORWARD_X_DELTA
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -476,15 +478,17 @@ def add_framed_screen(
 
 
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
+    global _current_dash_forward_x_delta
+    _current_dash_forward_x_delta = args.dash_forward_x_delta
     if not args.cockpit_kit:
         return
     ensure_cockpit_materials(materials)
     x_delta = args.cockpit_x_delta
     x = lambda value: value + x_delta
+    dash_x = lambda value: x(value + args.dash_forward_x_delta)
 
     append_box(body, "gtvr_cockpit_dark_gray", (x(1.62), 0.0, -0.775), (1.55, 1.34, 0.055))
-    append_box(body, "gtvr_cockpit_black", (x(2.30), 0.0, -0.31), (0.56, 1.18, 0.14))
-    append_box(body, "gtvr_cockpit_black", (x(2.23), 0.0, 0.095), (0.52, 1.16, 0.075))
+    append_box(body, "gtvr_cockpit_black", (dash_x(2.30), 0.0, -0.31), (0.56, 1.18, 0.14))
     append_box(body, "gtvr_cockpit_dark_gray", (x(1.78), 0.0, -0.55), (0.78, 0.22, 0.28))
     append_box(body, "gtvr_cockpit_black", (x(1.94), 0.0, -0.37), (0.40, 0.18, 0.11))
 
@@ -494,27 +498,27 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
         append_box(body, "gtvr_cockpit_black", (x(0.91), seat_y, -0.01), (0.11, 0.34, 0.18))
         append_box(body, "gtvr_cockpit_dark_gray", (x(1.35), seat_y, -0.575), (0.42, 0.32, 0.035))
 
-    screen_x = x(2.47)
+    screen_x = dash_x(2.47)
     for side_y in (-0.34, 0.20):
         add_framed_screen(body, material_name=COCKPIT_PFD_MATERIAL, center=(screen_x, side_y, 0.015))
         add_framed_screen(body, material_name=COCKPIT_MAP_MATERIAL, center=(screen_x, side_y, -0.205), height_z=0.155)
-        append_box(body, "gtvr_cockpit_metal", (x(2.43), side_y - 0.18, -0.095), (0.035, 0.028, 0.40))
-        append_box(body, "gtvr_cockpit_metal", (x(2.43), side_y + 0.18, -0.095), (0.035, 0.028, 0.40))
+        append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y - 0.18, -0.095), (0.035, 0.028, 0.40))
+        append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y + 0.18, -0.095), (0.035, 0.028, 0.40))
 
     for center_y in (-0.07, 0.07):
         append_cylinder_between(
             body,
             "gtvr_cockpit_metal",
-            (x(2.44), center_y, -0.125),
-            (x(2.425), center_y, -0.125),
+            (dash_x(2.44), center_y, -0.125),
+            (dash_x(2.425), center_y, -0.125),
             0.052,
             segments=18,
         )
         append_cylinder_between(
             body,
             "gtvr_cockpit_rubber",
-            (x(2.418), center_y, -0.125),
-            (x(2.405), center_y, -0.125),
+            (dash_x(2.418), center_y, -0.125),
+            (dash_x(2.405), center_y, -0.125),
             0.038,
             segments=18,
         )
@@ -539,7 +543,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added seats, cyclics, collectives/throttles, pedals, "
-        "dual PFD/map glass displays and panel hardware."
+        "dual PFD/map glass displays and forward panel hardware."
     )
 
 
@@ -586,7 +590,8 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated seats, controls, pedals and static glass displays",
+                "cockpit_kit=generated seats, controls, pedals and forward static glass displays",
+                f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
                 f"pilot_alignment_x_delta={_current_pilot_alignment_x_delta:.3f}",
                 "",
             ]
@@ -647,7 +652,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes seats, cyclics, collectives/throttles, pedals and static PFD/map displays.",
+                "Generated cockpit kit includes seats, cyclics, collectives/throttles, pedals and forward static PFD/map displays.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
@@ -707,6 +712,12 @@ def add_core_args(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=DEFAULT_COCKPIT_X_DELTA,
         help="Dev-only X tuning offset for generated cockpit seats, controls and displays.",
+    )
+    parser.add_argument(
+        "--dash-forward-x-delta",
+        type=float,
+        default=DEFAULT_DASH_FORWARD_X_DELTA,
+        help="Dev-only extra forward X offset for the dashboard and display group. Does not move seats, controls or pilot.",
     )
     parser.add_argument("--no-yaw-180", dest="yaw_180", action="store_false")
     parser.set_defaults(yaw_180=True)
