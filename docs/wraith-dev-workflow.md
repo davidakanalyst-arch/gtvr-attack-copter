@@ -26,7 +26,8 @@ Checked on 2026-07-05:
 - `gtvr_wraith_heli` is not installed in the Aerofly FS4 user aircraft folder.
 - `gtvr_wraith_dev.tmc` uses `DisplayName` and `DisplayNameFull` of `GTVR Wraith Dev`.
 - `gtvr_wraith_dev.tmc` uses ICAO `GTWD`.
-- The installed dev `.tmb` hash matches the installed stable `.tmb` hash, so dev starts from the known-good visual geometry.
+- `gtvr_wraith_dev.tmc` uses stock pilot `pilot_robert` to restore the earlier aft/side-window pilot seating alignment from the retired Wraith path.
+- The installed dev `.tmb` intentionally differs from stable once dev-only geometry experiments, such as the matte black inner shell, are installed.
 - Both stable and dev use the proven contact spheres:
 
 ```text
@@ -77,6 +78,10 @@ Disable this only for diagnostics:
 ```powershell
 python tools\build_gtvr_wraith_dev.py --full --force-install --no-inner-shell
 ```
+
+## Pilot Position
+
+The retired `gtvr_wraith_heli` path used `pilot_robert`, which sat farther aft relative to the Wraith shell. The dev EC135-core package keeps the current shell work and patches only `gtvr_wraith_dev.tmc` to use `Pilot[pilot_robert]`, avoiding a rollback of the visual TMB work.
 
 ## Promotion Rule
 

@@ -18,6 +18,7 @@ STABLE_AIRCRAFT_NAME = "gtvr_wraith_ec135_core"
 DEV_AIRCRAFT_NAME = "gtvr_wraith_dev"
 DEV_DISPLAY_NAME = "GTVR Wraith Dev"
 DEV_ICAO = "GTWD"
+DEV_PILOT = "pilot_robert"
 
 DEV_SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_dev_source" / "aircraft"
 DEV_SOURCE_DIR = DEV_SOURCE_ROOT / DEV_AIRCRAFT_NAME
@@ -43,6 +44,7 @@ def patch_dev_tmc(path: Path) -> None:
     _ORIGINAL_PATCH_TMC(path)
     text = path.read_text(encoding="utf-8", errors="replace")
     text = text.replace("<[stringt8c][ICAO][GTWE]>", f"<[stringt8c][ICAO][{DEV_ICAO}]>", 1)
+    text = re.sub(r"<\[string8\]\[Pilot\]\[[^\]]+\]>", f"<[string8][Pilot][{DEV_PILOT}]>", text, count=1)
     path.write_text(text, encoding="utf-8")
 
 
@@ -233,6 +235,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
+                f"Dev pilot uses {DEV_PILOT} to restore the earlier aft/side-window seating position.",
                 "",
             ]
         ),
