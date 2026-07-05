@@ -504,7 +504,6 @@ def patch_tmc(path: Path) -> None:
         text,
         count=1,
     )
-    text = re.sub(r"\n\s*<\[string8\]\[Pilot\]\[[^\]]*\]>", "", text, count=1)
     path.write_text(text, encoding="utf-8")
 
 
