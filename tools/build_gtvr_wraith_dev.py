@@ -30,7 +30,7 @@ DEV_SOURCE_STAMP = DEV_SOURCE_DIR / "_GTVR_WRAITH_DEV_SOURCE_STAMP.txt"
 DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
 DEFAULT_INNER_SHELL_SKIP_MATERIAL_REGEX = (
     r"(glass|window|windscreen|windshield|transparent|translucent|clear|alpha|"
-    r"opacity|lens|light|lamp|beacon|bcn|strobe|nav|slime|glow|flare)"
+    r"opacity|lens)"
 )
 INNER_SHELL_MATERIAL_NAME = "gtvr_inner_matte_black"
 INNER_SHELL_TEXTURE_NAME = "gtvr_inner_matte_black"

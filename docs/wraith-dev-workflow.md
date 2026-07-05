@@ -72,7 +72,7 @@ Only pass `--allow-stale-tmb` for a deliberate metadata/package-only reinstall w
 
 ## Cockpit-Side Shell Opacity
 
-`tools\build_gtvr_wraith_dev.py` defaults to adding reversed, inward-facing copies of solid shell triangles before conversion. Those inward faces use the generated `gtvr_inner_matte_black` material, keeping opaque panels from disappearing or looking see-through from the inside cockpit view while leaving window, transparent, light, beacon, glow, and similar materials out of the inward copy pass.
+`tools\build_gtvr_wraith_dev.py` defaults to adding reversed, inward-facing copies of shell triangles before conversion. Those inward faces use the generated `gtvr_inner_matte_black` material, keeping the internal shell matte black while leaving only glass/window/transparent-style materials out of the inward copy pass.
 
 Disable this only for diagnostics:
 
