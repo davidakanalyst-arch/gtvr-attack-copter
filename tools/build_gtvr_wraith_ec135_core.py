@@ -47,7 +47,7 @@ MISSING_GEOMETRY_LOG = ROOT / "tools" / "vendor" / "ec135_log_missing_geometry_n
 MSFS_IMPORT_GROUND_Z = -1.05
 VISUAL_TARGET_GROUND_Z = -1.72
 VISUAL_BODY_LIFT = 0.62
-VISUAL_GEAR_MIN_Z = -1.705
+VISUAL_GEAR_MIN_Z = -1.72
 VISUAL_X_OFFSET = -3.2
 VISUAL_Y_OFFSET = 0.0
 LOW_NON_TIRE_Z_CUTOFF = -1.32
@@ -425,6 +425,9 @@ def build_body(
         args.visual_y_offset,
         args.visual_ground_z - MSFS_IMPORT_GROUND_Z + args.visual_body_lift + args.rear_visual_gear_z_offset,
     )
+    # Keep the gear mounts visually fixed while bringing the tyre bottoms to the runway plane.
+    stretch_patch_map_min_z(front_gear, args.visual_gear_min_z)
+    stretch_patch_map_min_z(rear_gear, args.visual_gear_min_z)
     body = remove_low_non_tire_faces(body, args.low_non_tire_z_cutoff)
     visual_gear = merge_patch_maps(front_gear, rear_gear)
     return materials, body, tail_rotor, visual_gear, source_faces, imported_faces
