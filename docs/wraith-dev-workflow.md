@@ -84,7 +84,7 @@ python tools\build_gtvr_wraith_dev.py --full --force-install --no-inner-shell
 
 Keep the EC135-core dev package on `Pilot[pilot_jason]`. A test that switched `gtvr_wraith_dev.tmc` to `Pilot[pilot_robert]`, copied from the retired plane-flight-model Wraith path, made Aerofly load the STOP fallback. Fix pilot seating relative to the Wraith shell through a safer dev-only shell/pilot alignment path, not by changing the pilot object reference.
 
-The current dev-only correction is `--pilot-alignment-x-delta 0.55`, which shifts the visual shell and rotors forward around the fixed EC135 pilot. Tune this number conservatively if the pilot still needs side-window alignment; keep the pilot object on `pilot_jason`.
+The current dev-only correction is `--pilot-alignment-x-delta 0.40`, which shifts the visual shell and rotors forward around the fixed EC135 pilot. Tune this number conservatively if the pilot still needs side-window alignment; keep the pilot object on `pilot_jason`.
 
 ## Promotion Rule
 
