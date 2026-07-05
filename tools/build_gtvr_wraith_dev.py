@@ -840,8 +840,9 @@ def add_live_glass_displays(*, screen_x: float) -> None:
 
 
 def add_static_display_fallback(body: dict[str, core.Patch]) -> None:
-    """Keep readable screen symbology visible if the preserved EC135 TMQ ignores new graphics groups."""
-    for display_geometry in _current_live_display_geometries.values():
+    """Keep fixed screen cues visible without duplicating the moving live layers."""
+    for geometry_name in live_display_static_geometry_names():
+        display_geometry = _current_live_display_geometries[geometry_name]
         fallback = core.copy_patch_map(display_geometry)
         core.translate_patch_map(fallback, DISPLAY_FALLBACK_X_OFFSET, 0.0, 0.0)
         merge_patch_map_into(body, fallback)
@@ -1451,7 +1452,7 @@ def write_source_stamp() -> None:
                 "cockpit_kit=generated upholstered seats, R22-style controls, pedals and left/middle/right live glass-style panels",
                 "animated_controls=cyclics, collectives and pedal meshes are emitted as dev-only graphics with input transforms",
                 "live_glass=attitude, airspeed, altitude and heading overlay geometry is bound to Aerofly outputs",
-                "glass_fallback=static display symbology is also merged into the visible dash mesh behind the live layers",
+                "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
                 f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
@@ -1518,7 +1519,7 @@ def write_dev_package_marker() -> None:
                 "Generated cockpit kit includes forward-shifted upholstered seats, R22-style cyclic, collectives/throttles, pedals and left/middle/right live glass-style panels.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD.",
                 "Generated glass overlays bind attitude, airspeed, altitude and heading graphics to Aerofly outputs.",
-                "A recessed static copy of the display symbology is merged into the visible dash mesh as an EC135-TMQ-safe fallback.",
+                "Recessed fixed display cues are merged into the visible dash mesh as an EC135-TMQ-safe fallback without duplicating moving live layers.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
