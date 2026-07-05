@@ -49,10 +49,10 @@ COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_button_green": ((10, 150, 78), "generated-gtvr-dev-cockpit-button-green"),
     "gtvr_cockpit_button_red": ((190, 28, 24), "generated-gtvr-dev-cockpit-button-red"),
 }
-COCKPIT_PFD_MATERIAL = "gtvr_cockpit_pfd"
-COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
-COCKPIT_PFD_TEXTURE = "gtvr_cockpit_pfd"
-COCKPIT_MAP_TEXTURE = "gtvr_cockpit_map"
+COCKPIT_PFD_MATERIAL = "gtvr_cockpit_analog"
+COCKPIT_MAP_MATERIAL = "gtvr_cockpit_radio"
+COCKPIT_PFD_TEXTURE = "gtvr_cockpit_analog"
+COCKPIT_MAP_TEXTURE = "gtvr_cockpit_radio"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -219,69 +219,118 @@ def load_font(size: int):
     return ImageFont.load_default()
 
 
+def draw_centered_text(draw, center: tuple[int, int], text: str, font, fill: tuple[int, int, int]) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    draw.text((center[0] - width * 0.5, center[1] - height * 0.5), text, font=font, fill=fill)
+
+
+def draw_round_gauge(
+    draw,
+    *,
+    center: tuple[int, int],
+    radius: int,
+    label: str,
+    value: str,
+    needle_degrees: float,
+    accent: tuple[int, int, int] = (220, 225, 218),
+) -> None:
+    x, y = center
+    draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=(9, 10, 10), outline=(138, 143, 136), width=5)
+    draw.ellipse((x - radius + 10, y - radius + 10, x + radius - 10, y + radius - 10), outline=(48, 54, 52), width=2)
+    for index in range(13):
+        angle = math.radians(220 + index * (280 / 12))
+        tick_outer = radius - 12
+        tick_inner = radius - (24 if index % 3 == 0 else 18)
+        x0 = x + math.cos(angle) * tick_inner
+        y0 = y + math.sin(angle) * tick_inner
+        x1 = x + math.cos(angle) * tick_outer
+        y1 = y + math.sin(angle) * tick_outer
+        draw.line((x0, y0, x1, y1), fill=accent, width=3 if index % 3 == 0 else 2)
+
+    needle_angle = math.radians(needle_degrees)
+    needle_x = x + math.cos(needle_angle) * (radius - 28)
+    needle_y = y + math.sin(needle_angle) * (radius - 28)
+    draw.line((x, y, needle_x, needle_y), fill=(246, 68, 54), width=5)
+    draw.ellipse((x - 7, y - 7, x + 7, y + 7), fill=(205, 210, 202), outline=(20, 20, 20), width=2)
+
+    small = load_font(18)
+    tiny = load_font(14)
+    draw_centered_text(draw, (x, y - radius + 30), label, tiny, (188, 198, 190))
+    draw_centered_text(draw, (x, y + radius - 28), value, small, (236, 240, 230))
+
+
 def write_cockpit_pfd_texture(path: Path) -> None:
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGB", (512, 512), (4, 8, 10))
+    image = Image.new("RGB", (512, 512), (5, 6, 6))
     draw = ImageDraw.Draw(image)
-    small = load_font(22)
-    medium = load_font(30)
-    large = load_font(52)
+    title = load_font(30)
+    small = load_font(17)
 
-    draw.rectangle((122, 48, 390, 250), fill=(22, 88, 132))
-    draw.rectangle((122, 250, 390, 388), fill=(92, 55, 30))
-    draw.line((122, 250, 390, 250), fill=(235, 235, 210), width=3)
-    for offset in (-90, -45, 45, 90):
-        draw.line((256 - 70, 250 + offset, 256 + 70, 250 + offset), fill=(220, 230, 230), width=2)
-    draw.line((216, 250, 296, 250), fill=(255, 235, 90), width=5)
-    draw.polygon([(256, 210), (244, 232), (268, 232)], fill=(255, 235, 90))
+    draw.rounded_rectangle((18, 16, 494, 496), radius=18, fill=(15, 16, 16), outline=(96, 100, 96), width=4)
+    for x in (116, 256, 396):
+        draw.line((x, 52, x, 458), fill=(36, 38, 38), width=2)
+    draw.line((40, 256, 472, 256), fill=(36, 38, 38), width=2)
 
-    draw.rectangle((18, 54, 106, 394), outline=(78, 220, 220), width=3)
-    draw.text((34, 20), "SPD", font=small, fill=(130, 240, 240))
-    for y, value in zip((86, 152, 218, 284, 350), ("140", "120", "100", "080", "060")):
-        draw.text((36, y), value, font=medium, fill=(224, 255, 255))
-        draw.line((88, y + 18, 104, y + 18), fill=(224, 255, 255), width=2)
-    draw.rectangle((28, 220, 96, 282), outline=(255, 255, 255), width=3)
-    draw.text((42, 232), "090", font=medium, fill=(255, 255, 255))
+    gauges = [
+        ((128, 136), "IAS", "92 KT", -35),
+        ((256, 136), "ALT", "1420", 30),
+        ((384, 136), "VSI", "+200", -70),
+        ((128, 334), "RPM", "102%", 18),
+        ((256, 334), "MAP", "23.1", -18),
+        ((384, 334), "HDG", "084", -95),
+    ]
+    for center, label, value, needle in gauges:
+        draw_round_gauge(draw, center=center, radius=64, label=label, value=value, needle_degrees=needle)
 
-    draw.rectangle((406, 54, 494, 394), outline=(78, 220, 220), width=3)
-    draw.text((428, 20), "ALT", font=small, fill=(130, 240, 240))
-    for y, value in zip((86, 152, 218, 284, 350), ("1600", "1500", "1400", "1300", "1200")):
-        draw.text((416, y), value, font=small, fill=(224, 255, 255))
-        draw.line((406, y + 15, 424, y + 15), fill=(224, 255, 255), width=2)
-    draw.rectangle((414, 220, 486, 282), outline=(255, 255, 255), width=3)
-    draw.text((424, 236), "1420", font=small, fill=(255, 255, 255))
-
-    draw.text((178, 402), "WRAITH", font=large, fill=(114, 230, 190))
-    draw.text((186, 458), "ATT   IAS   ALT", font=small, fill=(190, 230, 220))
+    draw_centered_text(draw, (256, 37), "WRAITH ANALOG", title, (226, 232, 220))
+    for index, (label, color) in enumerate(
+        (
+            ("LOW RPM", (190, 34, 26)),
+            ("GOV", (28, 150, 80)),
+            ("HYD", (210, 160, 42)),
+            ("FUEL", (28, 150, 80)),
+        )
+    ):
+        left = 74 + index * 92
+        draw.rounded_rectangle((left, 462, left + 72, 484), radius=5, fill=color)
+        draw_centered_text(draw, (left + 36, 473), label, small, (5, 6, 6))
     image.save(path)
 
 
 def write_cockpit_map_texture(path: Path) -> None:
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGB", (512, 512), (1, 14, 12))
+    image = Image.new("RGB", (512, 512), (6, 7, 7))
     draw = ImageDraw.Draw(image)
-    small = load_font(22)
+    tiny = load_font(18)
+    small = load_font(23)
     medium = load_font(32)
-    large = load_font(44)
 
-    for pos in range(32, 512, 48):
-        draw.line((pos, 0, pos, 512), fill=(14, 78, 64), width=1)
-        draw.line((0, pos, 512, pos), fill=(14, 78, 64), width=1)
-    draw.ellipse((62, 62, 450, 450), outline=(30, 155, 122), width=3)
-    draw.ellipse((150, 150, 362, 362), outline=(24, 105, 92), width=2)
-    draw.line((256, 72, 256, 440), fill=(54, 188, 144), width=2)
-    draw.line((72, 256, 440, 256), fill=(54, 188, 144), width=2)
-    route = [(118, 358), (178, 304), (232, 278), (292, 230), (370, 168)]
-    draw.line(route, fill=(245, 216, 70), width=6, joint="curve")
-    for point in route:
-        x, y = point
-        draw.ellipse((x - 8, y - 8, x + 8, y + 8), fill=(245, 216, 70))
-    draw.polygon([(256, 220), (238, 286), (256, 276), (274, 286)], fill=(70, 220, 255))
-    draw.text((28, 22), "ROLLING MAP", font=large, fill=(120, 245, 210))
-    draw.text((26, 456), "HDG 084", font=medium, fill=(220, 255, 220))
-    draw.text((354, 456), "GS 090", font=small, fill=(220, 255, 220))
+    draw.rounded_rectangle((22, 18, 490, 494), radius=16, fill=(13, 14, 14), outline=(91, 94, 90), width=4)
+    draw_centered_text(draw, (256, 43), "RADIO / ENGINE", medium, (226, 232, 220))
+
+    for row, label in enumerate(("COM1  122.800", "NAV1  110.30", "XPDR  7000")):
+        top = 78 + row * 58
+        draw.rounded_rectangle((62, top, 450, top + 40), radius=7, fill=(4, 24, 18), outline=(54, 82, 72), width=2)
+        draw.text((82, top + 8), label, font=small, fill=(112, 238, 176))
+
+    engine_gauges = [
+        ((116, 312), "FUEL", "64", -30),
+        ((256, 312), "OIL", "72", 35),
+        ((396, 312), "TEMP", "180", 10),
+    ]
+    for center, label, value, needle in engine_gauges:
+        draw_round_gauge(draw, center=center, radius=50, label=label, value=value, needle_degrees=needle, accent=(198, 208, 190))
+
+    switch_labels = ("BAT", "ALT", "FUEL", "CLUTCH", "LIGHT")
+    for index, label in enumerate(switch_labels):
+        cx = 78 + index * 90
+        draw.rounded_rectangle((cx - 28, 414, cx + 28, 448), radius=5, fill=(34, 36, 36), outline=(120, 124, 118), width=2)
+        draw.line((cx, 416, cx + 10, 446), fill=(220, 225, 214), width=5)
+        draw_centered_text(draw, (cx, 470), label, tiny, (210, 216, 206))
     image.save(path)
 
 
@@ -303,15 +352,15 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
         materials[next_material_index(materials)] = Material(
             name=COCKPIT_PFD_MATERIAL,
             texture_name=COCKPIT_PFD_TEXTURE,
-            source_uri="generated-gtvr-dev-cockpit-pfd",
-            color=(24, 170, 180, 255),
+            source_uri="generated-gtvr-dev-cockpit-analog",
+            color=(92, 96, 92, 255),
         )
     if not any(material.name == COCKPIT_MAP_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
             name=COCKPIT_MAP_MATERIAL,
             texture_name=COCKPIT_MAP_TEXTURE,
-            source_uri="generated-gtvr-dev-cockpit-map",
-            color=(20, 160, 120, 255),
+            source_uri="generated-gtvr-dev-cockpit-radio",
+            color=(82, 92, 84, 255),
         )
 
 
@@ -393,6 +442,7 @@ def append_cylinder_between(
     radius: float,
     *,
     segments: int = 10,
+    caps: bool = True,
 ) -> None:
     patch = patch_for(body, material_name)
     axis = vector_sub(end, start)
@@ -423,8 +473,9 @@ def append_cylinder_between(
         patch.indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
         patch.face_attributes.extend([0, 0])
 
-    append_cap(patch, start, list(reversed(start_ring)), vector_mul(axis_unit, -1.0))
-    append_cap(patch, end, end_ring, axis_unit)
+    if caps:
+        append_cap(patch, start, list(reversed(start_ring)), vector_mul(axis_unit, -1.0))
+        append_cap(patch, end, end_ring, axis_unit)
 
 
 def append_cap(
@@ -477,6 +528,24 @@ def add_framed_screen(
     append_textured_panel(body, material_name, center=(x - 0.008, y, z), width_y=width_y, height_z=height_z)
 
 
+def add_gauge_bezel(
+    body: dict[str, core.Patch],
+    *,
+    center: tuple[float, float, float],
+    radius: float,
+) -> None:
+    x, y, z = center
+    append_cylinder_between(
+        body,
+        "gtvr_cockpit_metal",
+        (x + 0.006, y, z),
+        (x - 0.022, y, z),
+        radius,
+        segments=24,
+        caps=False,
+    )
+
+
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
     global _current_dash_forward_x_delta
     _current_dash_forward_x_delta = args.dash_forward_x_delta
@@ -488,7 +557,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     dash_x = lambda value: x(value + args.dash_forward_x_delta)
 
     append_box(body, "gtvr_cockpit_dark_gray", (x(1.62), 0.0, -0.775), (1.55, 1.34, 0.055))
-    append_box(body, "gtvr_cockpit_black", (dash_x(2.30), 0.0, -0.31), (0.56, 1.18, 0.14))
+    append_box(body, "gtvr_cockpit_black", (dash_x(2.30), 0.0, -0.18), (0.42, 1.20, 0.42))
     append_box(body, "gtvr_cockpit_dark_gray", (x(1.78), 0.0, -0.55), (0.78, 0.22, 0.28))
     append_box(body, "gtvr_cockpit_black", (x(1.94), 0.0, -0.37), (0.40, 0.18, 0.11))
 
@@ -499,11 +568,27 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
         append_box(body, "gtvr_cockpit_dark_gray", (x(1.35), seat_y, -0.575), (0.42, 0.32, 0.035))
 
     screen_x = dash_x(2.47)
-    for side_y in (-0.34, 0.20):
-        add_framed_screen(body, material_name=COCKPIT_PFD_MATERIAL, center=(screen_x, side_y, 0.015))
-        add_framed_screen(body, material_name=COCKPIT_MAP_MATERIAL, center=(screen_x, side_y, -0.205), height_z=0.155)
-        append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y - 0.18, -0.095), (0.035, 0.028, 0.40))
-        append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y + 0.18, -0.095), (0.035, 0.028, 0.40))
+    for side_y in (-0.36, 0.36):
+        add_framed_screen(
+            body,
+            material_name=COCKPIT_PFD_MATERIAL,
+            center=(screen_x, side_y, -0.12),
+            width_y=0.38,
+            height_z=0.34,
+        )
+        for bezel_y in (side_y - 0.095, side_y, side_y + 0.095):
+            add_gauge_bezel(body, center=(screen_x - 0.02, bezel_y, -0.055), radius=0.046)
+            add_gauge_bezel(body, center=(screen_x - 0.02, bezel_y, -0.185), radius=0.046)
+        append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y - 0.215, -0.12), (0.035, 0.026, 0.39))
+        append_box(body, "gtvr_cockpit_metal", (dash_x(2.43), side_y + 0.215, -0.12), (0.035, 0.026, 0.39))
+
+    add_framed_screen(
+        body,
+        material_name=COCKPIT_MAP_MATERIAL,
+        center=(screen_x, 0.0, -0.12),
+        width_y=0.22,
+        height_z=0.34,
+    )
 
     for center_y in (-0.07, 0.07):
         append_cylinder_between(
@@ -523,11 +608,13 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
             segments=18,
         )
 
-    for stick_y in (-0.38, 0.40):
-        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.25), stick_y, -0.64), (x(2.23), stick_y, -0.24), 0.023)
-        append_cylinder_between(body, "gtvr_cockpit_rubber", (x(2.22), stick_y, -0.22), (x(2.31), stick_y, -0.13), 0.045)
-        append_box(body, "gtvr_cockpit_button_red", (x(2.295), stick_y - 0.028, -0.105), (0.032, 0.018, 0.014))
-        append_box(body, "gtvr_cockpit_button_green", (x(2.295), stick_y + 0.028, -0.105), (0.032, 0.018, 0.014))
+    append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.09), 0.0, -0.66), (x(2.18), 0.0, -0.32), 0.024)
+    append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.18), -0.36, -0.32), (x(2.18), 0.36, -0.32), 0.020)
+    for stick_y in (-0.36, 0.36):
+        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.18), stick_y, -0.32), (x(2.25), stick_y, -0.20), 0.019)
+        append_cylinder_between(body, "gtvr_cockpit_rubber", (x(2.25), stick_y, -0.20), (x(2.34), stick_y, -0.11), 0.042)
+        append_box(body, "gtvr_cockpit_button_red", (x(2.325), stick_y - 0.027, -0.088), (0.032, 0.018, 0.014))
+        append_box(body, "gtvr_cockpit_button_green", (x(2.325), stick_y + 0.027, -0.088), (0.032, 0.018, 0.014))
 
     for start_y, end_y in ((-0.58, -0.11), (0.58, 0.63)):
         append_cylinder_between(body, "gtvr_cockpit_metal", (x(1.67), start_y, -0.66), (x(2.08), end_y, -0.49), 0.022)
@@ -543,7 +630,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added seats, cyclics, collectives/throttles, pedals, "
-        "dual PFD/map glass displays and forward panel hardware."
+        "R22-style analogue panels, a central cyclic bar and forward panel hardware."
     )
 
 
@@ -590,7 +677,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated seats, controls, pedals and forward static glass displays",
+                "cockpit_kit=generated seats, R22-style controls, pedals and forward analogue panels",
                 f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
                 f"pilot_alignment_x_delta={_current_pilot_alignment_x_delta:.3f}",
                 "",
@@ -652,7 +739,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes seats, cyclics, collectives/throttles, pedals and forward static PFD/map displays.",
+                "Generated cockpit kit includes seats, R22-style cyclic, collectives/throttles, pedals and forward analogue panels.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",

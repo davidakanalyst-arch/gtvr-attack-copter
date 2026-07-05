@@ -50,7 +50,7 @@ That command:
 - prepares Aerofly converter source under `tools\vendor\gtvr_wraith_dev_source\aircraft\gtvr_wraith_dev`;
 - shifts the dev visual shell forward around the fixed working EC135 pilot so the pilot sits closer to the side-window area;
 - duplicates solid shell faces inward with a matte black material so opaque exterior panels are visible from the cockpit side;
-- adds the generated cockpit kit: front seats, cyclics, collectives/throttles, pedals, a forward dashboard, and paired static PFD/map glass displays;
+- adds the generated cockpit kit: front seats, an R22-style central cyclic bar, collectives/throttles, pedals, a forward dashboard, and simple analogue/radio panels;
 - runs the full Aerofly converter for model `gtvr_wraith_dev`;
 - assembles `local-aircraft-packages\gtvr_wraith_dev`;
 - installs only to `C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_wraith_dev`.
@@ -89,9 +89,9 @@ The current dev-only correction is `--pilot-alignment-x-delta 0.40`, which shift
 
 ## Generated Cockpit Kit
 
-The dev wrapper adds a simple generated cockpit kit directly into the compiled dev `.tmb`. It includes two front seats, cyclic sticks, collective/throttle levers, pedal pads, a forward dark dashboard, and two glass displays per side. The current display textures are static: one PFD-style screen with attitude/speed/altitude tapes and one rolling-map screen.
+The dev wrapper adds a simple generated cockpit kit directly into the compiled dev `.tmb`. It includes two front seats, an R22-style central cyclic bar with left/right grips, collective/throttle levers, pedal pads, a forward dark dashboard, and simple static analogue/radio panels. The current panel textures are intentionally simple: round flight/engine gauges plus a radio/engine stack.
 
-There is intentionally no dash hood/shelf over the displays. The current dashboard/display group uses `--dash-forward-x-delta 0.55` to push the dash toward the front of the cockpit without touching the pilot, seats, cyclics, collectives, pedals, or shell/pilot alignment.
+There is intentionally no dash hood/shelf over the panel. The current dashboard/panel group uses `--dash-forward-x-delta 0.55` to push the dash toward the front of the cockpit without touching the pilot, seats, cyclics, collectives, pedals, or shell/pilot alignment.
 
 Disable it only for diagnostics:
 
