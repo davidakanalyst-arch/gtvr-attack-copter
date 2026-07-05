@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import shutil
 import subprocess
@@ -36,6 +37,21 @@ INNER_SHELL_MATERIAL_NAME = "gtvr_inner_matte_black"
 INNER_SHELL_TEXTURE_NAME = "gtvr_inner_matte_black"
 INNER_SHELL_COLOR = (2, 2, 2)
 DEFAULT_PILOT_ALIGNMENT_X_DELTA = 0.40
+DEFAULT_COCKPIT_X_DELTA = 0.0
+
+COCKPIT_FLAT_MATERIALS = {
+    "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
+    "gtvr_cockpit_dark_gray": ((22, 24, 25), "generated-gtvr-dev-cockpit-dark-gray"),
+    "gtvr_cockpit_seat": ((18, 20, 22), "generated-gtvr-dev-cockpit-seat"),
+    "gtvr_cockpit_metal": ((88, 92, 92), "generated-gtvr-dev-cockpit-metal"),
+    "gtvr_cockpit_rubber": ((7, 7, 7), "generated-gtvr-dev-cockpit-rubber"),
+    "gtvr_cockpit_button_green": ((10, 150, 78), "generated-gtvr-dev-cockpit-button-green"),
+    "gtvr_cockpit_button_red": ((190, 28, 24), "generated-gtvr-dev-cockpit-button-red"),
+}
+COCKPIT_PFD_MATERIAL = "gtvr_cockpit_pfd"
+COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
+COCKPIT_PFD_TEXTURE = "gtvr_cockpit_pfd"
+COCKPIT_MAP_TEXTURE = "gtvr_cockpit_map"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -166,6 +182,367 @@ def ensure_inner_shell_material(materials: dict[int, Material]) -> None:
     )
 
 
+def next_material_index(materials: dict[int, Material]) -> int:
+    return max(materials.keys(), default=-1) + 1
+
+
+def add_generated_material(
+    materials: dict[int, Material],
+    *,
+    name: str,
+    texture_name: str,
+    color: tuple[int, int, int],
+    source_uri: str,
+) -> None:
+    if any(material.name == name for material in materials.values()):
+        return
+    write_png(core.SOURCE_DIR / f"{texture_name}.png", color)
+    materials[next_material_index(materials)] = Material(
+        name=name,
+        texture_name=texture_name,
+        source_uri=source_uri,
+        color=(*color, 255),
+    )
+
+
+def load_font(size: int):
+    from PIL import ImageFont
+
+    for font_path in (
+        Path(r"C:\Windows\Fonts\arialbd.ttf"),
+        Path(r"C:\Windows\Fonts\arial.ttf"),
+    ):
+        if font_path.exists():
+            return ImageFont.truetype(str(font_path), size=size)
+    return ImageFont.load_default()
+
+
+def write_cockpit_pfd_texture(path: Path) -> None:
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (512, 512), (4, 8, 10))
+    draw = ImageDraw.Draw(image)
+    small = load_font(22)
+    medium = load_font(30)
+    large = load_font(52)
+
+    draw.rectangle((122, 48, 390, 250), fill=(22, 88, 132))
+    draw.rectangle((122, 250, 390, 388), fill=(92, 55, 30))
+    draw.line((122, 250, 390, 250), fill=(235, 235, 210), width=3)
+    for offset in (-90, -45, 45, 90):
+        draw.line((256 - 70, 250 + offset, 256 + 70, 250 + offset), fill=(220, 230, 230), width=2)
+    draw.line((216, 250, 296, 250), fill=(255, 235, 90), width=5)
+    draw.polygon([(256, 210), (244, 232), (268, 232)], fill=(255, 235, 90))
+
+    draw.rectangle((18, 54, 106, 394), outline=(78, 220, 220), width=3)
+    draw.text((34, 20), "SPD", font=small, fill=(130, 240, 240))
+    for y, value in zip((86, 152, 218, 284, 350), ("140", "120", "100", "080", "060")):
+        draw.text((36, y), value, font=medium, fill=(224, 255, 255))
+        draw.line((88, y + 18, 104, y + 18), fill=(224, 255, 255), width=2)
+    draw.rectangle((28, 220, 96, 282), outline=(255, 255, 255), width=3)
+    draw.text((42, 232), "090", font=medium, fill=(255, 255, 255))
+
+    draw.rectangle((406, 54, 494, 394), outline=(78, 220, 220), width=3)
+    draw.text((428, 20), "ALT", font=small, fill=(130, 240, 240))
+    for y, value in zip((86, 152, 218, 284, 350), ("1600", "1500", "1400", "1300", "1200")):
+        draw.text((416, y), value, font=small, fill=(224, 255, 255))
+        draw.line((406, y + 15, 424, y + 15), fill=(224, 255, 255), width=2)
+    draw.rectangle((414, 220, 486, 282), outline=(255, 255, 255), width=3)
+    draw.text((424, 236), "1420", font=small, fill=(255, 255, 255))
+
+    draw.text((178, 402), "WRAITH", font=large, fill=(114, 230, 190))
+    draw.text((186, 458), "ATT   IAS   ALT", font=small, fill=(190, 230, 220))
+    image.save(path)
+
+
+def write_cockpit_map_texture(path: Path) -> None:
+    from PIL import Image, ImageDraw
+
+    image = Image.new("RGB", (512, 512), (1, 14, 12))
+    draw = ImageDraw.Draw(image)
+    small = load_font(22)
+    medium = load_font(32)
+    large = load_font(44)
+
+    for pos in range(32, 512, 48):
+        draw.line((pos, 0, pos, 512), fill=(14, 78, 64), width=1)
+        draw.line((0, pos, 512, pos), fill=(14, 78, 64), width=1)
+    draw.ellipse((62, 62, 450, 450), outline=(30, 155, 122), width=3)
+    draw.ellipse((150, 150, 362, 362), outline=(24, 105, 92), width=2)
+    draw.line((256, 72, 256, 440), fill=(54, 188, 144), width=2)
+    draw.line((72, 256, 440, 256), fill=(54, 188, 144), width=2)
+    route = [(118, 358), (178, 304), (232, 278), (292, 230), (370, 168)]
+    draw.line(route, fill=(245, 216, 70), width=6, joint="curve")
+    for point in route:
+        x, y = point
+        draw.ellipse((x - 8, y - 8, x + 8, y + 8), fill=(245, 216, 70))
+    draw.polygon([(256, 220), (238, 286), (256, 276), (274, 286)], fill=(70, 220, 255))
+    draw.text((28, 22), "ROLLING MAP", font=large, fill=(120, 245, 210))
+    draw.text((26, 456), "HDG 084", font=medium, fill=(220, 255, 220))
+    draw.text((354, 456), "GS 090", font=small, fill=(220, 255, 220))
+    image.save(path)
+
+
+def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
+    for material_name, (color, source_uri) in COCKPIT_FLAT_MATERIALS.items():
+        add_generated_material(
+            materials,
+            name=material_name,
+            texture_name=material_name,
+            color=color,
+            source_uri=source_uri,
+        )
+
+    pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
+    map_path = core.SOURCE_DIR / f"{COCKPIT_MAP_TEXTURE}.png"
+    write_cockpit_pfd_texture(pfd_path)
+    write_cockpit_map_texture(map_path)
+    if not any(material.name == COCKPIT_PFD_MATERIAL for material in materials.values()):
+        materials[next_material_index(materials)] = Material(
+            name=COCKPIT_PFD_MATERIAL,
+            texture_name=COCKPIT_PFD_TEXTURE,
+            source_uri="generated-gtvr-dev-cockpit-pfd",
+            color=(24, 170, 180, 255),
+        )
+    if not any(material.name == COCKPIT_MAP_MATERIAL for material in materials.values()):
+        materials[next_material_index(materials)] = Material(
+            name=COCKPIT_MAP_MATERIAL,
+            texture_name=COCKPIT_MAP_TEXTURE,
+            source_uri="generated-gtvr-dev-cockpit-map",
+            color=(20, 160, 120, 255),
+        )
+
+
+def patch_for(body: dict[str, core.Patch], material_name: str) -> core.Patch:
+    return body.setdefault(material_name, core.Patch(material_name))
+
+
+def vector_sub(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
+    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+
+def vector_add(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
+    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
+
+
+def vector_mul(a: tuple[float, float, float], value: float) -> tuple[float, float, float]:
+    return (a[0] * value, a[1] * value, a[2] * value)
+
+
+def vector_cross(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
+    return (
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    )
+
+
+def vector_length(a: tuple[float, float, float]) -> float:
+    return math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2])
+
+
+def vector_normalize(a: tuple[float, float, float]) -> tuple[float, float, float]:
+    length = vector_length(a)
+    if length < 1e-9:
+        return (0.0, 0.0, 1.0)
+    return (a[0] / length, a[1] / length, a[2] / length)
+
+
+def append_quad(
+    patch: core.Patch,
+    points: list[tuple[float, float, float]],
+    normal: tuple[float, float, float],
+    uvs: list[tuple[float, float]] | None = None,
+) -> None:
+    if uvs is None:
+        uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+    base_index = len(patch.vertices) // 8
+    for point, uv in zip(points, uvs):
+        patch.vertices.extend([point[0], point[1], point[2], normal[0], normal[1], normal[2], uv[0], uv[1]])
+    patch.indices.extend([base_index, base_index + 1, base_index + 2, base_index, base_index + 2, base_index + 3])
+    patch.face_attributes.extend([0, 0])
+
+
+def append_box(
+    body: dict[str, core.Patch],
+    material_name: str,
+    center: tuple[float, float, float],
+    size: tuple[float, float, float],
+) -> None:
+    patch = patch_for(body, material_name)
+    x, y, z = center
+    sx, sy, sz = (size[0] * 0.5, size[1] * 0.5, size[2] * 0.5)
+    minx, maxx = x - sx, x + sx
+    miny, maxy = y - sy, y + sy
+    minz, maxz = z - sz, z + sz
+    append_quad(patch, [(maxx, miny, minz), (maxx, maxy, minz), (maxx, maxy, maxz), (maxx, miny, maxz)], (1, 0, 0))
+    append_quad(patch, [(minx, miny, minz), (minx, miny, maxz), (minx, maxy, maxz), (minx, maxy, minz)], (-1, 0, 0))
+    append_quad(patch, [(minx, maxy, minz), (minx, maxy, maxz), (maxx, maxy, maxz), (maxx, maxy, minz)], (0, 1, 0))
+    append_quad(patch, [(minx, miny, minz), (maxx, miny, minz), (maxx, miny, maxz), (minx, miny, maxz)], (0, -1, 0))
+    append_quad(patch, [(minx, miny, maxz), (maxx, miny, maxz), (maxx, maxy, maxz), (minx, maxy, maxz)], (0, 0, 1))
+    append_quad(patch, [(minx, miny, minz), (minx, maxy, minz), (maxx, maxy, minz), (maxx, miny, minz)], (0, 0, -1))
+
+
+def append_cylinder_between(
+    body: dict[str, core.Patch],
+    material_name: str,
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+    radius: float,
+    *,
+    segments: int = 10,
+) -> None:
+    patch = patch_for(body, material_name)
+    axis = vector_sub(end, start)
+    axis_unit = vector_normalize(axis)
+    reference = (0.0, 0.0, 1.0) if abs(axis_unit[2]) < 0.92 else (0.0, 1.0, 0.0)
+    right = vector_normalize(vector_cross(axis_unit, reference))
+    up = vector_normalize(vector_cross(right, axis_unit))
+    start_ring: list[tuple[float, float, float]] = []
+    end_ring: list[tuple[float, float, float]] = []
+    normals: list[tuple[float, float, float]] = []
+    for index in range(segments):
+        angle = index / segments * math.tau
+        radial = vector_add(vector_mul(right, math.cos(angle)), vector_mul(up, math.sin(angle)))
+        normals.append(radial)
+        start_ring.append(vector_add(start, vector_mul(radial, radius)))
+        end_ring.append(vector_add(end, vector_mul(radial, radius)))
+
+    for index in range(segments):
+        next_index = (index + 1) % segments
+        base = len(patch.vertices) // 8
+        for point, normal, uv in (
+            (start_ring[index], normals[index], (index / segments, 0.0)),
+            (start_ring[next_index], normals[next_index], (next_index / segments, 0.0)),
+            (end_ring[next_index], normals[next_index], (next_index / segments, 1.0)),
+            (end_ring[index], normals[index], (index / segments, 1.0)),
+        ):
+            patch.vertices.extend([point[0], point[1], point[2], normal[0], normal[1], normal[2], uv[0], uv[1]])
+        patch.indices.extend([base, base + 1, base + 2, base, base + 2, base + 3])
+        patch.face_attributes.extend([0, 0])
+
+    append_cap(patch, start, list(reversed(start_ring)), vector_mul(axis_unit, -1.0))
+    append_cap(patch, end, end_ring, axis_unit)
+
+
+def append_cap(
+    patch: core.Patch,
+    center: tuple[float, float, float],
+    ring: list[tuple[float, float, float]],
+    normal: tuple[float, float, float],
+) -> None:
+    center_index = len(patch.vertices) // 8
+    patch.vertices.extend([center[0], center[1], center[2], normal[0], normal[1], normal[2], 0.5, 0.5])
+    for point in ring:
+        patch.vertices.extend([point[0], point[1], point[2], normal[0], normal[1], normal[2], 0.5, 0.5])
+    for index in range(len(ring)):
+        patch.indices.extend([center_index, center_index + 1 + index, center_index + 1 + ((index + 1) % len(ring))])
+        patch.face_attributes.append(0)
+
+
+def append_textured_panel(
+    body: dict[str, core.Patch],
+    material_name: str,
+    *,
+    center: tuple[float, float, float],
+    width_y: float,
+    height_z: float,
+) -> None:
+    patch = patch_for(body, material_name)
+    x, y, z = center
+    half_w = width_y * 0.5
+    half_h = height_z * 0.5
+    front = [
+        (x, y - half_w, z - half_h),
+        (x, y - half_w, z + half_h),
+        (x, y + half_w, z + half_h),
+        (x, y + half_w, z - half_h),
+    ]
+    append_quad(patch, front, (-1.0, 0.0, 0.0), [(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)])
+    append_quad(patch, list(reversed(front)), (1.0, 0.0, 0.0), [(0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)])
+
+
+def add_framed_screen(
+    body: dict[str, core.Patch],
+    *,
+    material_name: str,
+    center: tuple[float, float, float],
+    width_y: float = 0.285,
+    height_z: float = 0.17,
+) -> None:
+    x, y, z = center
+    append_box(body, "gtvr_cockpit_black", (x + 0.012, y, z), (0.035, width_y + 0.055, height_z + 0.055))
+    append_textured_panel(body, material_name, center=(x - 0.008, y, z), width_y=width_y, height_z=height_z)
+
+
+def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
+    if not args.cockpit_kit:
+        return
+    ensure_cockpit_materials(materials)
+    x_delta = args.cockpit_x_delta
+    x = lambda value: value + x_delta
+
+    append_box(body, "gtvr_cockpit_dark_gray", (x(1.62), 0.0, -0.775), (1.55, 1.34, 0.055))
+    append_box(body, "gtvr_cockpit_black", (x(2.30), 0.0, -0.31), (0.56, 1.18, 0.14))
+    append_box(body, "gtvr_cockpit_black", (x(2.23), 0.0, 0.095), (0.52, 1.16, 0.075))
+    append_box(body, "gtvr_cockpit_dark_gray", (x(1.78), 0.0, -0.55), (0.78, 0.22, 0.28))
+    append_box(body, "gtvr_cockpit_black", (x(1.94), 0.0, -0.37), (0.40, 0.18, 0.11))
+
+    for seat_y in (-0.40, 0.40):
+        append_box(body, "gtvr_cockpit_seat", (x(1.28), seat_y, -0.67), (0.58, 0.42, 0.13))
+        append_box(body, "gtvr_cockpit_seat", (x(0.98), seat_y, -0.37), (0.13, 0.42, 0.58))
+        append_box(body, "gtvr_cockpit_black", (x(0.91), seat_y, -0.01), (0.11, 0.34, 0.18))
+        append_box(body, "gtvr_cockpit_dark_gray", (x(1.35), seat_y, -0.575), (0.42, 0.32, 0.035))
+
+    screen_x = x(2.47)
+    for side_y in (-0.34, 0.20):
+        add_framed_screen(body, material_name=COCKPIT_PFD_MATERIAL, center=(screen_x, side_y, 0.015))
+        add_framed_screen(body, material_name=COCKPIT_MAP_MATERIAL, center=(screen_x, side_y, -0.205), height_z=0.155)
+        append_box(body, "gtvr_cockpit_metal", (x(2.43), side_y - 0.18, -0.095), (0.035, 0.028, 0.40))
+        append_box(body, "gtvr_cockpit_metal", (x(2.43), side_y + 0.18, -0.095), (0.035, 0.028, 0.40))
+
+    for center_y in (-0.07, 0.07):
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_metal",
+            (x(2.44), center_y, -0.125),
+            (x(2.425), center_y, -0.125),
+            0.052,
+            segments=18,
+        )
+        append_cylinder_between(
+            body,
+            "gtvr_cockpit_rubber",
+            (x(2.418), center_y, -0.125),
+            (x(2.405), center_y, -0.125),
+            0.038,
+            segments=18,
+        )
+
+    for stick_y in (-0.38, 0.40):
+        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.25), stick_y, -0.64), (x(2.23), stick_y, -0.24), 0.023)
+        append_cylinder_between(body, "gtvr_cockpit_rubber", (x(2.22), stick_y, -0.22), (x(2.31), stick_y, -0.13), 0.045)
+        append_box(body, "gtvr_cockpit_button_red", (x(2.295), stick_y - 0.028, -0.105), (0.032, 0.018, 0.014))
+        append_box(body, "gtvr_cockpit_button_green", (x(2.295), stick_y + 0.028, -0.105), (0.032, 0.018, 0.014))
+
+    for start_y, end_y in ((-0.58, -0.11), (0.58, 0.63)):
+        append_cylinder_between(body, "gtvr_cockpit_metal", (x(1.67), start_y, -0.66), (x(2.08), end_y, -0.49), 0.022)
+        append_cylinder_between(body, "gtvr_cockpit_rubber", (x(2.04), end_y, -0.505), (x(2.16), end_y, -0.455), 0.030)
+        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.08), end_y - 0.035, -0.50), (x(2.14), end_y - 0.035, -0.475), 0.017)
+        append_cylinder_between(body, "gtvr_cockpit_metal", (x(2.08), end_y + 0.035, -0.50), (x(2.14), end_y + 0.035, -0.475), 0.017)
+
+    for seat_y in (-0.40, 0.40):
+        for pedal_offset in (-0.12, 0.12):
+            pedal_y = seat_y + pedal_offset
+            append_cylinder_between(body, "gtvr_cockpit_metal", (x(1.96), pedal_y, -0.73), (x(2.21), pedal_y, -0.60), 0.016)
+            append_box(body, "gtvr_cockpit_rubber", (x(2.26), pedal_y, -0.56), (0.055, 0.13, 0.10))
+
+    print(
+        "Dev cockpit kit: added seats, cyclics, collectives/throttles, pedals, "
+        "dual PFD/map glass displays and panel hardware."
+    )
+
+
 def make_inner_shell_opaque(body: dict[str, core.Patch], skip_regex: str | None) -> tuple[int, list[str]]:
     duplicated_faces = 0
     skipped_materials: list[str] = []
@@ -197,6 +574,7 @@ def build_body_for_dev(args: argparse.Namespace):
             skipped_preview = ", ".join(sorted(skipped_materials)[:12])
             suffix = "..." if len(skipped_materials) > 12 else ""
             print(f"Dev inner shell: skipped transparent/non-solid materials: {skipped_preview}{suffix}")
+    add_cockpit_kit(args, materials, body)
     return materials, body, tail_rotor, visual_gear, source_faces, imported_faces
 
 
@@ -208,6 +586,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
+                "cockpit_kit=generated seats, controls, pedals and static glass displays",
                 f"pilot_alignment_x_delta={_current_pilot_alignment_x_delta:.3f}",
                 "",
             ]
@@ -268,6 +647,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
+                "Generated cockpit kit includes seats, cyclics, collectives/throttles, pedals and static PFD/map displays.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
@@ -322,6 +702,12 @@ def add_core_args(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_PILOT_ALIGNMENT_X_DELTA,
         help="Dev-only visual shell X shift used to align the fixed EC135 pilot with the Wraith side window.",
     )
+    parser.add_argument(
+        "--cockpit-x-delta",
+        type=float,
+        default=DEFAULT_COCKPIT_X_DELTA,
+        help="Dev-only X tuning offset for generated cockpit seats, controls and displays.",
+    )
     parser.add_argument("--no-yaw-180", dest="yaw_180", action="store_false")
     parser.set_defaults(yaw_180=True)
     parser.add_argument(
@@ -336,6 +722,13 @@ def add_core_args(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_INNER_SHELL_SKIP_MATERIAL_REGEX,
         help="Material names matching this regex are not inward-duplicated.",
     )
+    parser.add_argument(
+        "--no-cockpit-kit",
+        dest="cockpit_kit",
+        action="store_false",
+        help="Do not add the generated cockpit seats, controls, pedals and static displays.",
+    )
+    parser.set_defaults(cockpit_kit=True)
 
 
 def build_parser() -> argparse.ArgumentParser:

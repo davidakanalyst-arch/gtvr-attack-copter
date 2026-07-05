@@ -50,6 +50,7 @@ That command:
 - prepares Aerofly converter source under `tools\vendor\gtvr_wraith_dev_source\aircraft\gtvr_wraith_dev`;
 - shifts the dev visual shell forward around the fixed working EC135 pilot so the pilot sits closer to the side-window area;
 - duplicates solid shell faces inward with a matte black material so opaque exterior panels are visible from the cockpit side;
+- adds the generated cockpit kit: front seats, cyclics, collectives/throttles, pedals, a panel/glareshield, and paired static PFD/map glass displays;
 - runs the full Aerofly converter for model `gtvr_wraith_dev`;
 - assembles `local-aircraft-packages\gtvr_wraith_dev`;
 - installs only to `C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_wraith_dev`.
@@ -85,6 +86,18 @@ python tools\build_gtvr_wraith_dev.py --full --force-install --no-inner-shell
 Keep the EC135-core dev package on `Pilot[pilot_jason]`. A test that switched `gtvr_wraith_dev.tmc` to `Pilot[pilot_robert]`, copied from the retired plane-flight-model Wraith path, made Aerofly load the STOP fallback. Fix pilot seating relative to the Wraith shell through a safer dev-only shell/pilot alignment path, not by changing the pilot object reference.
 
 The current dev-only correction is `--pilot-alignment-x-delta 0.40`, which shifts the visual shell and rotors forward around the fixed EC135 pilot. Tune this number conservatively if the pilot still needs side-window alignment; keep the pilot object on `pilot_jason`.
+
+## Generated Cockpit Kit
+
+The dev wrapper adds a simple generated cockpit kit directly into the compiled dev `.tmb`. It includes two front seats, cyclic sticks, collective/throttle levers, pedal pads, a dark panel/glareshield, and two glass displays per side. The current display textures are static: one PFD-style screen with attitude/speed/altitude tapes and one rolling-map screen.
+
+Disable it only for diagnostics:
+
+```powershell
+python tools\build_gtvr_wraith_dev.py --full --force-install --no-cockpit-kit
+```
+
+Use `--cockpit-x-delta` for small fore/aft fit tuning without changing the shell or pilot alignment.
 
 ## Promotion Rule
 
