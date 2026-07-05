@@ -47,7 +47,7 @@ python tools\build_gtvr_wraith_dev.py --full --force-install
 That command:
 
 - prepares Aerofly converter source under `tools\vendor\gtvr_wraith_dev_source\aircraft\gtvr_wraith_dev`;
-- duplicates solid shell faces inward so opaque exterior panels are visible from the cockpit side;
+- duplicates solid shell faces inward with a matte black material so opaque exterior panels are visible from the cockpit side;
 - runs the full Aerofly converter for model `gtvr_wraith_dev`;
 - assembles `local-aircraft-packages\gtvr_wraith_dev`;
 - installs only to `C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_wraith_dev`.
@@ -70,7 +70,7 @@ Only pass `--allow-stale-tmb` for a deliberate metadata/package-only reinstall w
 
 ## Cockpit-Side Shell Opacity
 
-`tools\build_gtvr_wraith_dev.py` defaults to adding reversed, inward-facing copies of solid shell triangles before conversion. This keeps opaque panels from disappearing or looking see-through from the inside cockpit view while leaving window, transparent, light, beacon, glow, and similar materials out of the inward copy pass.
+`tools\build_gtvr_wraith_dev.py` defaults to adding reversed, inward-facing copies of solid shell triangles before conversion. Those inward faces use the generated `gtvr_inner_matte_black` material, keeping opaque panels from disappearing or looking see-through from the inside cockpit view while leaving window, transparent, light, beacon, glow, and similar materials out of the inward copy pass.
 
 Disable this only for diagnostics:
 

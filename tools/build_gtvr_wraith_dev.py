@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 import build_gtvr_wraith_ec135_core as core
+from build_gtvr_source_project import write_png
+from build_msfs_shell_source import Material
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +31,9 @@ DEFAULT_INNER_SHELL_SKIP_MATERIAL_REGEX = (
     r"(glass|window|windscreen|windshield|transparent|translucent|clear|alpha|"
     r"opacity|lens|light|lamp|beacon|bcn|strobe|nav|slime|glow|flare)"
 )
+INNER_SHELL_MATERIAL_NAME = "gtvr_inner_matte_black"
+INNER_SHELL_TEXTURE_NAME = "gtvr_inner_matte_black"
+INNER_SHELL_COLOR = (2, 2, 2)
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -81,25 +86,26 @@ def material_is_inner_shell_solid(material_name: str, skip_regex: str | None) ->
 
 
 def append_reversed_face(
-    patch: core.Patch,
+    source_patch: core.Patch,
+    target_patch: core.Patch,
     source_indices: list[int],
     face_attribute: int,
 ) -> None:
-    base_index = len(patch.vertices) // 8
+    base_index = len(target_patch.vertices) // 8
     for source_index in (source_indices[0], source_indices[2], source_indices[1]):
         offset = source_index * 8
-        vertex = list(patch.vertices[offset : offset + 8])
+        vertex = list(source_patch.vertices[offset : offset + 8])
         vertex[3] = -vertex[3]
         vertex[4] = -vertex[4]
         vertex[5] = -vertex[5]
-        patch.vertices.extend(vertex)
-    patch.indices.extend([base_index, base_index + 1, base_index + 2])
-    patch.face_attributes.append(face_attribute)
+        target_patch.vertices.extend(vertex)
+    target_patch.indices.extend([base_index, base_index + 1, base_index + 2])
+    target_patch.face_attributes.append(face_attribute)
 
 
-def make_patch_visible_from_inside(patch: core.Patch) -> int:
-    original_indices = list(patch.indices)
-    original_face_attributes = list(patch.face_attributes)
+def make_patch_visible_from_inside(source_patch: core.Patch, target_patch: core.Patch) -> int:
+    original_indices = list(source_patch.indices)
+    original_face_attributes = list(source_patch.face_attributes)
     original_face_count = len(original_indices) // 3
     for face_index in range(original_face_count):
         start = face_index * 3
@@ -110,29 +116,49 @@ def make_patch_visible_from_inside(patch: core.Patch) -> int:
             face_attribute = original_face_attributes[face_index]
         else:
             face_attribute = 0
-        append_reversed_face(patch, face_indices, face_attribute)
+        append_reversed_face(source_patch, target_patch, face_indices, face_attribute)
     return original_face_count
+
+
+def ensure_inner_shell_material(materials: dict[int, Material]) -> None:
+    write_png(core.SOURCE_DIR / f"{INNER_SHELL_TEXTURE_NAME}.png", INNER_SHELL_COLOR)
+    if any(material.name == INNER_SHELL_MATERIAL_NAME for material in materials.values()):
+        return
+    next_index = max(materials.keys(), default=-1) + 1
+    materials[next_index] = Material(
+        name=INNER_SHELL_MATERIAL_NAME,
+        texture_name=INNER_SHELL_TEXTURE_NAME,
+        source_uri="generated-gtvr-dev-inner-shell",
+        color=(*INNER_SHELL_COLOR, 255),
+    )
 
 
 def make_inner_shell_opaque(body: dict[str, core.Patch], skip_regex: str | None) -> tuple[int, list[str]]:
     duplicated_faces = 0
     skipped_materials: list[str] = []
-    for material_name, patch in body.items():
+    inner_patch = body.setdefault(INNER_SHELL_MATERIAL_NAME, core.Patch(INNER_SHELL_MATERIAL_NAME))
+    for material_name, patch in list(body.items()):
+        if material_name == INNER_SHELL_MATERIAL_NAME:
+            continue
         if not material_is_inner_shell_solid(material_name, skip_regex):
             skipped_materials.append(material_name)
             continue
-        duplicated_faces += make_patch_visible_from_inside(patch)
+        duplicated_faces += make_patch_visible_from_inside(patch, inner_patch)
     return duplicated_faces, skipped_materials
 
 
 def build_body_for_dev(args: argparse.Namespace):
     materials, body, tail_rotor, visual_gear, source_faces, imported_faces = _ORIGINAL_BUILD_BODY(args)
     if args.inner_shell:
+        ensure_inner_shell_material(materials)
         duplicated_faces, skipped_materials = make_inner_shell_opaque(
             body,
             args.inner_shell_skip_material_regex,
         )
-        print(f"Dev inner shell: duplicated {duplicated_faces} solid faces for cockpit-side visibility.")
+        print(
+            "Dev inner shell: "
+            f"duplicated {duplicated_faces} solid faces into {INNER_SHELL_MATERIAL_NAME}."
+        )
         if skipped_materials:
             skipped_preview = ", ".join(sorted(skipped_materials)[:12])
             suffix = "..." if len(skipped_materials) > 12 else ""
@@ -147,7 +173,7 @@ def write_source_stamp() -> None:
                 "GTVR Wraith Dev source prepared.",
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
-                "inner_shell=solid materials are duplicated inward by default",
+                f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "",
             ]
         ),
@@ -206,7 +232,7 @@ def write_dev_package_marker() -> None:
                 "Dev-only EC135-core Wraith iteration package.",
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
-                "Solid shell materials include inward-facing faces for cockpit-side opacity.",
+                "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "",
             ]
         ),
