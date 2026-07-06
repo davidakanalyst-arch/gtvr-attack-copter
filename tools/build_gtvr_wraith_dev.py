@@ -43,11 +43,21 @@ DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 SEAT_Z_LIFT = 0.16
-PEDAL_Z_LIFT = 0.09
+PEDAL_Z_LIFT = -0.03
 PEDAL_X_REARWARD = 0.18
 HIDDEN_DEV_CLICKSPOT_RE = re.compile(
     r"^(?:pilotstick|copilotstick|stick|pilotpushtotalk|copilotpushtotalk|"
     r"collective|throttle|noselandinglight|enginestrim|coolielandinglight|.*cyclic.*|.*pedal.*)",
+    re.IGNORECASE,
+)
+HIDDEN_DEV_STATIC_VISUAL_RE = re.compile(
+    r"^(?:"
+    r"CHCollectiveL0|CHCollectiveL1|CHCollectiveR0|CHCollectiveR1|"
+    r"LeftCollectiveLeverHead|RightCollectiveLeverHead|"
+    r"LLPedalCont|LRPedalCont|RLPedalCont|RRPedalCont|Pedalsupport|"
+    r"LeftCyclicCont|LeftCyclicLink|RightCyclicCont|Rightcycliclink|"
+    r"StickL.*|StickR.*|StickBagLeft|StickBagRight|PitchCont|PitchSlider|PitchbagL|PitchbagR"
+    r")$",
     re.IGNORECASE,
 )
 
@@ -68,6 +78,19 @@ COCKPIT_FLAT_MATERIALS = {
     "gtvr_glass_green": ((80, 235, 170), "generated-gtvr-dev-glass-green"),
     "gtvr_glass_white": ((225, 245, 238), "generated-gtvr-dev-glass-white"),
     "gtvr_glass_yellow": ((245, 210, 72), "generated-gtvr-dev-glass-yellow"),
+}
+DEV_INTERIOR_SHADER_MATERIALS = {
+    "gtvr_cockpit_black",
+    "gtvr_control_black",
+    "gtvr_cockpit_dark_gray",
+    "gtvr_cockpit_seat",
+    "gtvr_cockpit_seat_highlight",
+    "gtvr_cockpit_seat_shadow",
+    "gtvr_cockpit_metal",
+    "gtvr_cockpit_rubber",
+    "gtvr_cockpit_button_green",
+    "gtvr_cockpit_button_red",
+    INNER_SHELL_MATERIAL_NAME,
 }
 COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
 COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
@@ -1308,7 +1331,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added raised upholstered seats, animated floor-mounted pure-black cyclics, left-side collectives, "
-        "raised rearward rounded pedals and live left/right speed-altitude overlays with a center map."
+        "lowered rearward rounded pedals and live left/right speed-altitude overlays with a center map."
     )
 
 
@@ -1438,7 +1461,7 @@ def visual_control_dynamic_objects() -> str:
             >
             <[graphics_input][GTVRVisualRudderPedalTravel][]
                 <[uint32][InputID][ServoRudder.Output]>
-                <[float64][Scaling][0.07]>
+                <[float64][Scaling][-0.07]>
             >
             <[graphics_translation][GTVRLLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
@@ -1602,9 +1625,16 @@ def live_telemetry_dynamic_objects() -> str:
             >"""
 
 
+def is_dev_static_visual_hidden(geometry_name: str) -> bool:
+    return HIDDEN_DEV_STATIC_VISUAL_RE.search(geometry_name) is not None
+
+
 def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
-    static_geometry_names = [name for name in sorted(geometry_names) if name not in animated_names]
+    static_geometry_names = [
+        name for name in sorted(geometry_names)
+        if name not in animated_names and not is_dev_static_visual_hidden(name)
+    ]
     telemetry_objects = live_telemetry_dynamic_objects()
     display_graphics = live_display_graphics_objects()
     control_transforms = visual_control_dynamic_objects()
@@ -1634,6 +1664,26 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
 >
 """
     path.write_text(text, encoding="utf-8")
+
+
+def patch_dev_tgi_material_shaders(path: Path) -> int:
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    current_material: str | None = None
+    patched = 0
+    for index, line in enumerate(lines):
+        if "<[tmxglmaterial_impexp][element]" in line:
+            current_material = None
+            continue
+        if current_material is None:
+            material_match = re.search(r"<\[string8\]\[name\]\[([^\]]+)\]>", line)
+            if material_match:
+                current_material = material_match.group(1)
+            continue
+        if current_material in DEV_INTERIOR_SHADER_MATERIALS and "<[string8][shader_hint]" in line:
+            lines[index] = "                <[string8][shader_hint][standard interior]>"
+            patched += 1
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return patched
 
 
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
@@ -1682,7 +1732,9 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
 
     core.write_aircraft_source_tmc(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmc")
     write_dev_visual_tmd(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmd", sorted(geometries))
-    core.write_tgi(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tgi", materials, geometries)
+    tgi_path = core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tgi"
+    core.write_tgi(tgi_path, materials, geometries)
+    patched_materials = patch_dev_tgi_material_shaders(tgi_path)
     core.write_model_tmc(core.SOURCE_DIR / "model.tmc", materials, geometries, args.max_texture_size)
     core.write_root_converter_config(core.SOURCE_ROOT / "config.tmc", core.SOURCE_ROOT, core.BUILD_USER)
     (core.SOURCE_DIR / "_GTVR_WRAITH_DEV_SOURCE.md").write_text(
@@ -1707,6 +1759,8 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     print(f"Animated control geometry groups: {len(control_graphic_groups())}")
     print(f"Live glass display geometry groups: {len(_current_live_display_geometries)}")
     print(f"Stock EC135 display geometry groups: {len(_current_stock_display_geometries)}")
+    if patched_materials:
+        print(f"Dev cockpit materials: forced {patched_materials} generated interior/control shaders.")
     print(f"Imported body faces: {imported_faces}")
 
 
@@ -1718,8 +1772,8 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, raised rearward pedals and left/right speed-altitude tape panels with a center map",
-                "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible handle clickspots are suppressed in the dev package",
+                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
+                "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible control geometry and handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
@@ -1786,9 +1840,9 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, raised rearward rounded pedals, side speed-altitude tape panels and a center map.",
+                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
-                "Inherited EC135 visible cockpit stick/collective/pedal click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
+                "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
                 "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
                 "Recessed fixed display cues are merged into the visible dash mesh as an EC135-TMQ-safe fallback without duplicating moving live layers.",
