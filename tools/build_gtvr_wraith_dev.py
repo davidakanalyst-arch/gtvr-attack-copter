@@ -41,7 +41,7 @@ DEFAULT_COCKPIT_X_DELTA = 0.0
 DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
-CONTROL_MATTE_BLACK_MATERIAL = "gtvr_cockpit_black"
+CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 SEAT_Z_LIFT = 0.16
 HIDDEN_DEV_CLICKSPOT_RE = re.compile(
     r"^(?:pilotstick|copilotstick|stick|pilotpushtotalk|copilotpushtotalk|"
@@ -51,6 +51,7 @@ HIDDEN_DEV_CLICKSPOT_RE = re.compile(
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
+    "gtvr_control_black": ((0, 0, 0), "generated-gtvr-dev-control-black"),
     "gtvr_cockpit_dark_gray": ((22, 24, 25), "generated-gtvr-dev-cockpit-dark-gray"),
     "gtvr_cockpit_seat": ((18, 20, 22), "generated-gtvr-dev-cockpit-seat"),
     "gtvr_cockpit_seat_highlight": ((36, 39, 40), "generated-gtvr-dev-cockpit-seat-highlight"),
@@ -819,7 +820,7 @@ def add_framed_screen(
     height_z: float = 0.17,
 ) -> None:
     x, y, z = center
-    append_box(body, "gtvr_cockpit_black", (x + 0.012, y, z), (0.035, width_y + 0.055, height_z + 0.055))
+    append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (x + 0.012, y, z), (0.035, width_y + 0.055, height_z + 0.055))
     append_textured_panel(body, material_name, center=(x - 0.008, y, z), width_y=width_y, height_z=height_z)
 
 
@@ -827,16 +828,17 @@ def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
     panel_x = dash_x(2.47)
     rail_x = dash_x(2.45)
 
-    append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, 0.080), (0.13, 1.22, 0.070))
-    append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, -0.330), (0.13, 1.22, 0.075))
+    append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (rail_x, 0.0, 0.080), (0.13, 1.22, 0.070))
+    append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (rail_x, 0.0, -0.330), (0.13, 1.22, 0.075))
 
     for post_y in (-0.155, 0.155):
         append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (rail_x, post_y, -0.125), (0.12, 0.048, 0.390))
 
 
 def add_pfd_static_overlay(static: dict[str, core.Patch], *, x: float, y: float, z: float) -> None:
-    half_w = 0.165
-    half_h = 0.165
+    half_w = 0.158
+    half_h = 0.158
+    append_panel_rect(static, CONTROL_MATTE_BLACK_MATERIAL, x=x + 0.002, center_y=y, center_z=z, width_y=0.322, height_z=0.322)
     for line in (
         (y - half_w, z - half_h, y + half_w, z - half_h),
         (y - half_w, z + half_h, y + half_w, z + half_h),
@@ -854,19 +856,28 @@ def add_pfd_static_overlay(static: dict[str, core.Patch], *, x: float, y: float,
             thickness=0.003,
         )
 
-    for tape_y in (y - 0.126, y + 0.126):
-        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.032, start_z=z - 0.125, end_y=tape_y - 0.032, end_z=z + 0.125, thickness=0.002)
-        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y + 0.032, start_z=z - 0.125, end_y=tape_y + 0.032, end_z=z + 0.125, thickness=0.002)
-        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.032, start_z=z - 0.125, end_y=tape_y + 0.032, end_z=z - 0.125, thickness=0.002)
-        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.032, start_z=z + 0.125, end_y=tape_y + 0.032, end_z=z + 0.125, thickness=0.002)
+    append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=y, start_z=z - 0.145, end_y=y, end_z=z + 0.145, thickness=0.0016)
 
-    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y - 0.048, start_z=z, end_y=y - 0.012, end_z=z, thickness=0.004)
-    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y + 0.012, start_z=z, end_y=y + 0.048, end_z=z, thickness=0.004)
+    for tape_y in (y - 0.098, y + 0.098):
+        append_panel_rect(static, "gtvr_cockpit_black", x=x + 0.001, center_y=tape_y, center_z=z, width_y=0.090, height_z=0.255)
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.045, start_z=z - 0.128, end_y=tape_y - 0.045, end_z=z + 0.128, thickness=0.002)
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y + 0.045, start_z=z - 0.128, end_y=tape_y + 0.045, end_z=z + 0.128, thickness=0.002)
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.045, start_z=z - 0.128, end_y=tape_y + 0.045, end_z=z - 0.128, thickness=0.002)
+        append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.045, start_z=z + 0.128, end_y=tape_y + 0.045, end_z=z + 0.128, thickness=0.002)
+
+    append_panel_line(static, "gtvr_glass_green", x=x, start_y=y - 0.143, start_z=z, end_y=y - 0.080, end_z=z, thickness=0.004)
+    append_panel_line(static, "gtvr_glass_green", x=x, start_y=y + 0.080, start_z=z, end_y=y + 0.143, end_z=z, thickness=0.004)
     append_panel_triangle(
         static,
-        "gtvr_glass_yellow",
+        "gtvr_glass_green",
         x=x,
-        points_yz=[(y - 0.010, z - 0.010), (y, z + 0.006), (y + 0.010, z - 0.010)],
+        points_yz=[(y - 0.028, z - 0.012), (y - 0.010, z), (y - 0.028, z + 0.012)],
+    )
+    append_panel_triangle(
+        static,
+        "gtvr_glass_green",
+        x=x,
+        points_yz=[(y + 0.028, z - 0.012), (y + 0.010, z), (y + 0.028, z + 0.012)],
     )
 
 
@@ -895,9 +906,9 @@ def add_pfd_tape_layer(
     z: float,
     side: str,
 ) -> None:
-    for index in range(-5, 6):
-        tick_z = z + index * 0.026
-        tick_width = 0.048 if index % 2 == 0 else 0.032
+    for index in range(-7, 8):
+        tick_z = z + index * 0.024
+        tick_width = 0.058 if index % 2 == 0 else 0.036
         material = "gtvr_glass_green" if index == 0 else "gtvr_glass_white"
         if side == "left":
             start_y = y - tick_width * 0.5
@@ -943,19 +954,14 @@ def add_live_pfd_display(*, screen_x: float, side_y: float, side_name: str) -> N
     x = screen_x - 0.018
     z = -0.12
     static = live_display_geometry(f"GTVR{side_name}PFDStatic")
-    horizon = live_display_geometry(f"GTVR{side_name}PFDHorizon")
     speed_tape = live_display_geometry(f"GTVR{side_name}PFDSpeedTape")
     alt_tape = live_display_geometry(f"GTVR{side_name}PFDAltTape")
-    heading = live_display_geometry(f"GTVR{side_name}PFDHeading")
 
     _current_live_display_pivots[f"{side_name}PFD"] = (x, side_y, z)
-    _current_live_display_pivots[f"{side_name}PFDHeading"] = (x, side_y, z - 0.134)
 
     add_pfd_static_overlay(static, x=x, y=side_y, z=z)
-    add_pfd_horizon_layer(horizon, x=x - 0.002, y=side_y, z=z)
-    add_pfd_tape_layer(speed_tape, x=x - 0.004, y=side_y - 0.126, z=z, side="left")
-    add_pfd_tape_layer(alt_tape, x=x - 0.004, y=side_y + 0.126, z=z, side="right")
-    add_pfd_heading_layer(heading, x=x - 0.004, y=side_y, z=z - 0.134)
+    add_pfd_tape_layer(speed_tape, x=x - 0.004, y=side_y - 0.098, z=z, side="left")
+    add_pfd_tape_layer(alt_tape, x=x - 0.004, y=side_y + 0.098, z=z, side="right")
 
 
 def add_live_map_display(*, screen_x: float) -> None:
@@ -1006,20 +1012,6 @@ def add_live_glass_displays(*, screen_x: float) -> None:
 
 def add_stock_display_surfaces(*, screen_x: float) -> None:
     display_x = screen_x - 0.020
-    append_textured_panel(
-        stock_display_geometry("DisplayPFDL"),
-        COCKPIT_PFD_MATERIAL,
-        center=(display_x, -0.39, -0.12),
-        width_y=0.34,
-        height_z=0.34,
-    )
-    append_textured_panel(
-        stock_display_geometry("DisplayPFDR"),
-        COCKPIT_PFD_MATERIAL,
-        center=(display_x, 0.39, -0.12),
-        width_y=0.34,
-        height_z=0.34,
-    )
     append_textured_panel(
         stock_display_geometry("DisplayNDL"),
         COCKPIT_MAP_MATERIAL,
@@ -1288,7 +1280,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     for side_y in (-0.39, 0.39):
         add_framed_screen(
             body,
-            material_name=COCKPIT_PFD_MATERIAL,
+            material_name=CONTROL_MATTE_BLACK_MATERIAL,
             center=(screen_x, side_y, -0.12),
             width_y=0.34,
             height_z=0.34,
@@ -1312,8 +1304,8 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added raised upholstered seats, animated floor-mounted matte-black cyclics, left-side collectives, "
-        "forward rounded pedals and left/middle/right live glass-style displays."
+        "Dev cockpit kit: added raised upholstered seats, animated floor-mounted pure-black cyclics, left-side collectives, "
+        "forward rounded pedals and left/right moving speed-altitude tape displays with a center map."
     )
 
 
@@ -1453,22 +1445,22 @@ def visual_control_dynamic_objects() -> str:
             >
             <[graphics_rotation][GTVRLLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LL"])} ]>
             >
             <[graphics_rotation][GTVRLRPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LR"])} ]>
             >
             <[graphics_rotation][GTVRRLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RL"])} ]>
             >
             <[graphics_rotation][GTVRRRPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
                 <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RR"])} ]>
             >"""
 
@@ -1502,10 +1494,6 @@ def live_display_graphics_objects() -> str:
     if not _current_live_display_geometries:
         return ""
 
-    left_pfd = _current_live_display_pivots.get("LeftPFD", (current_interior_x(2.47), -0.39, -0.12))
-    right_pfd = _current_live_display_pivots.get("RightPFD", (current_interior_x(2.47), 0.39, -0.12))
-    left_heading = _current_live_display_pivots.get("LeftPFDHeading", (left_pfd[0], left_pfd[1], left_pfd[2] - 0.134))
-    right_heading = _current_live_display_pivots.get("RightPFDHeading", (right_pfd[0], right_pfd[1], right_pfd[2] - 0.134))
     map_pivot = _current_live_display_pivots.get("Map", (current_interior_x(2.47), 0.0, -0.12))
     static_names = live_display_static_geometry_names()
     static_block = ""
@@ -1521,28 +1509,9 @@ def live_display_graphics_objects() -> str:
         )
 
     pfd_blocks: list[str] = []
-    for side_name, pivot, heading_pivot in (
-        ("Left", left_pfd, left_heading),
-        ("Right", right_pfd, right_heading),
-    ):
+    for side_name in ("Left", "Right"):
         pfd_blocks.extend(
             [
-                f"            <[graphics_rotation][GTVR{side_name}PFDBankTransform][]",
-                "                <[string8][Input][GTVRGlassBankInput.Output]>",
-                "                <[tmvector3d][Axis][ -1.0 0.0 0.0 ]>",
-                f"                <[tmvector3d][Pivot][ {fmt_vector(pivot)} ]>",
-                "            >",
-                f"            <[graphics_translation][GTVR{side_name}PFDPitchTransform][]",
-                "                <[string8][Input][GTVRGlassPitchMapping.Output]>",
-                "                <[tmvector3d][Axis][0.0 0.0 1.0]>",
-                f"                <[string8][InputTransform][GTVR{side_name}PFDBankTransform.Output]>",
-                "            >",
-                f"            <[rigidbodygraphics][GTVR{side_name}PFDHorizonGraphics][]",
-                f"                <[string8][GeometryList][ GTVR{side_name}PFDHorizon ]>",
-                "                <[uint32][PositionID][Fuselage.R]>",
-                "                <[uint32][OrientationID][Fuselage.Q]>",
-                f"                <[string8][InputTransform][GTVR{side_name}PFDPitchTransform.Output]>",
-                "            >",
                 f"            <[rigidbodygraphics][GTVR{side_name}PFDSpeedTapeGraphics][]",
                 f"                <[string8][GeometryList][ GTVR{side_name}PFDSpeedTape ]>",
                 "                <[uint32][PositionID][Fuselage.R]>",
@@ -1555,38 +1524,18 @@ def live_display_graphics_objects() -> str:
                 "                <[uint32][OrientationID][Fuselage.Q]>",
                 "                <[string8][InputTransform][GTVRGlassAltTapeTransform.Output]>",
                 "            >",
-                f"            <[hingedbodygraphics][GTVR{side_name}PFDHeadingGraphics][]",
-                f"                <[string8][GeometryList][ GTVR{side_name}PFDHeading ]>",
-                "                <[uint32][PositionID][Fuselage.R]>",
-                "                <[uint32][OrientationID][Fuselage.Q]>",
-                "                <[uint32][InputID][HeadingAngle.Output]>",
-                "                <[float64][Scaling][-0.017453]>",
-                "                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>",
-                f"                <[tmvector3d][Pivot][ {fmt_vector(heading_pivot)} ]>",
-                "            >",
             ]
         )
 
     return "\n".join(
         [
-            "            // GTVR live glass display inputs",
-            "            <[graphics_input][GTVRGlassBankInput][]",
-            "                <[uint32][InputID][BankAngle.Output]>",
-            "                <[float64][Scaling][-1.0]>",
-            "            >",
-            "            <[graphics_input][GTVRGlassPitchInput][]",
-            "                <[uint32][InputID][PitchAngle.Output]>",
-            "            >",
-            "            <[graphics_linear_interpolation][GTVRGlassPitchMapping][]",
-            "                <[string8][Input][GTVRGlassPitchInput.Output]>",
-            "                <[tmvector2d][Map][(-0.5 0.075) (0.0 0.0) (0.5 -0.075)]>",
-            "            >",
+            "            // GTVR live side displays: moving speed and altitude tapes only.",
             "            <[graphics_input][GTVRGlassAirspeedInput][]",
             "                <[uint32][InputID][AirspeedIndicatorNeedle.Output]>",
             "            >",
             "            <[graphics_linear_interpolation][GTVRGlassAirspeedTapeMapping][]",
             "                <[string8][Input][GTVRGlassAirspeedInput.Output]>",
-            "                <[tmvector2d][Map][(0.0 0.080) (30.0 0.0) (80.0 -0.080)]>",
+            "                <[tmvector2d][Map][(0.0 0.115) (25.0 0.035) (50.0 -0.035) (80.0 -0.115)]>",
             "            >",
             "            <[graphics_translation][GTVRGlassAirspeedTapeTransform][]",
             "                <[string8][Input][GTVRGlassAirspeedTapeMapping.Output]>",
@@ -1597,7 +1546,7 @@ def live_display_graphics_objects() -> str:
             "            >",
             "            <[graphics_linear_interpolation][GTVRGlassAltTapeMapping][]",
             "                <[string8][Input][GTVRGlassAltInput.Output]>",
-            "                <[tmvector2d][Map][(0.0 0.080) (1000.0 0.0) (3000.0 -0.080)]>",
+            "                <[tmvector2d][Map][(0.0 0.115) (500.0 0.035) (1000.0 -0.035) (1500.0 -0.115)]>",
             "            >",
             "            <[graphics_translation][GTVRGlassAltTapeTransform][]",
             "                <[string8][Input][GTVRGlassAltTapeMapping.Output]>",
@@ -1732,10 +1681,10 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted matte-black cyclics, left-side collectives, forward pedals and left/middle/right live glass-style panels",
+                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, forward pedals and left/right speed-altitude tape panels with a center map",
                 "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible handle clickspots are suppressed in the dev package",
-                "live_glass=attitude, airspeed, altitude and heading overlay geometry is bound to Aerofly outputs",
-                "stock_display_surfaces=DisplayPFDL DisplayPFDR and DisplayNDL are populated for the preserved EC135 TMQ display path",
+                "live_glass=side displays are simplified to moving airspeed and altitude tape geometry bound to Aerofly outputs; center map heading remains separate",
+                "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
@@ -1800,11 +1749,11 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted matte-black cyclics, left-side collective placement, forward rounded pedals and left/middle/right live glass-style panels.",
+                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, forward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Generated glass overlays bind attitude, airspeed, altitude and heading graphics to Aerofly outputs.",
-                "Stock EC135 display geometry groups DisplayPFDL, DisplayPFDR and DisplayNDL are populated at the generated screen positions.",
+                "Generated side display overlays bind moving airspeed and altitude tape graphics to Aerofly outputs; the center map remains heading-driven.",
+                "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
                 "Recessed fixed display cues are merged into the visible dash mesh as an EC135-TMQ-safe fallback without duplicating moving live layers.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
