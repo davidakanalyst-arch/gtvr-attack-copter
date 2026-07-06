@@ -1233,9 +1233,12 @@ def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
 
 def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
     pz = lambda value: value + PEDAL_Z_LIFT
+    # The inherited EC135 TMQ drives these pedal meshes by geometry name.
+    # Keep the physical positions unchanged, but assign the opposite pedal names
+    # so the generated pedals follow the pilot foot animation direction.
     for seat_y, left_name, right_name in (
-        (-0.40, "LLPedal", "LRPedal"),
-        (0.40, "RLPedal", "RRPedal"),
+        (-0.40, "LRPedal", "LLPedal"),
+        (0.40, "RRPedal", "RLPedal"),
     ):
         crossbar_x = interior_x(2.22) - PEDAL_X_REARWARD
         pad_x = interior_x(2.56) - PEDAL_X_REARWARD
@@ -1461,7 +1464,7 @@ def visual_control_dynamic_objects() -> str:
             >
             <[graphics_input][GTVRVisualRudderPedalTravel][]
                 <[uint32][InputID][ServoRudder.Output]>
-                <[float64][Scaling][-0.07]>
+                <[float64][Scaling][0.07]>
             >
             <[graphics_translation][GTVRLLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
