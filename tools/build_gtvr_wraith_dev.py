@@ -43,6 +43,7 @@ DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 SEAT_Z_LIFT = 0.16
+PEDAL_Z_LIFT = 0.09
 HIDDEN_DEV_CLICKSPOT_RE = re.compile(
     r"^(?:pilotstick|copilotstick|stick|pilotpushtotalk|copilotpushtotalk|"
     r"collective|throttle|noselandinglight|enginestrim|coolielandinglight|.*cyclic.*|.*pedal.*)",
@@ -1207,6 +1208,7 @@ def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
 
 
 def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
+    pz = lambda value: value + PEDAL_Z_LIFT
     for seat_y, left_name, right_name in (
         (-0.40, "LLPedal", "LRPedal"),
         (0.40, "RLPedal", "RRPedal"),
@@ -1216,8 +1218,8 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
         append_cylinder_between(
             body,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (crossbar_x, seat_y - 0.16, -0.710),
-            (crossbar_x, seat_y + 0.16, -0.710),
+            (crossbar_x, seat_y - 0.16, pz(-0.710)),
+            (crossbar_x, seat_y + 0.16, pz(-0.710)),
             0.014,
             segments=28,
         )
@@ -1227,24 +1229,24 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
             append_cylinder_between(
                 pedal,
                 CONTROL_MATTE_BLACK_MATERIAL,
-                (crossbar_x, pedal_y, -0.710),
-                (pad_x - 0.025, pedal_y, -0.510),
+                (crossbar_x, pedal_y, pz(-0.710)),
+                (pad_x - 0.025, pedal_y, pz(-0.510)),
                 0.015,
                 segments=28,
             )
             append_cylinder_between(
                 pedal,
                 CONTROL_MATTE_BLACK_MATERIAL,
-                (pad_x, pedal_y - 0.060, -0.500),
-                (pad_x, pedal_y + 0.060, -0.500),
+                (pad_x, pedal_y - 0.060, pz(-0.500)),
+                (pad_x, pedal_y + 0.060, pz(-0.500)),
                 0.032,
                 segments=28,
             )
             append_cylinder_between(
                 pedal,
                 CONTROL_MATTE_BLACK_MATERIAL,
-                (pad_x + 0.035, pedal_y - 0.055, -0.455),
-                (pad_x + 0.035, pedal_y + 0.055, -0.455),
+                (pad_x + 0.035, pedal_y - 0.055, pz(-0.455)),
+                (pad_x + 0.035, pedal_y + 0.055, pz(-0.455)),
                 0.025,
                 segments=28,
             )
@@ -1305,7 +1307,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added raised upholstered seats, animated floor-mounted pure-black cyclics, left-side collectives, "
-        "forward rounded pedals and left/right moving speed-altitude tape displays with a center map."
+        "raised forward rounded pedals and left/right moving speed-altitude tape displays with a center map."
     )
 
 
@@ -1386,11 +1388,12 @@ def visual_control_dynamic_objects() -> str:
     right_cyclic_pivot = (current_interior_x(2.08), 0.30, -0.755)
     left_collective_pivot = (current_interior_x(1.34), -0.16, -0.565)
     right_collective_pivot = (current_interior_x(1.34), 0.64, -0.565)
+    pedal_pivot_z = -0.71 + PEDAL_Z_LIFT
     pedal_pivots = {
-        "LL": (current_interior_x(2.22), -0.52, -0.71),
-        "LR": (current_interior_x(2.22), -0.28, -0.71),
-        "RL": (current_interior_x(2.22), 0.28, -0.71),
-        "RR": (current_interior_x(2.22), 0.52, -0.71),
+        "LL": (current_interior_x(2.22), -0.52, pedal_pivot_z),
+        "LR": (current_interior_x(2.22), -0.28, pedal_pivot_z),
+        "RL": (current_interior_x(2.22), 0.28, pedal_pivot_z),
+        "RR": (current_interior_x(2.22), 0.52, pedal_pivot_z),
     }
 
     return f"""
@@ -1441,7 +1444,7 @@ def visual_control_dynamic_objects() -> str:
             >
             <[graphics_input][GTVRVisualRudderPedalTravel][]
                 <[uint32][InputID][ServoRudder.Output]>
-                <[float64][Scaling][0.15]>
+                <[float64][Scaling][-0.15]>
             >
             <[graphics_rotation][GTVRLLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
@@ -1681,7 +1684,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, forward pedals and left/right speed-altitude tape panels with a center map",
+                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, raised forward pedals and left/right speed-altitude tape panels with a center map",
                 "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible handle clickspots are suppressed in the dev package",
                 "live_glass=side displays are simplified to moving airspeed and altitude tape geometry bound to Aerofly outputs; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
@@ -1749,7 +1752,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, forward rounded pedals, side speed-altitude tape panels and a center map.",
+                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, raised forward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to Aerofly outputs; the center map remains heading-driven.",
