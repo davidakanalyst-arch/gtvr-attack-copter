@@ -44,6 +44,7 @@ DISPLAY_FALLBACK_X_OFFSET = 0.006
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 SEAT_Z_LIFT = 0.16
 PEDAL_Z_LIFT = 0.09
+PEDAL_X_REARWARD = 0.18
 HIDDEN_DEV_CLICKSPOT_RE = re.compile(
     r"^(?:pilotstick|copilotstick|stick|pilotpushtotalk|copilotpushtotalk|"
     r"collective|throttle|noselandinglight|enginestrim|coolielandinglight|.*cyclic.*|.*pedal.*)",
@@ -1213,8 +1214,8 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
         (-0.40, "LLPedal", "LRPedal"),
         (0.40, "RLPedal", "RRPedal"),
     ):
-        crossbar_x = interior_x(2.22)
-        pad_x = interior_x(2.56)
+        crossbar_x = interior_x(2.22) - PEDAL_X_REARWARD
+        pad_x = interior_x(2.56) - PEDAL_X_REARWARD
         append_cylinder_between(
             body,
             CONTROL_MATTE_BLACK_MATERIAL,
@@ -1307,7 +1308,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added raised upholstered seats, animated floor-mounted pure-black cyclics, left-side collectives, "
-        "raised forward rounded pedals and left/right moving speed-altitude tape displays with a center map."
+        "raised rearward rounded pedals and live left/right speed-altitude overlays with a center map."
     )
 
 
@@ -1388,13 +1389,6 @@ def visual_control_dynamic_objects() -> str:
     right_cyclic_pivot = (current_interior_x(2.08), 0.30, -0.755)
     left_collective_pivot = (current_interior_x(1.34), -0.16, -0.565)
     right_collective_pivot = (current_interior_x(1.34), 0.64, -0.565)
-    pedal_pivot_z = -0.71 + PEDAL_Z_LIFT
-    pedal_pivots = {
-        "LL": (current_interior_x(2.22), -0.52, pedal_pivot_z),
-        "LR": (current_interior_x(2.22), -0.28, pedal_pivot_z),
-        "RL": (current_interior_x(2.22), 0.28, pedal_pivot_z),
-        "RR": (current_interior_x(2.22), 0.52, pedal_pivot_z),
-    }
 
     return f"""
             // GTVR generated cockpit visual controls
@@ -1444,27 +1438,23 @@ def visual_control_dynamic_objects() -> str:
             >
             <[graphics_input][GTVRVisualRudderPedalTravel][]
                 <[uint32][InputID][ServoRudder.Output]>
-                <[float64][Scaling][-0.15]>
+                <[float64][Scaling][0.07]>
             >
-            <[graphics_rotation][GTVRLLPedalTransform][]
+            <[graphics_translation][GTVRLLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LL"])} ]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
             >
-            <[graphics_rotation][GTVRLRPedalTransform][]
+            <[graphics_translation][GTVRLRPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["LR"])} ]>
+                <[tmvector3d][Axis][ -1.0 0.0 0.0 ]>
             >
-            <[graphics_rotation][GTVRRLPedalTransform][]
+            <[graphics_translation][GTVRRLPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 -1.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RL"])} ]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
             >
-            <[graphics_rotation][GTVRRRPedalTransform][]
+            <[graphics_translation][GTVRRRPedalTransform][]
                 <[string8][Input][GTVRVisualRudderPedalTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(pedal_pivots["RR"])} ]>
+                <[tmvector3d][Axis][ -1.0 0.0 0.0 ]>
             >"""
 
 
@@ -1534,7 +1524,7 @@ def live_display_graphics_objects() -> str:
         [
             "            // GTVR live side displays: moving speed and altitude tapes only.",
             "            <[graphics_input][GTVRGlassAirspeedInput][]",
-            "                <[uint32][InputID][AirspeedIndicatorNeedle.Output]>",
+            "                <[uint32][InputID][GTVRAirspeedTapeValue.Output]>",
             "            >",
             "            <[graphics_linear_interpolation][GTVRGlassAirspeedTapeMapping][]",
             "                <[string8][Input][GTVRGlassAirspeedInput.Output]>",
@@ -1545,7 +1535,7 @@ def live_display_graphics_objects() -> str:
             "                <[tmvector3d][Axis][0.0 0.0 1.0]>",
             "            >",
             "            <[graphics_input][GTVRGlassAltInput][]",
-            "                <[uint32][InputID][AltimeterNeedle.Output]>",
+            "                <[uint32][InputID][GTVRAltitudeTapeValue.Output]>",
             "            >",
             "            <[graphics_linear_interpolation][GTVRGlassAltTapeMapping][]",
             "                <[string8][Input][GTVRGlassAltInput.Output]>",
@@ -1570,9 +1560,52 @@ def live_display_graphics_objects() -> str:
     )
 
 
+def live_telemetry_dynamic_objects() -> str:
+    if not _current_live_display_geometries:
+        return ""
+
+    return """
+            // GTVR dev-owned telemetry sensors for the side speed/altitude overlays.
+            <[sender_body][GTVRLiveSenderBody][]
+                <[string8][Body][Fuselage]>
+            >
+            <[pitot_tube][GTVRLivePitotTube][]
+                <[string8][Body][Fuselage]>
+            >
+            <[airspeed_indicator][GTVRLiveAirspeedIndicator][]
+                <[string8][StaticPressure][GTVRLivePitotTube.StaticPressure]>
+                <[string8][TotalPressure][GTVRLivePitotTube.TotalPressure]>
+            >
+            <[output][GTVRAirspeedTapeValue][]
+                <[string8][Input][GTVRLiveAirspeedIndicator.IndicatedAirspeed]>
+            >
+            <[sender][GTVRAirspeedTelemetrySender][]
+                <[string8][Input][GTVRLiveAirspeedIndicator.IndicatedAirspeed]>
+                <[string8][Message][Aircraft.IndicatedAirspeed]>
+            >
+            <[input_default][GTVRPressureSettingInput][]
+                <[string8][Message][PressureSetting]>
+                <[uint][Positions][201]>
+                <[tmvector2d][Range][ 95000.0 105000.0]>
+                <[float64][Value][101325.0]>
+            >
+            <[altimeter][GTVRLiveAltimeter][]
+                <[string8][StaticPressure][GTVRLivePitotTube.StaticPressure]>
+                <[string8][AltimeterSetting][GTVRPressureSettingInput.Output]>
+            >
+            <[output][GTVRAltitudeTapeValue][]
+                <[string8][Input][GTVRLiveAltimeter.PressureAltitude]>
+            >
+            <[sender][GTVRAltitudeTelemetrySender][]
+                <[string8][Input][GTVRLiveAltimeter.PressureAltitude]>
+                <[string8][Message][Aircraft.Altitude]>
+            >"""
+
+
 def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
     static_geometry_names = [name for name in sorted(geometry_names) if name not in animated_names]
+    telemetry_objects = live_telemetry_dynamic_objects()
     display_graphics = live_display_graphics_objects()
     control_transforms = visual_control_dynamic_objects()
     graphic_objects = visual_control_graphics_objects()
@@ -1585,6 +1618,7 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
                 <[tmvector3d][R0][0.0 0.0 0.0]>
                 <[tmmatrix3d][B0][1.0 0.0 0.0  0.0 1.0 0.0  0.0 0.0 1.0]>
             >
+{telemetry_objects}
         >
         <[pointer_list_tmgraphics][GraphicObjects][]
             <[rigidbodygraphics][Fuselage][]
@@ -1684,9 +1718,9 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, raised forward pedals and left/right speed-altitude tape panels with a center map",
+                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, raised rearward pedals and left/right speed-altitude tape panels with a center map",
                 "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible handle clickspots are suppressed in the dev package",
-                "live_glass=side displays are simplified to moving airspeed and altitude tape geometry bound to Aerofly outputs; center map heading remains separate",
+                "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
@@ -1752,10 +1786,10 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, raised forward rounded pedals, side speed-altitude tape panels and a center map.",
+                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, raised rearward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Generated side display overlays bind moving airspeed and altitude tape graphics to Aerofly outputs; the center map remains heading-driven.",
+                "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
                 "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
                 "Recessed fixed display cues are merged into the visible dash mesh as an EC135-TMQ-safe fallback without duplicating moving live layers.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
