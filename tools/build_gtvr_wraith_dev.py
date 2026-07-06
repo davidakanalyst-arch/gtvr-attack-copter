@@ -1154,24 +1154,40 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
 
 
 def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
-    for stick_y, geometry_name in ((-0.30, "GTVRLeftCyclicStick"), (0.30, "GTVRRightCyclicStick")):
+    for stick_y, geometry_name in ((-0.40, "GTVRLeftCyclicStick"), (0.40, "GTVRRightCyclicStick")):
         control = animated_control_geometry(geometry_name)
-        boot_x = interior_x(2.08)
-        boot_z = -0.755
-        grip_x = interior_x(1.90)
-        grip_z = -0.235
+        boot_x = interior_x(2.04)
+        boot_z = -0.770
+        grip_x = interior_x(1.82)
+        grip_z = -0.245
         append_cylinder_between(
-            control,
+            body,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (boot_x - 0.055, stick_y - 0.065, boot_z),
-            (boot_x + 0.055, stick_y + 0.065, boot_z),
+            (boot_x - 0.070, stick_y - 0.075, boot_z - 0.003),
+            (boot_x + 0.070, stick_y + 0.075, boot_z - 0.003),
             0.034,
             segments=28,
         )
         append_cylinder_between(
+            body,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            (boot_x - 0.050, stick_y + 0.070, boot_z - 0.004),
+            (boot_x + 0.060, stick_y - 0.070, boot_z - 0.004),
+            0.022,
+            segments=24,
+        )
+        append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (boot_x, stick_y, boot_z + 0.020),
+            (boot_x, stick_y, boot_z),
+            (interior_x(1.94), stick_y, -0.430),
+            0.026,
+            segments=32,
+        )
+        append_cylinder_between(
+            control,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            (interior_x(1.94), stick_y, -0.430),
             (grip_x, stick_y, grip_z),
             0.024,
             segments=32,
@@ -1180,23 +1196,23 @@ def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
             (grip_x, stick_y, grip_z),
-            (grip_x + 0.020, stick_y, grip_z + 0.145),
+            (grip_x + 0.018, stick_y, grip_z + 0.155),
             0.045,
             segments=32,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x + 0.012, stick_y - 0.050, grip_z + 0.104),
-            (grip_x + 0.045, stick_y + 0.050, grip_z + 0.118),
+            (grip_x + 0.010, stick_y - 0.052, grip_z + 0.112),
+            (grip_x + 0.044, stick_y + 0.052, grip_z + 0.128),
             0.032,
             segments=32,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x + 0.018, stick_y, grip_z + 0.148),
-            (grip_x + 0.026, stick_y, grip_z + 0.162),
+            (grip_x + 0.016, stick_y, grip_z + 0.158),
+            (grip_x + 0.026, stick_y, grip_z + 0.176),
             0.038,
             segments=28,
         )
@@ -1420,8 +1436,8 @@ def visual_control_dynamic_objects() -> str:
     if not control_graphic_groups():
         return ""
 
-    left_cyclic_pivot = (current_interior_x(2.08), -0.30, -0.755)
-    right_cyclic_pivot = (current_interior_x(2.08), 0.30, -0.755)
+    left_cyclic_pivot = (current_interior_x(2.04), -0.40, -0.770)
+    right_cyclic_pivot = (current_interior_x(2.04), 0.40, -0.770)
     left_collective_pivot = (current_interior_x(1.34), -0.16, -0.565)
     right_collective_pivot = (current_interior_x(1.34), 0.64, -0.565)
 
