@@ -1235,7 +1235,8 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
     pz = lambda value: value + PEDAL_Z_LIFT
     # The inherited EC135 TMQ drives these pedal meshes by geometry name.
     # Keep the physical positions unchanged, but assign the opposite pedal names
-    # so the generated pedals follow the pilot foot animation direction.
+    # so the generated pads follow the pilot foot animation direction. The
+    # support rods stay static so their floor/crossbar anchors do not float.
     for seat_y, left_name, right_name in (
         (-0.40, "LRPedal", "LLPedal"),
         (0.40, "RRPedal", "RLPedal"),
@@ -1252,14 +1253,22 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
         )
         for pedal_offset, geometry_name in ((-0.12, left_name), (0.12, right_name)):
             pedal_y = seat_y + pedal_offset
+            append_cylinder_between(
+                body,
+                CONTROL_MATTE_BLACK_MATERIAL,
+                (crossbar_x, pedal_y, pz(-0.710)),
+                (pad_x - 0.040, pedal_y, pz(-0.520)),
+                0.015,
+                segments=28,
+            )
             pedal = animated_control_geometry(geometry_name)
             append_cylinder_between(
                 pedal,
                 CONTROL_MATTE_BLACK_MATERIAL,
-                (crossbar_x, pedal_y, pz(-0.710)),
-                (pad_x - 0.025, pedal_y, pz(-0.510)),
-                0.015,
-                segments=28,
+                (pad_x - 0.035, pedal_y - 0.050, pz(-0.515)),
+                (pad_x - 0.035, pedal_y + 0.050, pz(-0.515)),
+                0.018,
+                segments=24,
             )
             append_cylinder_between(
                 pedal,
