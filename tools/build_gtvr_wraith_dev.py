@@ -1257,7 +1257,7 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
                 body,
                 CONTROL_MATTE_BLACK_MATERIAL,
                 (crossbar_x, pedal_y, pz(-0.710)),
-                (pad_x - 0.040, pedal_y, pz(-0.520)),
+                (pad_x - 0.020, pedal_y, pz(-0.520)),
                 0.015,
                 segments=28,
             )
