@@ -1153,68 +1153,67 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
     )
 
 
-def add_cyclic_controls(body: dict[str, core.Patch], interior_x) -> None:
-    for stick_y, geometry_name in ((-0.40, "GTVRLeftCyclicStick"), (0.40, "GTVRRightCyclicStick")):
+def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
+    # These pivots and neutral grip centres match the inherited EC135 pilot hand
+    # animation in controls.tmd. Keep them in aircraft coordinates: the pilot is
+    # deliberately fixed and must not inherit the generated interior offset.
+    cyclic_references = (
+        ((2.25, -0.39, -0.642), (2.233, -0.379, -0.188), "GTVRLeftCyclicStick"),
+        ((2.25, 0.39, -0.642), (2.239, 0.400, -0.188), "GTVRRightCyclicStick"),
+    )
+    for pivot, grip_center, geometry_name in cyclic_references:
         control = animated_control_geometry(geometry_name)
-        boot_x = interior_x(2.04)
-        boot_z = -0.770
-        grip_x = interior_x(1.82)
-        grip_z = -0.245
+        pivot_x, pivot_y, pivot_z = pivot
+        grip_x, grip_y, grip_z = grip_center
+
+        # A fixed bellows boot visibly joins the floor to the real animation
+        # pivot. The animated shaft begins exactly at that pivot.
+        for start_z, end_z, radius in (
+            (-0.790, -0.755, 0.078),
+            (-0.755, -0.715, 0.066),
+            (-0.715, pivot_z, 0.054),
+        ):
+            append_cylinder_between(
+                body,
+                CONTROL_MATTE_BLACK_MATERIAL,
+                (pivot_x, pivot_y, start_z),
+                (pivot_x, pivot_y, end_z),
+                radius,
+                segments=40,
+            )
+
+        shaft_top = (grip_x + 0.006, grip_y, grip_z - 0.105)
         append_cylinder_between(
-            body,
+            control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (boot_x - 0.070, stick_y - 0.075, boot_z - 0.003),
-            (boot_x + 0.070, stick_y + 0.075, boot_z - 0.003),
-            0.034,
-            segments=28,
-        )
-        append_cylinder_between(
-            body,
-            CONTROL_MATTE_BLACK_MATERIAL,
-            (boot_x - 0.050, stick_y + 0.070, boot_z - 0.004),
-            (boot_x + 0.060, stick_y - 0.070, boot_z - 0.004),
-            0.022,
-            segments=24,
+            pivot,
+            shaft_top,
+            0.028,
+            segments=40,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (boot_x, stick_y, boot_z),
-            (interior_x(1.94), stick_y, -0.430),
-            0.026,
-            segments=32,
+            (grip_x + 0.006, grip_y, grip_z - 0.120),
+            (grip_x, grip_y, grip_z + 0.090),
+            0.046,
+            segments=40,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (interior_x(1.94), stick_y, -0.430),
-            (grip_x, stick_y, grip_z),
-            0.024,
-            segments=32,
+            (grip_x, grip_y, grip_z + 0.082),
+            (grip_x + 0.006, grip_y, grip_z + 0.112),
+            0.039,
+            segments=36,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x, stick_y, grip_z),
-            (grip_x + 0.018, stick_y, grip_z + 0.155),
-            0.045,
-            segments=32,
-        )
-        append_cylinder_between(
-            control,
-            CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x + 0.010, stick_y - 0.052, grip_z + 0.112),
-            (grip_x + 0.044, stick_y + 0.052, grip_z + 0.128),
-            0.032,
-            segments=32,
-        )
-        append_cylinder_between(
-            control,
-            CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x + 0.016, stick_y, grip_z + 0.158),
-            (grip_x + 0.026, stick_y, grip_z + 0.176),
-            0.038,
-            segments=28,
+            (grip_x - 0.010, grip_y - 0.022, grip_z - 0.025),
+            (grip_x + 0.018, grip_y - 0.022, grip_z + 0.045),
+            0.012,
+            segments=20,
         )
 
 
@@ -1353,7 +1352,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_live_glass_displays(screen_x=screen_x)
     add_static_display_fallback(body)
 
-    add_cyclic_controls(body, interior_x)
+    add_cyclic_controls(body)
     add_collective_controls(body, interior_x)
     add_pedal_set(body, interior_x)
 
@@ -1436,8 +1435,9 @@ def visual_control_dynamic_objects() -> str:
     if not control_graphic_groups():
         return ""
 
-    left_cyclic_pivot = (current_interior_x(2.04), -0.40, -0.770)
-    right_cyclic_pivot = (current_interior_x(2.04), 0.40, -0.770)
+    # Match the fixed EC135 pilot-hand animation pivots exactly.
+    left_cyclic_pivot = (2.25, -0.39, -0.642)
+    right_cyclic_pivot = (2.25, 0.39, -0.642)
     left_collective_pivot = (current_interior_x(1.34), -0.16, -0.565)
     right_collective_pivot = (current_interior_x(1.34), 0.64, -0.565)
 
@@ -1445,11 +1445,11 @@ def visual_control_dynamic_objects() -> str:
             // GTVR generated cockpit visual controls
             <[graphics_input][GTVRVisualCyclicPitchTravel][]
                 <[uint32][InputID][StickCyclicPitch.Output]>
-                <[float64][Scaling][0.16]>
+                <[float64][Scaling][0.2]>
             >
             <[graphics_input][GTVRVisualCyclicRollTravel][]
                 <[uint32][InputID][StickCyclicRoll.Output]>
-                <[float64][Scaling][0.16]>
+                <[float64][Scaling][0.2]>
             >
             <[graphics_rotation][GTVRLeftCyclicPitchTransform][]
                 <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
@@ -1694,24 +1694,48 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def patch_dev_tgi_material_shaders(path: Path) -> int:
+def patch_dev_tgi_material_shaders(path: Path) -> tuple[int, int]:
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    output: list[str] = []
     current_material: str | None = None
+    inside_texture_list = False
     patched = 0
-    for index, line in enumerate(lines):
+    surface_slots = 0
+    for line in lines:
         if "<[tmxglmaterial_impexp][element]" in line:
             current_material = None
-            continue
+            inside_texture_list = False
         if current_material is None:
             material_match = re.search(r"<\[string8\]\[name\]\[([^\]]+)\]>", line)
             if material_match:
                 current_material = material_match.group(1)
-            continue
         if current_material in DEV_INTERIOR_SHADER_MATERIALS and "<[string8][shader_hint]" in line:
-            lines[index] = "                <[string8][shader_hint][standard interior]>"
+            line = "                <[string8][shader_hint][standard interior]>"
             patched += 1
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return patched
+        if "<[list_tm_tmtexture_index_pair_impexp][texture_list]" in line:
+            inside_texture_list = True
+        elif (
+            current_material == CONTROL_MATTE_BLACK_MATERIAL
+            and inside_texture_list
+            and line == "                >"
+        ):
+            for channel in ("specular", "reflection"):
+                output.extend(
+                    [
+                        "                    <[tm_tmtexture_index_pair_impexp][element][0]",
+                        f"                        <[string8][channel][{channel}]>",
+                        f"                        <[string8][name][{CONTROL_MATTE_BLACK_MATERIAL}]>",
+                        "                        <[bool][repeat_s][true]>",
+                        "                        <[bool][repeat_t][true]>",
+                        "                        <[float32][uvscaling][1]>",
+                        "                    >",
+                    ]
+                )
+                surface_slots += 1
+            inside_texture_list = False
+        output.append(line)
+    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+    return patched, surface_slots
 
 
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
@@ -1762,7 +1786,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     write_dev_visual_tmd(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmd", sorted(geometries))
     tgi_path = core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tgi"
     core.write_tgi(tgi_path, materials, geometries)
-    patched_materials = patch_dev_tgi_material_shaders(tgi_path)
+    patched_materials, control_surface_slots = patch_dev_tgi_material_shaders(tgi_path)
     core.write_model_tmc(core.SOURCE_DIR / "model.tmc", materials, geometries, args.max_texture_size)
     core.write_root_converter_config(core.SOURCE_ROOT / "config.tmc", core.SOURCE_ROOT, core.BUILD_USER)
     (core.SOURCE_DIR / "_GTVR_WRAITH_DEV_SOURCE.md").write_text(
@@ -1789,6 +1813,8 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     print(f"Stock EC135 display geometry groups: {len(_current_stock_display_geometries)}")
     if patched_materials:
         print(f"Dev cockpit materials: forced {patched_materials} generated interior/control shaders.")
+    if control_surface_slots:
+        print(f"Dev control material: added {control_surface_slots} matte-black specular/reflection slots.")
     print(f"Imported body faces: {imported_faces}")
 
 
