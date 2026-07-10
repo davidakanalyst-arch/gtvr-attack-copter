@@ -68,11 +68,11 @@ HIDDEN_DEV_STATIC_VISUAL_RE = re.compile(
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
-    "gtvr_control_black": ((6, 6, 6), "generated-gtvr-dev-control-black"),
+    "gtvr_control_black": ((3, 3, 3), "generated-gtvr-dev-control-black"),
     "gtvr_cockpit_dark_gray": ((22, 24, 25), "generated-gtvr-dev-cockpit-dark-gray"),
-    "gtvr_cockpit_seat": ((42, 27, 19), "generated-gtvr-dev-cockpit-seat"),
-    "gtvr_cockpit_seat_highlight": ((68, 44, 31), "generated-gtvr-dev-cockpit-seat-highlight"),
-    "gtvr_cockpit_seat_shadow": ((20, 12, 8), "generated-gtvr-dev-cockpit-seat-shadow"),
+    "gtvr_cockpit_seat": ((30, 18, 12), "generated-gtvr-dev-cockpit-seat"),
+    "gtvr_cockpit_seat_highlight": ((46, 28, 19), "generated-gtvr-dev-cockpit-seat-highlight"),
+    "gtvr_cockpit_seat_shadow": ((14, 8, 5), "generated-gtvr-dev-cockpit-seat-shadow"),
     "gtvr_cockpit_metal": ((88, 92, 92), "generated-gtvr-dev-cockpit-metal"),
     "gtvr_cockpit_rubber": ((7, 7, 7), "generated-gtvr-dev-cockpit-rubber"),
     "gtvr_cockpit_button_green": ((10, 150, 78), "generated-gtvr-dev-cockpit-button-green"),
@@ -374,20 +374,23 @@ def write_cockpit_map_texture(path: Path) -> None:
 def write_cockpit_seat_texture(path: Path, base: tuple[int, int, int], seam: tuple[int, int, int]) -> None:
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGB", (128, 128), base)
+    image = Image.new("RGB", (256, 256), base)
+    pixels = image.load()
+    for y in range(256):
+        for x in range(256):
+            grain = ((x * 17 + y * 31 + (x * y) % 19) % 7) - 3
+            pixels[x, y] = tuple(max(0, min(255, channel + grain)) for channel in base)
+
     draw = ImageDraw.Draw(image)
-    for y in range(0, 128, 7):
-        shade = tuple(max(0, min(255, channel + (4 if (y // 7) % 2 else -3))) for channel in base)
-        draw.rectangle((0, y, 128, min(127, y + 3)), fill=shade)
-    for x in range(12, 128, 24):
-        draw.line((x, 0, x, 127), fill=seam, width=1)
-    for y in range(16, 128, 32):
-        draw.line((0, y, 127, y), fill=seam, width=1)
-    for x in range(8, 128, 16):
-        for y in range(8, 128, 16):
-            dot = tuple(max(0, channel - 7) for channel in base)
-            draw.point((x, y), fill=dot)
-            draw.point((x + 1, y), fill=dot)
+    subtle_grain = tuple((base_channel * 3 + seam_channel) // 4 for base_channel, seam_channel in zip(base, seam))
+    for row in range(18, 256, 24):
+        points = [(x, row + int(1.5 * math.sin(x * 0.075 + row * 0.11))) for x in range(0, 256, 4)]
+        draw.line(points, fill=subtle_grain, width=1)
+    for index in range(26):
+        x = (index * 73 + 19) % 232
+        y = (index * 47 + 31) % 248
+        length = 9 + (index % 5) * 3
+        draw.line((x, y, min(255, x + length), y + (index % 3) - 1), fill=subtle_grain, width=1)
     image.save(path)
 
 
@@ -401,15 +404,15 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
             source_uri=source_uri,
         )
 
-    write_png(core.SOURCE_DIR / f"{CONTROL_SPECULAR_TEXTURE}.png", (230, 230, 230))
-    write_png(core.SOURCE_DIR / f"{CONTROL_REFLECTION_TEXTURE}.png", (160, 160, 160))
+    write_png(core.SOURCE_DIR / f"{CONTROL_SPECULAR_TEXTURE}.png", (110, 110, 110))
+    write_png(core.SOURCE_DIR / f"{CONTROL_REFLECTION_TEXTURE}.png", (45, 45, 45))
     write_png(core.SOURCE_DIR / f"{MATTE_BLACK_SURFACE_TEXTURE}.png", (0, 0, 0))
-    write_png(core.SOURCE_DIR / f"{LEATHER_SPECULAR_TEXTURE}.png", (42, 32, 26))
-    write_png(core.SOURCE_DIR / f"{LEATHER_REFLECTION_TEXTURE}.png", (8, 8, 8))
+    write_png(core.SOURCE_DIR / f"{LEATHER_SPECULAR_TEXTURE}.png", (24, 20, 18))
+    write_png(core.SOURCE_DIR / f"{LEATHER_REFLECTION_TEXTURE}.png", (4, 4, 4))
 
-    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat.png", (42, 27, 19), (70, 47, 34))
-    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_highlight.png", (62, 40, 28), (91, 61, 44))
-    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_shadow.png", (20, 12, 8), (43, 27, 19))
+    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat.png", (30, 18, 12), (38, 24, 17))
+    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_highlight.png", (46, 28, 19), (56, 36, 25))
+    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_shadow.png", (14, 8, 5), (22, 13, 8))
 
     pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
     map_path = core.SOURCE_DIR / f"{COCKPIT_MAP_TEXTURE}.png"
@@ -907,7 +910,7 @@ def add_framed_screen(
     height_z: float = 0.17,
 ) -> None:
     x, y, z = center
-    append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (x + 0.012, y, z), (0.035, width_y + 0.055, height_z + 0.055))
+    append_box(body, "gtvr_cockpit_black", (x + 0.012, y, z), (0.035, width_y + 0.055, height_z + 0.055))
     append_textured_panel(body, material_name, center=(x - 0.008, y, z), width_y=width_y, height_z=height_z)
 
 
@@ -915,17 +918,17 @@ def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
     panel_x = dash_x(2.47)
     rail_x = dash_x(2.45)
 
-    append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (rail_x, 0.0, 0.080), (0.13, 1.22, 0.070))
-    append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (rail_x, 0.0, -0.330), (0.13, 1.22, 0.075))
+    append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, 0.080), (0.13, 1.22, 0.070))
+    append_box(body, "gtvr_cockpit_black", (rail_x, 0.0, -0.330), (0.13, 1.22, 0.075))
 
     for post_y in (-0.155, 0.155):
-        append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (rail_x, post_y, -0.125), (0.12, 0.048, 0.390))
+        append_box(body, "gtvr_cockpit_black", (rail_x, post_y, -0.125), (0.12, 0.048, 0.390))
 
 
 def add_pfd_static_overlay(static: dict[str, core.Patch], *, x: float, y: float, z: float) -> None:
     half_w = 0.158
     half_h = 0.158
-    append_panel_rect(static, CONTROL_MATTE_BLACK_MATERIAL, x=x + 0.002, center_y=y, center_z=z, width_y=0.322, height_z=0.322)
+    append_panel_rect(static, "gtvr_cockpit_black", x=x + 0.002, center_y=y, center_z=z, width_y=0.322, height_z=0.322)
     for line in (
         (y - half_w, z - half_h, y + half_w, z - half_h),
         (y - half_w, z + half_h, y + half_w, z + half_h),
@@ -1220,8 +1223,8 @@ def add_cyclic_controls() -> None:
     # A single, unobstructed floor stick for each seat. The front of each seat is
     # shortened above so the shaft can rise between the pilot's legs.
     cyclic_references = (
-        ((2.34, -0.40, -0.785), (2.20, -0.28, -0.355), (2.20, -0.28, -0.165), "GTVRLeftCyclicStick"),
-        ((2.34, 0.40, -0.785), (2.20, 0.28, -0.355), (2.20, 0.28, -0.165), "GTVRRightCyclicStick"),
+        ((2.32, -0.39, -0.785), (2.233, -0.379, -0.310), (2.233, -0.379, -0.100), "GTVRLeftCyclicStick"),
+        ((2.32, 0.39, -0.785), (2.239, 0.400, -0.310), (2.239, 0.400, -0.100), "GTVRRightCyclicStick"),
     )
     for pivot, grip_bottom, grip_top, geometry_name in cyclic_references:
         control = animated_control_geometry(geometry_name)
@@ -1359,13 +1362,13 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     for side_y in (-0.39, 0.39):
         add_framed_screen(
             body,
-            material_name=CONTROL_MATTE_BLACK_MATERIAL,
+            material_name="gtvr_cockpit_black",
             center=(screen_x, side_y, -0.12),
             width_y=0.34,
             height_z=0.34,
         )
-        append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (dash_x(2.43), side_y - 0.215, -0.12), (0.035, 0.026, 0.39))
-        append_box(body, CONTROL_MATTE_BLACK_MATERIAL, (dash_x(2.43), side_y + 0.215, -0.12), (0.035, 0.026, 0.39))
+        append_box(body, "gtvr_cockpit_black", (dash_x(2.43), side_y - 0.215, -0.12), (0.035, 0.026, 0.39))
+        append_box(body, "gtvr_cockpit_black", (dash_x(2.43), side_y + 0.215, -0.12), (0.035, 0.026, 0.39))
 
     add_framed_screen(
         body,
@@ -1461,8 +1464,8 @@ def visual_control_dynamic_objects() -> str:
     if not control_graphic_groups():
         return ""
 
-    left_cyclic_pivot = (2.34, -0.40, -0.785)
-    right_cyclic_pivot = (2.34, 0.40, -0.785)
+    left_cyclic_pivot = (2.32, -0.39, -0.785)
+    right_cyclic_pivot = (2.32, 0.39, -0.785)
     left_collective_pivot = (current_interior_x(1.34), -0.10, -0.610)
     right_collective_pivot = (current_interior_x(1.34), 0.70, -0.610)
 
