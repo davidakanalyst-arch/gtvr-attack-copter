@@ -42,6 +42,11 @@ DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
+CONTROL_SPECULAR_TEXTURE = "gtvr_control_black_specular"
+CONTROL_REFLECTION_TEXTURE = "gtvr_control_black_reflection"
+MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
+LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
+LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
 PEDAL_Z_LIFT = -0.03
 PEDAL_X_REARWARD = 0.18
@@ -63,11 +68,11 @@ HIDDEN_DEV_STATIC_VISUAL_RE = re.compile(
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
-    "gtvr_control_black": ((0, 0, 0), "generated-gtvr-dev-control-black"),
+    "gtvr_control_black": ((6, 6, 6), "generated-gtvr-dev-control-black"),
     "gtvr_cockpit_dark_gray": ((22, 24, 25), "generated-gtvr-dev-cockpit-dark-gray"),
-    "gtvr_cockpit_seat": ((18, 20, 22), "generated-gtvr-dev-cockpit-seat"),
-    "gtvr_cockpit_seat_highlight": ((36, 39, 40), "generated-gtvr-dev-cockpit-seat-highlight"),
-    "gtvr_cockpit_seat_shadow": ((9, 10, 11), "generated-gtvr-dev-cockpit-seat-shadow"),
+    "gtvr_cockpit_seat": ((42, 27, 19), "generated-gtvr-dev-cockpit-seat"),
+    "gtvr_cockpit_seat_highlight": ((68, 44, 31), "generated-gtvr-dev-cockpit-seat-highlight"),
+    "gtvr_cockpit_seat_shadow": ((20, 12, 8), "generated-gtvr-dev-cockpit-seat-shadow"),
     "gtvr_cockpit_metal": ((88, 92, 92), "generated-gtvr-dev-cockpit-metal"),
     "gtvr_cockpit_rubber": ((7, 7, 7), "generated-gtvr-dev-cockpit-rubber"),
     "gtvr_cockpit_button_green": ((10, 150, 78), "generated-gtvr-dev-cockpit-button-green"),
@@ -92,6 +97,35 @@ DEV_INTERIOR_SHADER_MATERIALS = {
     "gtvr_cockpit_button_red",
     INNER_SHELL_MATERIAL_NAME,
 }
+DEV_MATERIAL_SURFACE_MAPS = {
+    CONTROL_MATTE_BLACK_MATERIAL: (
+        ("specular", CONTROL_SPECULAR_TEXTURE),
+        ("reflection", CONTROL_REFLECTION_TEXTURE),
+    ),
+    "gtvr_cockpit_black": (
+        ("specular", MATTE_BLACK_SURFACE_TEXTURE),
+        ("reflection", MATTE_BLACK_SURFACE_TEXTURE),
+    ),
+    INNER_SHELL_MATERIAL_NAME: (
+        ("specular", MATTE_BLACK_SURFACE_TEXTURE),
+        ("reflection", MATTE_BLACK_SURFACE_TEXTURE),
+    ),
+    "gtvr_cockpit_seat": (
+        ("specular", LEATHER_SPECULAR_TEXTURE),
+        ("reflection", LEATHER_REFLECTION_TEXTURE),
+    ),
+    "gtvr_cockpit_seat_highlight": (
+        ("specular", LEATHER_SPECULAR_TEXTURE),
+        ("reflection", LEATHER_REFLECTION_TEXTURE),
+    ),
+    "gtvr_cockpit_seat_shadow": (
+        ("specular", LEATHER_SPECULAR_TEXTURE),
+        ("reflection", LEATHER_REFLECTION_TEXTURE),
+    ),
+}
+DEV_AUXILIARY_TEXTURE_NAMES = tuple(
+    sorted({texture_name for slots in DEV_MATERIAL_SURFACE_MAPS.values() for _, texture_name in slots})
+)
 COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
 COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
 COCKPIT_PFD_TEXTURE = "gtvr_cockpit_flight"
@@ -367,9 +401,15 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
             source_uri=source_uri,
         )
 
-    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat.png", (21, 24, 25), (39, 44, 45))
-    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_highlight.png", (39, 43, 44), (62, 68, 69))
-    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_shadow.png", (8, 9, 10), (22, 24, 25))
+    write_png(core.SOURCE_DIR / f"{CONTROL_SPECULAR_TEXTURE}.png", (52, 52, 52))
+    write_png(core.SOURCE_DIR / f"{CONTROL_REFLECTION_TEXTURE}.png", (22, 22, 22))
+    write_png(core.SOURCE_DIR / f"{MATTE_BLACK_SURFACE_TEXTURE}.png", (0, 0, 0))
+    write_png(core.SOURCE_DIR / f"{LEATHER_SPECULAR_TEXTURE}.png", (42, 32, 26))
+    write_png(core.SOURCE_DIR / f"{LEATHER_REFLECTION_TEXTURE}.png", (8, 8, 8))
+
+    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat.png", (42, 27, 19), (70, 47, 34))
+    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_highlight.png", (62, 40, 28), (91, 61, 44))
+    write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_shadow.png", (20, 12, 8), (43, 27, 19))
 
     pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
     map_path = core.SOURCE_DIR / f"{COCKPIT_MAP_TEXTURE}.png"
@@ -1057,26 +1097,27 @@ def add_static_display_fallback(body: dict[str, core.Patch]) -> None:
 
 def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: float) -> None:
     z = lambda value: value + SEAT_Z_LIFT
-    append_box(body, "gtvr_cockpit_black", (base_x + 0.01, seat_y, z(-0.742)), (0.54, 0.34, 0.045))
+    seat_bottom_x = base_x - 0.040
+    append_box(body, "gtvr_cockpit_black", (seat_bottom_x, seat_y, z(-0.742)), (0.42, 0.34, 0.045))
     append_pillowed_seat_cushion(
         body,
         "gtvr_cockpit_seat",
-        center=(base_x, seat_y, z(-0.655)),
-        size=(0.56, 0.39, 0.120),
+        center=(base_x - 0.035, seat_y, z(-0.655)),
+        size=(0.46, 0.39, 0.120),
     )
     append_pillowed_seat_cushion(
         body,
         "gtvr_cockpit_seat_highlight",
-        center=(base_x + 0.045, seat_y, z(-0.605)),
-        size=(0.38, 0.235, 0.036),
+        center=(base_x - 0.020, seat_y, z(-0.605)),
+        size=(0.32, 0.235, 0.036),
         segments_x=8,
         segments_y=6,
     )
     append_cylinder_between(
         body,
         "gtvr_cockpit_seat_highlight",
-        (base_x + 0.275, seat_y - 0.155, z(-0.610)),
-        (base_x + 0.275, seat_y + 0.155, z(-0.610)),
+        (base_x + 0.185, seat_y - 0.155, z(-0.610)),
+        (base_x + 0.185, seat_y + 0.155, z(-0.610)),
         0.050,
         segments=28,
     )
@@ -1086,7 +1127,7 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
             body,
             "gtvr_cockpit_seat_shadow",
             (base_x - 0.225, bolster_y, z(-0.615)),
-            (base_x + 0.225, bolster_y, z(-0.615)),
+            (base_x + 0.165, bolster_y, z(-0.615)),
             0.038,
             segments=28,
         )
@@ -1095,7 +1136,7 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
             body,
             "gtvr_cockpit_seat_shadow",
             (base_x - 0.190, seam_y, z(-0.575)),
-            (base_x + 0.185, seam_y, z(-0.575)),
+            (base_x + 0.125, seam_y, z(-0.575)),
             0.004,
             segments=10,
         )
@@ -1153,79 +1194,42 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
     )
 
 
-def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
-    # These pivots and neutral grip centres match the inherited EC135 pilot hand
-    # animation in controls.tmd. Keep them in aircraft coordinates: the pilot is
-    # deliberately fixed and must not inherit the generated interior offset.
+def add_cyclic_controls() -> None:
+    # A single, unobstructed floor stick for each seat. The front of each seat is
+    # shortened above so the shaft can rise between the pilot's legs.
     cyclic_references = (
-        ((2.25, -0.39, -0.642), (2.233, -0.379, -0.188), "GTVRLeftCyclicStick"),
-        ((2.25, 0.39, -0.642), (2.239, 0.400, -0.188), "GTVRRightCyclicStick"),
+        ((2.34, -0.40, -0.785), (2.20, -0.28, -0.355), (2.20, -0.28, -0.165), "GTVRLeftCyclicStick"),
+        ((2.34, 0.40, -0.785), (2.20, 0.28, -0.355), (2.20, 0.28, -0.165), "GTVRRightCyclicStick"),
     )
-    for pivot, grip_center, geometry_name in cyclic_references:
+    for pivot, grip_bottom, grip_top, geometry_name in cyclic_references:
         control = animated_control_geometry(geometry_name)
-        pivot_x, pivot_y, pivot_z = pivot
-        grip_x, grip_y, grip_z = grip_center
-
-        # A fixed bellows boot visibly joins the floor to the real animation
-        # pivot. The animated shaft begins exactly at that pivot.
-        for start_z, end_z, radius in (
-            (-0.790, -0.755, 0.078),
-            (-0.755, -0.715, 0.066),
-            (-0.715, pivot_z, 0.054),
-        ):
-            append_cylinder_between(
-                body,
-                CONTROL_MATTE_BLACK_MATERIAL,
-                (pivot_x, pivot_y, start_z),
-                (pivot_x, pivot_y, end_z),
-                radius,
-                segments=40,
-            )
-
-        shaft_top = (grip_x + 0.006, grip_y, grip_z - 0.105)
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
             pivot,
-            shaft_top,
-            0.028,
+            grip_bottom,
+            0.032,
             segments=40,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x + 0.006, grip_y, grip_z - 0.120),
-            (grip_x, grip_y, grip_z + 0.090),
-            0.046,
+            grip_bottom,
+            grip_top,
+            0.047,
             segments=40,
-        )
-        append_cylinder_between(
-            control,
-            CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x, grip_y, grip_z + 0.082),
-            (grip_x + 0.006, grip_y, grip_z + 0.112),
-            0.039,
-            segments=36,
-        )
-        append_cylinder_between(
-            control,
-            CONTROL_MATTE_BLACK_MATERIAL,
-            (grip_x - 0.010, grip_y - 0.022, grip_z - 0.025),
-            (grip_x + 0.018, grip_y - 0.022, grip_z + 0.045),
-            0.012,
-            segments=20,
         )
 
 
 def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
     for lever_y, geometry_name in (
-        (-0.16, "LeftCollectiveLever"),
-        (0.64, "RightCollectiveLever"),
+        (-0.22, "LeftCollectiveLever"),
+        (0.58, "RightCollectiveLever"),
     ):
         control = animated_control_geometry(geometry_name)
-        base = (interior_x(1.34), lever_y, -0.565)
-        elbow = (interior_x(1.70), lever_y, -0.440)
-        grip_end = (interior_x(1.90), lever_y, -0.400)
+        base = (interior_x(1.34), lever_y, -0.610)
+        elbow = (interior_x(1.70), lever_y, -0.485)
+        grip_end = (interior_x(1.90), lever_y, -0.445)
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
@@ -1352,12 +1356,12 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_live_glass_displays(screen_x=screen_x)
     add_static_display_fallback(body)
 
-    add_cyclic_controls(body)
+    add_cyclic_controls()
     add_collective_controls(body, interior_x)
     add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added raised upholstered seats, animated floor-mounted pure-black cyclics, left-side collectives, "
+        "Dev cockpit kit: added shortened dark-brown leather seats, simple gloss-black floor cyclics, lowered left-side collectives, "
         "lowered rearward rounded pedals and live left/right speed-altitude overlays with a center map."
     )
 
@@ -1435,11 +1439,10 @@ def visual_control_dynamic_objects() -> str:
     if not control_graphic_groups():
         return ""
 
-    # Match the fixed EC135 pilot-hand animation pivots exactly.
-    left_cyclic_pivot = (2.25, -0.39, -0.642)
-    right_cyclic_pivot = (2.25, 0.39, -0.642)
-    left_collective_pivot = (current_interior_x(1.34), -0.16, -0.565)
-    right_collective_pivot = (current_interior_x(1.34), 0.64, -0.565)
+    left_cyclic_pivot = (2.34, -0.40, -0.785)
+    right_cyclic_pivot = (2.34, 0.40, -0.785)
+    left_collective_pivot = (current_interior_x(1.34), -0.22, -0.610)
+    right_collective_pivot = (current_interior_x(1.34), 0.58, -0.610)
 
     return f"""
             // GTVR generated cockpit visual controls
@@ -1714,17 +1717,13 @@ def patch_dev_tgi_material_shaders(path: Path) -> tuple[int, int]:
             patched += 1
         if "<[list_tm_tmtexture_index_pair_impexp][texture_list]" in line:
             inside_texture_list = True
-        elif (
-            current_material == CONTROL_MATTE_BLACK_MATERIAL
-            and inside_texture_list
-            and line == "                >"
-        ):
-            for channel in ("specular", "reflection"):
+        elif current_material in DEV_MATERIAL_SURFACE_MAPS and inside_texture_list and line == "                >":
+            for channel, texture_name in DEV_MATERIAL_SURFACE_MAPS[current_material]:
                 output.extend(
                     [
                         "                    <[tm_tmtexture_index_pair_impexp][element][0]",
                         f"                        <[string8][channel][{channel}]>",
-                        f"                        <[string8][name][{CONTROL_MATTE_BLACK_MATERIAL}]>",
+                        f"                        <[string8][name][{texture_name}]>",
                         "                        <[bool][repeat_s][true]>",
                         "                        <[bool][repeat_t][true]>",
                         "                        <[float32][uvscaling][1]>",
@@ -1786,7 +1785,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     write_dev_visual_tmd(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmd", sorted(geometries))
     tgi_path = core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tgi"
     core.write_tgi(tgi_path, materials, geometries)
-    patched_materials, control_surface_slots = patch_dev_tgi_material_shaders(tgi_path)
+    patched_materials, surface_slots = patch_dev_tgi_material_shaders(tgi_path)
     core.write_model_tmc(core.SOURCE_DIR / "model.tmc", materials, geometries, args.max_texture_size)
     core.write_root_converter_config(core.SOURCE_ROOT / "config.tmc", core.SOURCE_ROOT, core.BUILD_USER)
     (core.SOURCE_DIR / "_GTVR_WRAITH_DEV_SOURCE.md").write_text(
@@ -1813,8 +1812,8 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     print(f"Stock EC135 display geometry groups: {len(_current_stock_display_geometries)}")
     if patched_materials:
         print(f"Dev cockpit materials: forced {patched_materials} generated interior/control shaders.")
-    if control_surface_slots:
-        print(f"Dev control material: added {control_surface_slots} matte-black specular/reflection slots.")
+    if surface_slots:
+        print(f"Dev cockpit materials: added {surface_slots} explicit specular/reflection slots.")
     print(f"Imported body faces: {imported_faces}")
 
 
@@ -1826,7 +1825,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated raised upholstered seats, no lower shelf/dash braces, animated floor-mounted pure-black cyclics, left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated gloss-black floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
                 "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible control geometry and handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
@@ -1894,7 +1893,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes raised textured upholstered seats, no lower shelf/pedestal slab or dash brace tubes, animated floor-mounted pure-black cyclics, left-side collective placement, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated gloss-black floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
@@ -1907,6 +1906,18 @@ def write_dev_package_marker() -> None:
         ),
         encoding="utf-8",
     )
+
+
+def copy_dev_auxiliary_textures() -> int:
+    converted_dir = converted_tmb().parent
+    copied = 0
+    for texture_name in DEV_AUXILIARY_TEXTURE_NAMES:
+        source = converted_dir / f"{texture_name}.ttx"
+        if not source.exists():
+            raise FileNotFoundError(f"Missing converted dev material texture: {source}")
+        shutil.copy2(source, DEV_PACKAGE_DIR / source.name)
+        copied += 1
+    return copied
 
 
 def patch_dev_controls_tmd(path: Path) -> int:
@@ -2081,6 +2092,8 @@ def main() -> int:
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
+            copied_surface_textures = copy_dev_auxiliary_textures()
+            print(f"Dev cockpit materials: packaged {copied_surface_textures} auxiliary surface textures.")
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
             if hidden_clickspots:
                 print(f"Dev controls: hid {hidden_clickspots} inherited EC135 cockpit click/handle visuals.")
