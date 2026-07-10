@@ -401,8 +401,8 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
             source_uri=source_uri,
         )
 
-    write_png(core.SOURCE_DIR / f"{CONTROL_SPECULAR_TEXTURE}.png", (52, 52, 52))
-    write_png(core.SOURCE_DIR / f"{CONTROL_REFLECTION_TEXTURE}.png", (22, 22, 22))
+    write_png(core.SOURCE_DIR / f"{CONTROL_SPECULAR_TEXTURE}.png", (230, 230, 230))
+    write_png(core.SOURCE_DIR / f"{CONTROL_REFLECTION_TEXTURE}.png", (160, 160, 160))
     write_png(core.SOURCE_DIR / f"{MATTE_BLACK_SURFACE_TEXTURE}.png", (0, 0, 0))
     write_png(core.SOURCE_DIR / f"{LEATHER_SPECULAR_TEXTURE}.png", (42, 32, 26))
     write_png(core.SOURCE_DIR / f"{LEATHER_REFLECTION_TEXTURE}.png", (8, 8, 8))
@@ -690,6 +690,17 @@ def append_pillowed_seat_cushion(
         top1 = point_at(u1, 0.0)
         append_auto_quad(body, material_name, [(top1[0], min_y, bottom_z), (top1[0], min_y, top1[2]), (top0[0], min_y, top0[2]), (top0[0], min_y, bottom_z)])
 
+    append_auto_quad(
+        body,
+        material_name,
+        [
+            (min_x, min_y, bottom_z),
+            (min_x, max_y, bottom_z),
+            (max_x, max_y, bottom_z),
+            (max_x, min_y, bottom_z),
+        ],
+    )
+
 
 def append_pillowed_back_cushion(
     body: dict[str, core.Patch],
@@ -753,6 +764,17 @@ def append_pillowed_back_cushion(
         side0 = point_at(1.0, v0)
         side1 = point_at(1.0, v1)
         append_auto_quad(body, material_name, [(back_x, max_y, side0[2]), side0, side1, (back_x, max_y, side1[2])])
+
+    append_auto_quad(
+        body,
+        material_name,
+        [
+            (back_x, min_y, min_z),
+            (back_x, min_y, max_z),
+            (back_x, max_y, max_z),
+            (back_x, max_y, min_z),
+        ],
+    )
 
 
 def append_panel_rect(
@@ -1223,8 +1245,8 @@ def add_cyclic_controls() -> None:
 
 def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
     for lever_y, geometry_name in (
-        (-0.22, "LeftCollectiveLever"),
-        (0.58, "RightCollectiveLever"),
+        (-0.10, "LeftCollectiveLever"),
+        (0.70, "RightCollectiveLever"),
     ):
         control = animated_control_geometry(geometry_name)
         base = (interior_x(1.34), lever_y, -0.610)
@@ -1441,8 +1463,8 @@ def visual_control_dynamic_objects() -> str:
 
     left_cyclic_pivot = (2.34, -0.40, -0.785)
     right_cyclic_pivot = (2.34, 0.40, -0.785)
-    left_collective_pivot = (current_interior_x(1.34), -0.22, -0.610)
-    right_collective_pivot = (current_interior_x(1.34), 0.58, -0.610)
+    left_collective_pivot = (current_interior_x(1.34), -0.10, -0.610)
+    right_collective_pivot = (current_interior_x(1.34), 0.70, -0.610)
 
     return f"""
             // GTVR generated cockpit visual controls
