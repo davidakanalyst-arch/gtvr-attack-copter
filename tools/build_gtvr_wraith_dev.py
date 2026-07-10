@@ -42,7 +42,7 @@ DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
-PEDAL_BLACK_MATERIAL = "gtvr_cockpit_black"
+PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
 CONTROL_SPECULAR_TEXTURE = "gtvr_control_black_specular"
 CONTROL_REFLECTION_TEXTURE = "gtvr_control_black_reflection"
 MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
@@ -69,7 +69,7 @@ HIDDEN_DEV_STATIC_VISUAL_RE = re.compile(
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
-    "gtvr_control_black": ((3, 3, 3), "generated-gtvr-dev-control-black"),
+    "gtvr_control_black": ((18, 19, 20), "generated-gtvr-dev-control-dark-grey"),
     "gtvr_cockpit_dark_gray": ((22, 24, 25), "generated-gtvr-dev-cockpit-dark-gray"),
     "gtvr_cockpit_seat": ((30, 18, 12), "generated-gtvr-dev-cockpit-seat"),
     "gtvr_cockpit_seat_highlight": ((46, 28, 19), "generated-gtvr-dev-cockpit-seat-highlight"),
@@ -1387,7 +1387,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added shortened dark-brown leather seats, simple matte-black floor cyclics, lowered left-side collectives, "
+        "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
         "lowered rearward rounded pedals and live left/right speed-altitude overlays with a center map."
     )
 
@@ -1851,7 +1851,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated matte-black floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated matte dark-grey floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
                 "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible control geometry and handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
@@ -1919,7 +1919,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated matte-black floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated matte dark-grey floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
