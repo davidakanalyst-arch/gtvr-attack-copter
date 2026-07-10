@@ -42,6 +42,7 @@ DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
+PEDAL_BLACK_MATERIAL = "gtvr_cockpit_black"
 CONTROL_SPECULAR_TEXTURE = "gtvr_control_black_specular"
 CONTROL_REFLECTION_TEXTURE = "gtvr_control_black_reflection"
 MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
@@ -404,8 +405,8 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
             source_uri=source_uri,
         )
 
-    write_png(core.SOURCE_DIR / f"{CONTROL_SPECULAR_TEXTURE}.png", (110, 110, 110))
-    write_png(core.SOURCE_DIR / f"{CONTROL_REFLECTION_TEXTURE}.png", (45, 45, 45))
+    write_png(core.SOURCE_DIR / f"{CONTROL_SPECULAR_TEXTURE}.png", (0, 0, 0))
+    write_png(core.SOURCE_DIR / f"{CONTROL_REFLECTION_TEXTURE}.png", (0, 0, 0))
     write_png(core.SOURCE_DIR / f"{MATTE_BLACK_SURFACE_TEXTURE}.png", (0, 0, 0))
     write_png(core.SOURCE_DIR / f"{LEATHER_SPECULAR_TEXTURE}.png", (24, 20, 18))
     write_png(core.SOURCE_DIR / f"{LEATHER_REFLECTION_TEXTURE}.png", (4, 4, 4))
@@ -1289,7 +1290,7 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
         pad_x = interior_x(2.56) - PEDAL_X_REARWARD
         append_cylinder_between(
             body,
-            CONTROL_MATTE_BLACK_MATERIAL,
+            PEDAL_BLACK_MATERIAL,
             (crossbar_x, seat_y - 0.16, pz(-0.710)),
             (crossbar_x, seat_y + 0.16, pz(-0.710)),
             0.014,
@@ -1299,7 +1300,7 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
             pedal_y = seat_y + pedal_offset
             append_cylinder_between(
                 body,
-                CONTROL_MATTE_BLACK_MATERIAL,
+                PEDAL_BLACK_MATERIAL,
                 (crossbar_x, pedal_y, pz(-0.710)),
                 (pad_x - 0.020, pedal_y, pz(-0.520)),
                 0.015,
@@ -1308,7 +1309,7 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
             pedal = animated_control_geometry(geometry_name)
             append_cylinder_between(
                 pedal,
-                CONTROL_MATTE_BLACK_MATERIAL,
+                PEDAL_BLACK_MATERIAL,
                 (pad_x - 0.035, pedal_y - 0.050, pz(-0.515)),
                 (pad_x - 0.035, pedal_y + 0.050, pz(-0.515)),
                 0.018,
@@ -1316,7 +1317,7 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
             )
             append_cylinder_between(
                 pedal,
-                CONTROL_MATTE_BLACK_MATERIAL,
+                PEDAL_BLACK_MATERIAL,
                 (pad_x, pedal_y - 0.060, pz(-0.500)),
                 (pad_x, pedal_y + 0.060, pz(-0.500)),
                 0.032,
@@ -1324,7 +1325,7 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
             )
             append_cylinder_between(
                 pedal,
-                CONTROL_MATTE_BLACK_MATERIAL,
+                PEDAL_BLACK_MATERIAL,
                 (pad_x + 0.035, pedal_y - 0.055, pz(-0.455)),
                 (pad_x + 0.035, pedal_y + 0.055, pz(-0.455)),
                 0.025,
@@ -1386,7 +1387,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added shortened dark-brown leather seats, simple gloss-black floor cyclics, lowered left-side collectives, "
+        "Dev cockpit kit: added shortened dark-brown leather seats, simple matte-black floor cyclics, lowered left-side collectives, "
         "lowered rearward rounded pedals and live left/right speed-altitude overlays with a center map."
     )
 
@@ -1850,7 +1851,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated gloss-black floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated matte-black floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
                 "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible control geometry and handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
@@ -1918,7 +1919,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated gloss-black floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated matte-black floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
