@@ -46,6 +46,8 @@ PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
 CONTROL_SPECULAR_TEXTURE = "gtvr_control_black_specular"
 CONTROL_REFLECTION_TEXTURE = "gtvr_control_black_reflection"
 MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
+TIRE_BLACK_MATERIAL = "gtvr_tire_black"
+TIRE_BLACK_COLOR = (1, 1, 1)
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
 LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
@@ -66,6 +68,7 @@ HIDDEN_DEV_STATIC_VISUAL_RE = re.compile(
     r")$",
     re.IGNORECASE,
 )
+TIRE_NODE_RE = re.compile(r"^(?:Tire_new\.(?:001|002)|REAR_WHEEL_STILL)$", re.IGNORECASE)
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
@@ -111,6 +114,10 @@ DEV_MATERIAL_SURFACE_MAPS = {
         ("specular", MATTE_BLACK_SURFACE_TEXTURE),
         ("reflection", MATTE_BLACK_SURFACE_TEXTURE),
     ),
+    TIRE_BLACK_MATERIAL: (
+        ("specular", MATTE_BLACK_SURFACE_TEXTURE),
+        ("reflection", MATTE_BLACK_SURFACE_TEXTURE),
+    ),
     "gtvr_cockpit_seat": (
         ("specular", LEATHER_SPECULAR_TEXTURE),
         ("reflection", LEATHER_REFLECTION_TEXTURE),
@@ -134,6 +141,7 @@ COCKPIT_MAP_TEXTURE = "gtvr_cockpit_map"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
+_ORIGINAL_BUILD_SELECTED_NODES = core.build_selected_nodes
 _ORIGINAL_LEGACY_ROTOR_PATCH_MAPS = core.legacy_rotor_patch_maps
 _current_pilot_alignment_x_delta = 0.0
 _current_cockpit_x_delta = DEFAULT_COCKPIT_X_DELTA
@@ -162,6 +170,7 @@ def configure_core_for_dev() -> None:
     core.PACKAGE_DIR = DEV_PACKAGE_DIR
     core.patch_tmc = patch_dev_tmc
     core.build_body = build_body_for_dev
+    core.build_selected_nodes = build_selected_nodes_for_dev
     core.prepare_source = prepare_source_for_dev
     core.legacy_rotor_patch_maps = legacy_rotor_patch_maps_for_dev
     assert_dev_paths()
@@ -290,6 +299,77 @@ def add_generated_material(
         source_uri=source_uri,
         color=(*color, 255),
     )
+
+
+def build_selected_nodes_for_dev(
+    *,
+    gltf: dict,
+    buffers: list[bytes],
+    mesh_nodes: list[tuple[int, list[float]]],
+    materials: dict[int, Material],
+    center_x: float,
+    center_y: float,
+    z_offset: float,
+    node_regex: str,
+) -> dict[str, core.Patch]:
+    selected = re.compile(node_regex, re.IGNORECASE)
+    tire_nodes = [
+        entry
+        for entry in mesh_nodes
+        if selected.search(gltf["nodes"][entry[0]].get("name", ""))
+        and TIRE_NODE_RE.fullmatch(gltf["nodes"][entry[0]].get("name", ""))
+    ]
+    if not tire_nodes:
+        return _ORIGINAL_BUILD_SELECTED_NODES(
+            gltf=gltf,
+            buffers=buffers,
+            mesh_nodes=mesh_nodes,
+            materials=materials,
+            center_x=center_x,
+            center_y=center_y,
+            z_offset=z_offset,
+            node_regex=node_regex,
+        )
+
+    tire_node_indices = {entry[0] for entry in tire_nodes}
+    non_tire_nodes = [entry for entry in mesh_nodes if entry[0] not in tire_node_indices]
+    patches = _ORIGINAL_BUILD_SELECTED_NODES(
+        gltf=gltf,
+        buffers=buffers,
+        mesh_nodes=non_tire_nodes,
+        materials=materials,
+        center_x=center_x,
+        center_y=center_y,
+        z_offset=z_offset,
+        node_regex=node_regex,
+    )
+    tire_source_patches = _ORIGINAL_BUILD_SELECTED_NODES(
+        gltf=gltf,
+        buffers=buffers,
+        mesh_nodes=tire_nodes,
+        materials=materials,
+        center_x=center_x,
+        center_y=center_y,
+        z_offset=z_offset,
+        node_regex=node_regex,
+    )
+
+    add_generated_material(
+        materials,
+        name=TIRE_BLACK_MATERIAL,
+        texture_name=TIRE_BLACK_MATERIAL,
+        color=TIRE_BLACK_COLOR,
+        source_uri="generated-gtvr-dev-tire-black",
+    )
+    tire_patch = core.Patch(TIRE_BLACK_MATERIAL)
+    for source_patch in tire_source_patches.values():
+        vertex_offset = len(tire_patch.vertices) // 8
+        tire_patch.vertices.extend(source_patch.vertices)
+        tire_patch.indices.extend(index + vertex_offset for index in source_patch.indices)
+        tire_patch.face_attributes.extend(source_patch.face_attributes)
+    if tire_patch.indices:
+        patches[TIRE_BLACK_MATERIAL] = tire_patch
+    return patches
 
 
 def load_font(size: int):
@@ -1851,6 +1931,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
+                "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated matte dark-grey floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
                 "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible control geometry and handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
@@ -1919,6 +2000,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
+                "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated matte dark-grey floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
                 "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
