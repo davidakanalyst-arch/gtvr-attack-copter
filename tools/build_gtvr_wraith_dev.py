@@ -2475,13 +2475,15 @@ def dev_map_panel_system_tmd() -> str:
                 <[tmvector2d][TargetScale][ {size} {size} ]>
                 <[float64][FontSize][ 40 ]>
                 <[tmvector4f][ColorAircraft][ 0.373 0.992 0.000 1.0 ]>
-                <[tmvector4f][ColorVOR][ 0.200 1.000 1.000 1.0 ]>
-                <[tmvector4f][ColorNDB][ 1.000 0.500 0.500 1.0 ]>
-                <[tmvector4f][ColorAirport][ 1.000 1.000 1.000 1.0 ]>
+                // Keep the useful aircraft/route overlay but suppress the AN2 phone's dense
+                // navaid and airport label layer on the much smaller Wraith centre screen.
+                <[tmvector4f][ColorVOR][ 0.200 1.000 1.000 0.0 ]>
+                <[tmvector4f][ColorNDB][ 1.000 0.500 0.500 0.0 ]>
+                <[tmvector4f][ColorAirport][ 1.000 1.000 1.000 0.0 ]>
                 <[tmvector4f][ColorRoute][ 0.373 0.992 0.000 1.0 ]>
-                <[tmvector4f][ColorWaypoint][ 1.000 1.000 1.000 1.0 ]>
-                <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 1.0 ]>
-                <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 1.0 ]>
+                <[tmvector4f][ColorWaypoint][ 1.000 1.000 1.000 0.0 ]>
+                <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 0.0 ]>
+                <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 0.0 ]>
                 <[string8][InputHeading][GTVRMapPanelHeadingInput.Output]>
                 <[string8][InputZoom][GTVRMapPanelZoomInput.Output]>
             >
