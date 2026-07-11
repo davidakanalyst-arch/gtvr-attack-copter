@@ -610,27 +610,6 @@ def merge_patch_map_into(target: dict[str, core.Patch], source: dict[str, core.P
         target_patch.face_attributes.extend(source_patch.face_attributes)
 
 
-def rotate_patch_map_about_y(
-    patches: dict[str, core.Patch],
-    pivot: tuple[float, float, float],
-    angle_radians: float,
-) -> None:
-    cos_angle = math.cos(angle_radians)
-    sin_angle = math.sin(angle_radians)
-    pivot_x, _, pivot_z = pivot
-    for patch in patches.values():
-        for offset in range(0, len(patch.vertices), 8):
-            local_x = patch.vertices[offset] - pivot_x
-            local_z = patch.vertices[offset + 2] - pivot_z
-            patch.vertices[offset] = pivot_x + cos_angle * local_x + sin_angle * local_z
-            patch.vertices[offset + 2] = pivot_z - sin_angle * local_x + cos_angle * local_z
-
-            normal_x = patch.vertices[offset + 3]
-            normal_z = patch.vertices[offset + 5]
-            patch.vertices[offset + 3] = cos_angle * normal_x + sin_angle * normal_z
-            patch.vertices[offset + 5] = -sin_angle * normal_x + cos_angle * normal_z
-
-
 def vector_sub(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
     return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
 
@@ -1401,7 +1380,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             (2.233, -0.379, -0.305),
             (2.205, -0.379, -0.190),
             (2.180, -0.379, -0.105),
-            "GTVRLeftCyclicStick",
+            "LeftCyclicCont",
         ),
         (
             (2.32, 0.39, -0.785),
@@ -1409,7 +1388,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             (2.239, 0.400, -0.305),
             (2.211, 0.400, -0.190),
             (2.186, 0.400, -0.105),
-            "GTVRRightCyclicStick",
+            "RightCyclicCont",
         ),
     )
     for floor_base, pivot, grip_bottom, grip_mid, grip_top, geometry_name in cyclic_references:
@@ -1495,15 +1474,13 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
         (-0.40, "LRPedal", "LLPedal"),
         (0.40, "RRPedal", "RLPedal"),
     ):
+        crossbar_x = interior_x(2.22) - PEDAL_X_REARWARD
         pad_x = interior_x(2.56) - PEDAL_X_REARWARD
-        # Keep the proven pad centers and travel, but anchor the visible rods
-        # ahead of them in the forward footwell below the dashboard.
-        crossbar_x = pad_x + 0.15
         append_cylinder_between(
             body,
             PEDAL_BLACK_MATERIAL,
-            (crossbar_x, seat_y - 0.16, pz(-0.620)),
-            (crossbar_x, seat_y + 0.16, pz(-0.620)),
+            (crossbar_x, seat_y - 0.16, pz(-0.710)),
+            (crossbar_x, seat_y + 0.16, pz(-0.710)),
             0.014,
             segments=28,
         )
@@ -1512,24 +1489,20 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
             append_cylinder_between(
                 body,
                 PEDAL_BLACK_MATERIAL,
-                (crossbar_x, pedal_y, pz(-0.620)),
+                (crossbar_x, pedal_y, pz(-0.710)),
                 (pad_x - 0.020, pedal_y, pz(-0.520)),
                 0.015,
                 segments=28,
             )
             pedal = animated_control_geometry(geometry_name)
-            pad_center = (pad_x, pedal_y, pz(-0.482))
-            angled_pad: dict[str, core.Patch] = {}
             append_pillowed_seat_cushion(
-                angled_pad,
+                pedal,
                 PEDAL_BLACK_MATERIAL,
-                center=pad_center,
+                center=(pad_x, pedal_y, pz(-0.482)),
                 size=(0.105, 0.170, 0.030),
                 segments_x=6,
                 segments_y=7,
             )
-            rotate_patch_map_about_y(angled_pad, pad_center, -math.radians(30.0))
-            merge_patch_map_into(pedal, angled_pad)
             append_cylinder_between(
                 pedal,
                 PEDAL_BLACK_MATERIAL,
@@ -1595,8 +1568,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
-        "unchanged-position pedal pads angled 30 degrees toward the pilots, forward footwell supports, "
-        "and live left/right speed-altitude overlays with a center map."
+        "lowered rearward flat pedal pads and live left/right speed-altitude overlays with a center map."
     )
 
 
@@ -2071,8 +2043,8 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position pedal pads angled 30 degrees toward the pilots with forward footwell supports, and left/right speed-altitude tape panels with a center map",
-                "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips use dedicated GTVR geometry driven by valid controls.tmd control rotations; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and left/right speed-altitude tape panels with a center map",
+                "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
@@ -2141,8 +2113,8 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position pedal pads angled 30 degrees toward the pilots with forward footwell supports, side speed-altitude tape panels and a center map.",
-                "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips use dedicated GTVR geometry driven by valid controls.tmd control rotations; collectives and unchanged-travel pedals retain their dev visual groups.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, side speed-altitude tape panels and a center map.",
+                "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
                 "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
@@ -2166,62 +2138,6 @@ def copy_dev_auxiliary_textures() -> int:
         shutil.copy2(source, DEV_PACKAGE_DIR / source.name)
         copied += 1
     return copied
-
-
-def cyclic_controls_overlay() -> tuple[str, str]:
-    required_geometry = {"GTVRLeftCyclicStick", "GTVRRightCyclicStick"}
-    if not required_geometry.issubset(_current_animated_control_geometries):
-        return "", ""
-
-    control_objects = """
-            // GTVR anchored cyclic control transforms
-            <[control_input][GTVRCyclicPitchInput][]
-                <[uint32][InputID][StickCyclicPitch.Output]>
-                <[float64][Scaling][0.2]>
-            >
-            <[control_input][GTVRCyclicRollInput][]
-                <[uint32][InputID][StickCyclicRoll.Output]>
-                <[float64][Scaling][0.2]>
-            >
-            <[control_rotation][GTVRLeftCyclicPitch][]
-                <[string8][Input][GTVRCyclicPitchInput.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
-                <[tmvector3d][Pivot][ 2.25 -0.39 -0.642 ]>
-            >
-            <[control_rotation][GTVRLeftCyclicRoll][]
-                <[string8][Input][GTVRCyclicRollInput.Output]>
-                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
-                <[tmvector3d][Pivot][ 2.25 -0.39 -0.642 ]>
-                <[string8][InputTransform][GTVRLeftCyclicPitch.Output]>
-            >
-            <[control_rotation][GTVRRightCyclicPitch][]
-                <[string8][Input][GTVRCyclicPitchInput.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
-                <[tmvector3d][Pivot][ 2.25 0.39 -0.642 ]>
-            >
-            <[control_rotation][GTVRRightCyclicRoll][]
-                <[string8][Input][GTVRCyclicRollInput.Output]>
-                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
-                <[tmvector3d][Pivot][ 2.25 0.39 -0.642 ]>
-                <[string8][InputTransform][GTVRRightCyclicPitch.Output]>
-            >""".strip("\n")
-
-    graphic_objects = """
-        <[pointer_list_tmgraphics][GraphicObjects][]
-            <[rigidbodygraphics][GTVRLeftCyclicGraphics][]
-                <[uint32][PositionID][Fuselage.R]>
-                <[uint32][OrientationID][Fuselage.Q]>
-                <[string8][GeometryList][ GTVRLeftCyclicStick ]>
-                <[string8][InputTransform][GTVRLeftCyclicRoll.Output]>
-            >
-            <[rigidbodygraphics][GTVRRightCyclicGraphics][]
-                <[uint32][PositionID][Fuselage.R]>
-                <[uint32][OrientationID][Fuselage.Q]>
-                <[string8][GeometryList][ GTVRRightCyclicStick ]>
-                <[string8][InputTransform][GTVRRightCyclicRoll.Output]>
-            >
-        >""".strip("\n")
-    return control_objects, graphic_objects
 
 
 def patch_dev_controls_tmd(path: Path) -> int:
@@ -2256,28 +2172,7 @@ def patch_dev_controls_tmd(path: Path) -> int:
         if hidden_depth > 0 and stripped == ">":
             hidden_depth -= 1
 
-    control_overlay, graphics_overlay = cyclic_controls_overlay()
-    if control_overlay and not any("GTVR anchored cyclic control transforms" in line for line in patched):
-        modelmanager_close = next(
-            (index for index in range(len(patched) - 1, -1, -1) if patched[index] == "    >"),
-            None,
-        )
-        if modelmanager_close is None:
-            raise RuntimeError(f"Could not locate modelmanager closing tag in {path}")
-        control_list_close = next(
-            (index for index in range(modelmanager_close - 1, -1, -1) if patched[index] == "        >"),
-            None,
-        )
-        if control_list_close is None:
-            raise RuntimeError(f"Could not locate ControlObjects closing tag in {path}")
-        patched[control_list_close:control_list_close] = control_overlay.splitlines()
-
-        modelmanager_close = next(
-            index for index in range(len(patched) - 1, -1, -1) if patched[index] == "    >"
-        )
-        patched[modelmanager_close:modelmanager_close] = graphics_overlay.splitlines()
-
-    if hidden_objects or control_overlay:
+    if hidden_objects:
         path.write_text("\n".join(patched) + "\n", encoding="utf-8")
     return hidden_objects
 
@@ -2422,8 +2317,6 @@ def main() -> int:
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
             if hidden_clickspots:
                 print(f"Dev controls: hid {hidden_clickspots} inherited EC135 cockpit click/handle visuals.")
-            if cyclic_controls_overlay()[0]:
-                print("Dev controls: injected anchored cyclic control rotations and graphics bindings.")
             write_dev_package_marker()
 
         if args.install:
