@@ -161,10 +161,11 @@ STOCK_DISPLAY_STATE_INPUTS = (
 # Crop the shared runtime display atlas instead of showing the entire source atlas on each Wraith screen.
 # The EC135 runtime renders its glass cockpit into a shared display atlas. The Wraith side screens
 # should use only the top PFD atlas windows: live speed, altitude, attitude and the heading tape.
-# Keep enough width/height for the PFD side tapes and lower readouts. The side screen geometry is
-# slightly inset inside the visible Wraith glass opening so the bezel does not clip altitude/speed.
-LEFT_PFD_DISPLAY_UV_RECT = (0.30, 0.00, 0.70, 0.34)
-RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.00, 0.40, 0.34)
+# Fit left/right independently: crop off the duplicate strip on the centre-facing edge of each
+# side screen, then shift the PFD source window down slightly so speed/altitude sit at the top edge
+# and any leftover compass/ND clutter overflows at the bottom instead of stealing side space.
+LEFT_PFD_DISPLAY_UV_RECT = (0.35, 0.045, 0.71, 0.385)
+RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.045, 0.355, 0.385)
 SIDE_PFD_DISPLAY_WIDTH_Y = 0.305
 SIDE_PFD_DISPLAY_HEIGHT_Z = 0.315
 CENTER_MAP_DISPLAY_UV_RECT = (0.23, 0.20, 0.74, 0.78)
@@ -2188,7 +2189,7 @@ def write_source_stamp() -> None:
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and three Wraith glass screens connected to the runtime PFD/ND display feed",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "runtime_displays=DisplayPFDL and DisplayPFDR use PFD-only atlas windows for large live speed/altitude/attitude/heading-tape side displays; DisplayNDL and DisplayNDR are both populated on the center screen with a map-only crop so the rolling-map feed reaches the middle panel without the side data stack",
+                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL and DisplayNDR are both populated on the center screen with a map-only crop so the rolling-map feed reaches the middle panel without the side data stack",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
@@ -2259,7 +2260,7 @@ def write_dev_package_marker() -> None:
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, and three Wraith glass screens connected to the runtime display feed.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR with PFD-only atlas windows for large live speed/altitude/attitude/heading-tape data; the center screen populates both DisplayNDL and DisplayNDR with a map-only crop so the rolling-map feed remains on the middle panel without the side data stack.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates both DisplayNDL and DisplayNDR with a map-only crop so the rolling-map feed remains on the middle panel without the side data stack.",
                 "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
