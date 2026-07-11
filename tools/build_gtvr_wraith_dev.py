@@ -43,6 +43,7 @@ DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
+CYCLIC_OPAQUE_MATERIAL = "gtvr_cyclic_opaque_dark_grey"
 CONTROL_SPECULAR_TEXTURE = "gtvr_control_black_specular"
 CONTROL_REFLECTION_TEXTURE = "gtvr_control_black_reflection"
 MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
@@ -76,6 +77,7 @@ UNWANTED_GREEN_MATERIAL_RE = re.compile(r"^(?:bool|bool_002|slime_lgt)$", re.IGN
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
     "gtvr_control_black": ((18, 19, 20), "generated-gtvr-dev-control-dark-grey"),
+    CYCLIC_OPAQUE_MATERIAL: ((18, 19, 20), "generated-gtvr-dev-cyclic-opaque-dark-grey"),
     "gtvr_cockpit_dark_gray": ((22, 24, 25), "generated-gtvr-dev-cockpit-dark-gray"),
     "gtvr_cockpit_seat": ((30, 18, 12), "generated-gtvr-dev-cockpit-seat"),
     "gtvr_cockpit_seat_highlight": ((46, 28, 19), "generated-gtvr-dev-cockpit-seat-highlight"),
@@ -108,6 +110,10 @@ DEV_MATERIAL_SURFACE_MAPS = {
     CONTROL_MATTE_BLACK_MATERIAL: (
         ("specular", CONTROL_SPECULAR_TEXTURE),
         ("reflection", CONTROL_REFLECTION_TEXTURE),
+    ),
+    CYCLIC_OPAQUE_MATERIAL: (
+        ("specular", MATTE_BLACK_SURFACE_TEXTURE),
+        ("reflection", MATTE_BLACK_SURFACE_TEXTURE),
     ),
     "gtvr_cockpit_black": (
         ("specular", MATTE_BLACK_SURFACE_TEXTURE),
@@ -1374,7 +1380,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             (2.233, -0.379, -0.305),
             (2.205, -0.379, -0.190),
             (2.180, -0.379, -0.105),
-            "StickL",
+            "LeftCyclicCont",
         ),
         (
             (2.32, 0.39, -0.785),
@@ -1382,13 +1388,13 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             (2.239, 0.400, -0.305),
             (2.211, 0.400, -0.190),
             (2.186, 0.400, -0.105),
-            "StickR",
+            "RightCyclicCont",
         ),
     )
     for floor_base, pivot, grip_bottom, grip_mid, grip_top, geometry_name in cyclic_references:
         append_cylinder_between(
             body,
-            CONTROL_MATTE_BLACK_MATERIAL,
+            CYCLIC_OPAQUE_MATERIAL,
             floor_base,
             pivot,
             0.028,
@@ -1397,7 +1403,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         control = animated_control_geometry(geometry_name)
         append_cylinder_between(
             control,
-            CONTROL_MATTE_BLACK_MATERIAL,
+            CYCLIC_OPAQUE_MATERIAL,
             pivot,
             grip_bottom,
             0.023,
@@ -1405,7 +1411,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         )
         append_cylinder_between(
             control,
-            CONTROL_MATTE_BLACK_MATERIAL,
+            CYCLIC_OPAQUE_MATERIAL,
             grip_bottom,
             grip_mid,
             0.032,
@@ -1413,7 +1419,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         )
         append_cylinder_between(
             control,
-            CONTROL_MATTE_BLACK_MATERIAL,
+            CYCLIC_OPAQUE_MATERIAL,
             grip_mid,
             grip_top,
             0.029,
@@ -1421,7 +1427,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         )
         append_pillowed_back_cushion(
             control,
-            CONTROL_MATTE_BLACK_MATERIAL,
+            CYCLIC_OPAQUE_MATERIAL,
             center=(grip_top[0] - 0.005, grip_top[1], grip_top[2] + 0.008),
             size=(0.075, 0.070, 0.055),
             segments_y=6,
@@ -1489,13 +1495,21 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
                 segments=28,
             )
             pedal = animated_control_geometry(geometry_name)
-            append_pillowed_back_cushion(
+            append_pillowed_seat_cushion(
                 pedal,
                 PEDAL_BLACK_MATERIAL,
                 center=(pad_x, pedal_y, pz(-0.482)),
-                size=(0.030, 0.170, 0.105),
+                size=(0.105, 0.170, 0.030),
+                segments_x=6,
                 segments_y=7,
-                segments_z=6,
+            )
+            append_cylinder_between(
+                pedal,
+                PEDAL_BLACK_MATERIAL,
+                (pad_x - 0.020, pedal_y, pz(-0.520)),
+                (pad_x - 0.020, pedal_y, pz(-0.497)),
+                0.012,
+                segments=20,
             )
 
 
@@ -2030,7 +2044,7 @@ def write_source_stamp() -> None:
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and left/right speed-altitude tape panels with a center map",
-                "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and shaped upper grips occupy stock StickL/StickR runtime slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
@@ -2100,7 +2114,7 @@ def write_dev_package_marker() -> None:
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, side speed-altitude tape panels and a center map.",
-                "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while shaped upper grips occupy the stock StickL and StickR slots; collectives and unchanged-travel pedals retain their dev visual groups.",
+                "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
                 "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
