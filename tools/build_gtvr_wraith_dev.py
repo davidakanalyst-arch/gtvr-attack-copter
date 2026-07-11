@@ -148,6 +148,16 @@ COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
 COCKPIT_PFD_TEXTURE = "gtvr_cockpit_flight"
 COCKPIT_PFD_SOURCE_TEXTURE = "gtvr_cockpit_flight_source"
 COCKPIT_MAP_TEXTURE = "gtvr_cockpit_map"
+STOCK_DISPLAY_MATERIAL = "display_light"
+STOCK_DISPLAY_TEXTURE = "display_light"
+STOCK_DISPLAY_STATE_INPUTS = (
+    "PilotPFDSelectedOn",
+    "CopilotPFDSelectedOn",
+    "PilotPFDModeSetOn",
+    "CopilotPFDModeSetOn",
+    "PilotNDSelectedOn",
+    "CopilotNDSelectedOn",
+)
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -576,9 +586,17 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
     pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
     pfd_source_path = core.SOURCE_DIR / f"{COCKPIT_PFD_SOURCE_TEXTURE}.png"
     map_path = core.SOURCE_DIR / f"{COCKPIT_MAP_TEXTURE}.png"
+    write_png(core.SOURCE_DIR / f"{STOCK_DISPLAY_TEXTURE}.png", (0, 0, 0))
     write_cockpit_pfd_texture(pfd_path)
     write_cockpit_pfd_source_texture(pfd_source_path)
     write_cockpit_map_texture(map_path)
+    if not any(material.name == STOCK_DISPLAY_MATERIAL for material in materials.values()):
+        materials[next_material_index(materials)] = Material(
+            name=STOCK_DISPLAY_MATERIAL,
+            texture_name=STOCK_DISPLAY_TEXTURE,
+            source_uri="inherited-runtime-display-light",
+            color=(0, 0, 0, 255),
+        )
     if not any(material.name == COCKPIT_PFD_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
             name=COCKPIT_PFD_MATERIAL,
@@ -1257,9 +1275,30 @@ def add_live_glass_displays(*, screen_x: float) -> None:
 def add_stock_display_surfaces(*, screen_x: float) -> None:
     display_x = screen_x - 0.020
     append_textured_panel(
+        stock_display_geometry("DisplayPFDL"),
+        STOCK_DISPLAY_MATERIAL,
+        center=(display_x, -0.39, -0.12),
+        width_y=0.34,
+        height_z=0.34,
+    )
+    append_textured_panel(
+        stock_display_geometry("DisplayPFDR"),
+        STOCK_DISPLAY_MATERIAL,
+        center=(display_x, 0.39, -0.12),
+        width_y=0.34,
+        height_z=0.34,
+    )
+    append_textured_panel(
         stock_display_geometry("DisplayNDL"),
-        COCKPIT_MAP_MATERIAL,
+        STOCK_DISPLAY_MATERIAL,
         center=(display_x, 0.0, -0.12),
+        width_y=0.30,
+        height_z=0.34,
+    )
+    append_textured_panel(
+        stock_display_geometry("DisplayNDR"),
+        STOCK_DISPLAY_MATERIAL,
+        center=(display_x - 0.001, 0.0, -0.12),
         width_y=0.30,
         height_z=0.34,
     )
@@ -1546,7 +1585,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     for side_y in (-0.39, 0.39):
         add_framed_screen(
             body,
-            material_name=COCKPIT_PFD_MATERIAL,
+            material_name="gtvr_cockpit_black",
             center=(screen_x, side_y, -0.12),
             width_y=0.34,
             height_z=0.34,
@@ -1556,15 +1595,12 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     add_framed_screen(
         body,
-        material_name=COCKPIT_MAP_MATERIAL,
+        material_name="gtvr_cockpit_black",
         center=(screen_x, 0.0, -0.12),
         width_y=0.30,
         height_z=0.34,
     )
-    add_pfd_source_texture_keepalive(body, screen_x=screen_x)
     add_stock_display_surfaces(screen_x=screen_x)
-    add_live_glass_displays(screen_x=screen_x)
-    add_static_display_fallback(body)
 
     add_cyclic_controls(body)
     add_collective_controls(body, interior_x)
@@ -1572,7 +1608,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
-        "lowered rearward flat pedal pads, live left/right speed-altitude screens and a native moving-map center screen."
+        "lowered rearward flat pedal pads and Wraith glass screens connected to the inherited runtime PFD/ND display feed."
     )
 
 
@@ -2093,7 +2129,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
                 f"- Geometry names emitted: `{len(geometries)}`",
                 f"- Animated control geometry groups: `{len(control_graphic_groups())}`",
                 f"- Live glass display geometry groups: `{len(_current_live_display_geometries)}`",
-                f"- Stock EC135 display geometry groups: `{len(_current_stock_display_geometries)}`",
+                f"- Runtime display geometry groups: `{len(_current_stock_display_geometries)}`",
                 f"- MSFS source faces: `{source_faces}`",
                 f"- Imported faces: `{imported_faces}`",
                 "",
@@ -2105,7 +2141,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     print(f"Geometry names emitted: {len(geometries)}")
     print(f"Animated control geometry groups: {len(control_graphic_groups())}")
     print(f"Live glass display geometry groups: {len(_current_live_display_geometries)}")
-    print(f"Stock EC135 display geometry groups: {len(_current_stock_display_geometries)}")
+    print(f"Runtime display geometry groups: {len(_current_stock_display_geometries)}")
     if patched_materials:
         print(f"Dev cockpit materials: forced {patched_materials} generated interior/control shaders.")
     if surface_slots:
@@ -2123,11 +2159,11 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and left/right speed-altitude data screens with a native moving-map center screen",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and three Wraith glass screens connected to the runtime PFD/ND display feed",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for numeric knots/feet and moving airspeed/altitude tape geometry; center display renders Aerofly's native moving map into the generated map texture",
-                "stock_display_surfaces=DisplayNDL is populated for the generated center map texture; side PFD stock textures are intentionally suppressed because the dev side panels own their live texture",
-                "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
+                "runtime_displays=DisplayPFDL and DisplayPFDR are populated for left/right flight displays; DisplayNDL and DisplayNDR are both populated on the center screen so the rolling-map feed reaches the middle panel",
+                "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
+                "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
                 f"dash_forward_x_delta={_current_dash_forward_x_delta:.3f}",
@@ -2193,12 +2229,12 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, side numeric speed-altitude data panels and a native moving-map center screen.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, and three Wraith glass screens connected to the runtime display feed.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Generated side display overlays bind numeric knots/feet plus moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center display renders Aerofly's native moving map into the generated map texture.",
-                "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed because the side displays use the dev-owned live texture.",
-                "Recessed fixed display cues are merged into the visible dash mesh as an EC135-TMQ-safe fallback without duplicating moving live layers.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR for flight data; the center screen populates both DisplayNDL and DisplayNDR so the rolling-map feed remains on the middle panel.",
+                "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
+                "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
                 "",
@@ -2255,6 +2291,26 @@ def patch_dev_controls_tmd(path: Path) -> int:
     if hidden_objects:
         path.write_text("\n".join(patched) + "\n", encoding="utf-8")
     return hidden_objects
+
+
+def force_dev_stock_display_state(path: Path) -> int:
+    if not path.exists():
+        return 0
+
+    text = path.read_text(encoding="utf-8", errors="replace")
+    changed = 0
+    for input_name in STOCK_DISPLAY_STATE_INPUTS:
+        pattern = re.compile(
+            rf"(<\[(?:input_binary|input_switch)\]\[{re.escape(input_name)}\]\[\]\s*)"
+            r"<\[float64\]\[Value\]\[[^\]]+\]\>",
+            re.MULTILINE,
+        )
+        text, replacements = pattern.subn(r"\1<[float64][Value][1.0]>", text)
+        changed += replacements
+
+    if changed:
+        path.write_text(text, encoding="utf-8")
+    return changed
 
 
 def install_dev_package(user_root: Path, force_install: bool) -> Path:
@@ -2397,6 +2453,11 @@ def main() -> int:
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
             if hidden_clickspots:
                 print(f"Dev controls: hid {hidden_clickspots} inherited EC135 cockpit click/handle visuals.")
+            display_state_updates = 0
+            for state_path in DEV_PACKAGE_DIR.glob(f"{DEV_AIRCRAFT_NAME}_*.tmd"):
+                display_state_updates += force_dev_stock_display_state(state_path)
+            if display_state_updates:
+                print(f"Dev displays: forced {display_state_updates} PFD/ND state inputs on.")
             write_dev_package_marker()
 
         if args.install:
