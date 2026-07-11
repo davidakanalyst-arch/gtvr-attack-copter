@@ -161,10 +161,12 @@ STOCK_DISPLAY_STATE_INPUTS = (
 # Crop the shared runtime display atlas instead of showing the entire source atlas on each Wraith screen.
 # The EC135 runtime renders its glass cockpit into a shared display atlas. The Wraith side screens
 # should use only the top PFD atlas windows: live speed, altitude, attitude and the heading tape.
-# Keep enough height for the PFD lower readouts, but shift the horizontal windows inward first so
-# the edge tape strips do not dominate the Wraith side screens before the crop is stretched.
-LEFT_PFD_DISPLAY_UV_RECT = (0.34, 0.00, 0.66, 0.32)
-RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.00, 0.32, 0.32)
+# Keep enough width/height for the PFD side tapes and lower readouts. The side screen geometry is
+# slightly inset inside the visible Wraith glass opening so the bezel does not clip altitude/speed.
+LEFT_PFD_DISPLAY_UV_RECT = (0.30, 0.00, 0.70, 0.34)
+RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.00, 0.40, 0.34)
+SIDE_PFD_DISPLAY_WIDTH_Y = 0.305
+SIDE_PFD_DISPLAY_HEIGHT_Z = 0.315
 CENTER_MAP_DISPLAY_UV_RECT = (0.23, 0.20, 0.74, 0.78)
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
@@ -1295,8 +1297,8 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
         stock_display_geometry("DisplayPFDL"),
         STOCK_DISPLAY_MATERIAL,
         center=(display_x, -0.39, -0.12),
-        width_y=0.34,
-        height_z=0.34,
+        width_y=SIDE_PFD_DISPLAY_WIDTH_Y,
+        height_z=SIDE_PFD_DISPLAY_HEIGHT_Z,
         uv_rect=LEFT_PFD_DISPLAY_UV_RECT,
         double_sided=False,
     )
@@ -1304,8 +1306,8 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
         stock_display_geometry("DisplayPFDR"),
         STOCK_DISPLAY_MATERIAL,
         center=(display_x, 0.39, -0.12),
-        width_y=0.34,
-        height_z=0.34,
+        width_y=SIDE_PFD_DISPLAY_WIDTH_Y,
+        height_z=SIDE_PFD_DISPLAY_HEIGHT_Z,
         uv_rect=RIGHT_PFD_DISPLAY_UV_RECT,
         double_sided=False,
     )
