@@ -2228,7 +2228,7 @@ def write_source_stamp() -> None:
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre moving-map surface",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a separate gtvr_cockpit_map texture for the borderless centre moving map",
-                "center_map=AN2/DR400-style texture_animation_map_display renderer is injected into dev state files so the EC135 TMQ flight model remains intact",
+                "center_map=AN2/DR400-style texture_animation_map_display renderer is packaged in the generated dev text TMD so the centre display has a real moving-map host",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
@@ -2299,7 +2299,7 @@ def write_dev_package_marker() -> None:
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre moving-map surface.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a separate gtvr_cockpit_map texture for an AN2/DR400-style moving map renderer.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a separate gtvr_cockpit_map texture for an AN2/DR400-style moving map renderer hosted by the generated dev text TMD.",
                 "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
@@ -2321,6 +2321,15 @@ def copy_dev_auxiliary_textures() -> int:
         shutil.copy2(source, DEV_PACKAGE_DIR / source.name)
         copied += 1
     return copied
+
+
+def copy_dev_text_model_tmd() -> Path:
+    source = core.SOURCE_DIR / f"{DEV_AIRCRAFT_NAME}.tmd"
+    target = DEV_PACKAGE_DIR / f"{DEV_AIRCRAFT_NAME}.tmd"
+    if not source.exists():
+        raise FileNotFoundError(f"Missing generated dev text TMD: {source}")
+    shutil.copy2(source, target)
+    return target
 
 
 def patch_dev_controls_tmd(path: Path) -> int:
@@ -2378,43 +2387,6 @@ def force_dev_stock_display_state(path: Path) -> int:
     if changed:
         path.write_text(text, encoding="utf-8")
     return changed
-
-
-def inject_center_map_state(path: Path) -> int:
-    """Add the borderless centre moving-map renderer to dev state files.
-
-    The Wraith keeps the EC135 compiled TMQ for the flight model. Installing the
-    generated main text TMD would risk replacing that model, so the least-invasive
-    experiment is to add only the centre map objects to the state TMDs Aerofly
-    already loads for this aircraft.
-    """
-    if not path.exists():
-        return 0
-
-    text = path.read_text(encoding="utf-8", errors="replace")
-    if CENTER_MAP_STATE_MARKER in text:
-        return 0
-
-    lines = text.splitlines()
-    dynamic_close_index: int | None = None
-    for index, line in enumerate(lines):
-        if line == "        >":
-            dynamic_close_index = index
-            break
-    if dynamic_close_index is None:
-        return 0
-
-    dynamic_lines = [""] + center_map_dynamic_objects().splitlines()
-    graphics_lines = [
-        "        <[pointer_list_tmgraphics][GraphicObjects][]",
-        *center_map_graphics_objects().splitlines(),
-        "        >",
-    ]
-    lines[dynamic_close_index:dynamic_close_index] = dynamic_lines
-    graphics_insert_index = dynamic_close_index + len(dynamic_lines) + 1
-    lines[graphics_insert_index:graphics_insert_index] = graphics_lines
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return 1
 
 
 def install_dev_package(user_root: Path, force_install: bool) -> Path:
@@ -2552,20 +2524,18 @@ def main() -> int:
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
+            dev_text_tmd = copy_dev_text_model_tmd()
+            print(f"Dev displays: packaged generated text TMD for centre moving map: {dev_text_tmd.name}")
             copied_surface_textures = copy_dev_auxiliary_textures()
             print(f"Dev cockpit materials: packaged {copied_surface_textures} auxiliary surface textures.")
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
             if hidden_clickspots:
                 print(f"Dev controls: hid {hidden_clickspots} inherited EC135 cockpit click/handle visuals.")
             display_state_updates = 0
-            center_map_state_updates = 0
             for state_path in DEV_PACKAGE_DIR.glob(f"{DEV_AIRCRAFT_NAME}_*.tmd"):
                 display_state_updates += force_dev_stock_display_state(state_path)
-                center_map_state_updates += inject_center_map_state(state_path)
             if display_state_updates:
                 print(f"Dev displays: forced {display_state_updates} PFD/ND state inputs on.")
-            if center_map_state_updates:
-                print(f"Dev displays: injected centre moving-map renderer into {center_map_state_updates} state files.")
             write_dev_package_marker()
 
         if args.install:
