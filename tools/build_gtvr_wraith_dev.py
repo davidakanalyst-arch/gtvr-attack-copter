@@ -48,6 +48,7 @@ CONTROL_REFLECTION_TEXTURE = "gtvr_control_black_reflection"
 MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
 TIRE_BLACK_MATERIAL = "gtvr_tire_black"
 TIRE_BLACK_COLOR = (1, 1, 1)
+REAR_STRUT_LENGTH_SCALE = 0.65
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
 LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
@@ -69,6 +70,8 @@ HIDDEN_DEV_STATIC_VISUAL_RE = re.compile(
     re.IGNORECASE,
 )
 TIRE_NODE_RE = re.compile(r"^(?:Tire_new\.(?:001|002)|REAR_WHEEL_STILL)$", re.IGNORECASE)
+REAR_STRUT_NODE_RE = re.compile(r"^Rear_gear$", re.IGNORECASE)
+UNWANTED_GREEN_MATERIAL_RE = re.compile(r"^(?:bool|bool_002|slime_lgt)$", re.IGNORECASE)
 
 COCKPIT_FLAT_MATERIALS = {
     "gtvr_cockpit_black": ((4, 4, 4), "generated-gtvr-dev-cockpit-black"),
@@ -301,6 +304,39 @@ def add_generated_material(
     )
 
 
+def append_patch_geometry(target: core.Patch, source: core.Patch) -> None:
+    vertex_offset = len(target.vertices) // 8
+    target.vertices.extend(source.vertices)
+    target.indices.extend(index + vertex_offset for index in source.indices)
+    target.face_attributes.extend(source.face_attributes)
+
+
+def shorten_patch_along_xz_axis(patch: core.Patch, scale: float) -> None:
+    points = [patch.vertices[offset : offset + 3] for offset in range(0, len(patch.vertices), 8)]
+    if not points:
+        return
+    mean_x = sum(point[0] for point in points) / len(points)
+    mean_z = sum(point[2] for point in points) / len(points)
+    covariance_xx = sum((point[0] - mean_x) ** 2 for point in points)
+    covariance_zz = sum((point[2] - mean_z) ** 2 for point in points)
+    covariance_xz = sum((point[0] - mean_x) * (point[2] - mean_z) for point in points)
+    axis_angle = 0.5 * math.atan2(2.0 * covariance_xz, covariance_xx - covariance_zz)
+    axis_x = math.cos(axis_angle)
+    axis_z = math.sin(axis_angle)
+    if axis_z < 0.0:
+        axis_x = -axis_x
+        axis_z = -axis_z
+    projections = [
+        (point[0] - mean_x) * axis_x + (point[2] - mean_z) * axis_z for point in points
+    ]
+    lower_projection = min(projections)
+    for point_index, offset in enumerate(range(0, len(patch.vertices), 8)):
+        longitudinal_distance = projections[point_index] - lower_projection
+        shift = (scale - 1.0) * longitudinal_distance
+        patch.vertices[offset] += axis_x * shift
+        patch.vertices[offset + 2] += axis_z * shift
+
+
 def build_selected_nodes_for_dev(
     *,
     gltf: dict,
@@ -313,13 +349,19 @@ def build_selected_nodes_for_dev(
     node_regex: str,
 ) -> dict[str, core.Patch]:
     selected = re.compile(node_regex, re.IGNORECASE)
+    rear_strut_nodes = [
+        entry
+        for entry in mesh_nodes
+        if selected.search(gltf["nodes"][entry[0]].get("name", ""))
+        and REAR_STRUT_NODE_RE.fullmatch(gltf["nodes"][entry[0]].get("name", ""))
+    ]
     tire_nodes = [
         entry
         for entry in mesh_nodes
         if selected.search(gltf["nodes"][entry[0]].get("name", ""))
         and TIRE_NODE_RE.fullmatch(gltf["nodes"][entry[0]].get("name", ""))
     ]
-    if not tire_nodes:
+    if not rear_strut_nodes and not tire_nodes:
         return _ORIGINAL_BUILD_SELECTED_NODES(
             gltf=gltf,
             buffers=buffers,
@@ -331,18 +373,43 @@ def build_selected_nodes_for_dev(
             node_regex=node_regex,
         )
 
-    tire_node_indices = {entry[0] for entry in tire_nodes}
-    non_tire_nodes = [entry for entry in mesh_nodes if entry[0] not in tire_node_indices]
+    isolated_node_indices = {entry[0] for entry in rear_strut_nodes + tire_nodes}
+    remaining_nodes = [entry for entry in mesh_nodes if entry[0] not in isolated_node_indices]
     patches = _ORIGINAL_BUILD_SELECTED_NODES(
         gltf=gltf,
         buffers=buffers,
-        mesh_nodes=non_tire_nodes,
+        mesh_nodes=remaining_nodes,
         materials=materials,
         center_x=center_x,
         center_y=center_y,
         z_offset=z_offset,
         node_regex=node_regex,
     )
+    if rear_strut_nodes:
+        rear_strut_patches = _ORIGINAL_BUILD_SELECTED_NODES(
+            gltf=gltf,
+            buffers=buffers,
+            mesh_nodes=rear_strut_nodes,
+            materials=materials,
+            center_x=center_x,
+            center_y=center_y,
+            z_offset=z_offset,
+            node_regex=node_regex,
+        )
+        for material_name, rear_strut_patch in rear_strut_patches.items():
+            shorten_patch_along_xz_axis(rear_strut_patch, REAR_STRUT_LENGTH_SCALE)
+            append_patch_geometry(
+                patches.setdefault(material_name, core.Patch(material_name)),
+                rear_strut_patch,
+            )
+        print(
+            f"Dev rear strut: shortened {REAR_STRUT_NODE_RE.pattern} visual support to "
+            f"{REAR_STRUT_LENGTH_SCALE:.0%} length from its wheel-side anchor."
+        )
+
+    if not tire_nodes:
+        return patches
+
     tire_source_patches = _ORIGINAL_BUILD_SELECTED_NODES(
         gltf=gltf,
         buffers=buffers,
@@ -363,10 +430,7 @@ def build_selected_nodes_for_dev(
     )
     tire_patch = core.Patch(TIRE_BLACK_MATERIAL)
     for source_patch in tire_source_patches.values():
-        vertex_offset = len(tire_patch.vertices) // 8
-        tire_patch.vertices.extend(source_patch.vertices)
-        tire_patch.indices.extend(index + vertex_offset for index in source_patch.indices)
-        tire_patch.face_attributes.extend(source_patch.face_attributes)
+        append_patch_geometry(tire_patch, source_patch)
     if tire_patch.indices:
         patches[TIRE_BLACK_MATERIAL] = tire_patch
     return patches
@@ -1302,10 +1366,12 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
 
 def add_cyclic_controls() -> None:
     # A single, unobstructed floor stick for each seat. The front of each seat is
-    # shortened above so the shaft can rise between the pilot's legs.
+    # shortened above so the shaft can rise between the pilot's legs. Use the
+    # stock StickL/StickR geometry slots because the compiled EC135 TMQ already
+    # renders and animates those names at runtime.
     cyclic_references = (
-        ((2.32, -0.39, -0.785), (2.233, -0.379, -0.310), (2.233, -0.379, -0.100), "GTVRLeftCyclicStick"),
-        ((2.32, 0.39, -0.785), (2.239, 0.400, -0.310), (2.239, 0.400, -0.100), "GTVRRightCyclicStick"),
+        ((2.32, -0.39, -0.785), (2.233, -0.379, -0.310), (2.233, -0.379, -0.100), "StickL"),
+        ((2.32, 0.39, -0.785), (2.239, 0.400, -0.310), (2.239, 0.400, -0.100), "StickR"),
     )
     for pivot, grip_bottom, grip_top, geometry_name in cyclic_references:
         control = animated_control_geometry(geometry_name)
@@ -1488,6 +1554,18 @@ def make_inner_shell_opaque(body: dict[str, core.Patch], skip_regex: str | None)
 
 def build_body_for_dev(args: argparse.Namespace):
     materials, body, tail_rotor, visual_gear, source_faces, imported_faces = _ORIGINAL_BUILD_BODY(args)
+    removed_green_faces = 0
+    for material_name in list(body):
+        if UNWANTED_GREEN_MATERIAL_RE.fullmatch(material_name):
+            removed_green_faces += len(body[material_name].indices) // 3
+            del body[material_name]
+    materials = {
+        material_index: material
+        for material_index, material in materials.items()
+        if not UNWANTED_GREEN_MATERIAL_RE.fullmatch(material.name)
+    }
+    if removed_green_faces:
+        print(f"Dev exterior cleanup: removed {removed_green_faces} green helper/slime-light faces.")
     shift_visual_shell_for_pilot_alignment(args, body, tail_rotor, visual_gear)
     if args.inner_shell:
         ensure_inner_shell_material(materials)
@@ -1521,8 +1599,6 @@ def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
 
 def control_graphic_groups() -> list[tuple[str, list[str], str]]:
     candidates = [
-        ("GTVRLeftCyclicGraphics", ["GTVRLeftCyclicStick"], "GTVRLeftCyclicTransform.Output"),
-        ("GTVRRightCyclicGraphics", ["GTVRRightCyclicStick"], "GTVRRightCyclicTransform.Output"),
         ("GTVRLeftCollectiveGraphics", ["LeftCollectiveLever"], "GTVRLeftCollectiveTransform.Output"),
         ("GTVRRightCollectiveGraphics", ["RightCollectiveLever"], "GTVRRightCollectiveTransform.Output"),
         ("GTVRLLPedalGraphics", ["LLPedal"], "GTVRLLPedalTransform.Output"),
@@ -1932,8 +2008,9 @@ def write_source_stamp() -> None:
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
+                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated matte dark-grey floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
-                "animated_controls=cyclic, collective and pedal meshes are emitted as dev-only graphics; cyclics use isolated pitch/roll transforms and collectives use collective-only transforms; inherited EC135 visible control geometry and handle clickspots are suppressed in the dev package",
+                "animated_controls=simple cyclic meshes occupy the stock StickL/StickR runtime slots; collectives and pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
@@ -2001,8 +2078,9 @@ def write_dev_package_marker() -> None:
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
+                "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated matte dark-grey floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
-                "Generated cyclic, collective and pedal meshes are separated into animated visual geometry groups in the dev model TMD; cyclics use cyclic pitch/roll only and collectives use collective travel only.",
+                "Simple floor cyclic meshes occupy the stock StickL and StickR geometry slots so the compiled EC135 runtime renders and animates them; collectives and pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
                 "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
