@@ -146,6 +146,7 @@ DEV_AUXILIARY_TEXTURE_NAMES = tuple(
 COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
 COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
 COCKPIT_PFD_TEXTURE = "gtvr_cockpit_flight"
+COCKPIT_PFD_SOURCE_TEXTURE = "gtvr_cockpit_flight_source"
 COCKPIT_MAP_TEXTURE = "gtvr_cockpit_map"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
@@ -459,37 +460,44 @@ def write_cockpit_pfd_texture(path: Path) -> None:
 
     image = Image.new("RGB", (512, 512), (4, 8, 10))
     draw = ImageDraw.Draw(image)
-    small = load_font(21)
-    medium = load_font(30)
-    large = load_font(46)
+    small = load_font(24)
+    medium = load_font(34)
 
     draw.rounded_rectangle((14, 12, 498, 500), radius=18, fill=(5, 12, 15), outline=(74, 190, 190), width=4)
-    draw.rectangle((118, 56, 394, 246), fill=(20, 94, 146))
-    draw.rectangle((118, 246, 394, 374), fill=(92, 56, 32))
-    draw.line((118, 246, 394, 246), fill=(238, 238, 215), width=4)
-    for offset in (-80, -40, 40, 80):
-        draw.line((196, 246 + offset, 316, 246 + offset), fill=(220, 230, 230), width=2)
-    draw.line((214, 246, 298, 246), fill=(255, 235, 90), width=5)
-    draw.polygon([(256, 206), (242, 230), (270, 230)], fill=(255, 235, 90))
+    draw.text((164, 28), "FLIGHT DATA", font=medium, fill=(114, 230, 190))
+    draw.text((48, 112), "AIRSPEED", font=small, fill=(130, 240, 240))
+    draw.text((378, 112), "KTS", font=small, fill=(130, 240, 240))
+    draw.rounded_rectangle((72, 150, 440, 258), radius=12, fill=(1, 5, 7), outline=(225, 245, 238), width=3)
+    draw.text((52, 300), "ALTITUDE", font=small, fill=(130, 240, 240))
+    draw.text((390, 300), "FT", font=small, fill=(130, 240, 240))
+    draw.rounded_rectangle((56, 338, 456, 446), radius=12, fill=(1, 5, 7), outline=(225, 245, 238), width=3)
+    draw.line((22, 278, 490, 278), fill=(35, 115, 112), width=2)
+    draw.text((163, 468), "GTVR WRAITH", font=small, fill=(80, 235, 170))
+    image.save(path)
 
-    draw.rectangle((25, 62, 105, 382), outline=(78, 220, 220), width=3)
-    draw.text((38, 26), "SPD", font=small, fill=(130, 240, 240))
-    for y, value in zip((88, 150, 212, 274, 336), ("130", "110", "090", "070", "050")):
-        draw.text((43, y), value, font=small, fill=(224, 255, 255))
-        draw.line((88, y + 14, 104, y + 14), fill=(224, 255, 255), width=2)
-    draw.rectangle((32, 216, 100, 274), outline=(255, 255, 255), width=3)
-    draw.text((47, 230), "092", font=medium, fill=(255, 255, 255))
 
-    draw.rectangle((407, 62, 487, 382), outline=(78, 220, 220), width=3)
-    draw.text((427, 26), "ALT", font=small, fill=(130, 240, 240))
-    for y, value in zip((88, 150, 212, 274, 336), ("1600", "1500", "1400", "1300", "1200")):
-        draw.text((416, y), value, font=small, fill=(224, 255, 255))
-        draw.line((407, y + 14, 423, y + 14), fill=(224, 255, 255), width=2)
-    draw.rectangle((413, 216, 483, 274), outline=(255, 255, 255), width=3)
-    draw.text((420, 232), "1420", font=small, fill=(255, 255, 255))
+def write_cockpit_pfd_source_texture(path: Path) -> None:
+    """Write the digit atlas and immutable PFD background used by Aerofly's live texture renderer."""
+    from PIL import Image, ImageDraw
 
-    draw.text((178, 398), "WRAITH", font=large, fill=(114, 230, 190))
-    draw.text((154, 450), "ATT   IAS   ALT", font=medium, fill=(190, 230, 220))
+    image = Image.new("RGB", (1024, 1024), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    digit_font = load_font(82)
+    for digit in range(10):
+        left = digit * 64
+        bounds = draw.textbbox((0, 0), str(digit), font=digit_font)
+        width = bounds[2] - bounds[0]
+        height = bounds[3] - bounds[1]
+        x = left + (64 - width) // 2
+        y = (98 - height) // 2 - bounds[1]
+        draw.text((x, y), str(digit), font=digit_font, fill=(225, 245, 238))
+
+    background = Image.new("RGB", (512, 512), (4, 8, 10))
+    background_path = path.with_name(f"{COCKPIT_PFD_TEXTURE}.png")
+    write_cockpit_pfd_texture(background_path)
+    with Image.open(background_path) as source_background:
+        background.paste(source_background.convert("RGB"))
+    image.paste(background, (0, 512))
     image.save(path)
 
 
@@ -566,8 +574,10 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
     write_cockpit_seat_texture(core.SOURCE_DIR / "gtvr_cockpit_seat_shadow.png", (14, 8, 5), (22, 13, 8))
 
     pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
+    pfd_source_path = core.SOURCE_DIR / f"{COCKPIT_PFD_SOURCE_TEXTURE}.png"
     map_path = core.SOURCE_DIR / f"{COCKPIT_MAP_TEXTURE}.png"
     write_cockpit_pfd_texture(pfd_path)
+    write_cockpit_pfd_source_texture(pfd_source_path)
     write_cockpit_map_texture(map_path)
     if not any(material.name == COCKPIT_PFD_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
@@ -575,6 +585,13 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
             texture_name=COCKPIT_PFD_TEXTURE,
             source_uri="generated-gtvr-dev-cockpit-flight",
             color=(24, 170, 180, 255),
+        )
+    if not any(material.name == COCKPIT_PFD_SOURCE_TEXTURE for material in materials.values()):
+        materials[next_material_index(materials)] = Material(
+            name=COCKPIT_PFD_SOURCE_TEXTURE,
+            texture_name=COCKPIT_PFD_SOURCE_TEXTURE,
+            source_uri="generated-gtvr-dev-cockpit-flight-source",
+            color=(225, 245, 238, 255),
         )
     if not any(material.name == COCKPIT_MAP_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
@@ -1065,6 +1082,17 @@ def add_framed_screen(
     append_textured_panel(body, material_name, center=(x - 0.008, y, z), width_y=width_y, height_z=height_z)
 
 
+def add_pfd_source_texture_keepalive(body: dict[str, core.Patch], *, screen_x: float) -> None:
+    # Aerofly only converts textures that are used by geometry; this hidden chip keeps the digit atlas available.
+    append_textured_panel(
+        body,
+        COCKPIT_PFD_SOURCE_TEXTURE,
+        center=(screen_x - 0.020, 0.0, -0.330),
+        width_y=0.010,
+        height_z=0.010,
+    )
+
+
 def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
     panel_x = dash_x(2.47)
     rail_x = dash_x(2.45)
@@ -1079,7 +1107,6 @@ def add_dashboard_frame(body: dict[str, core.Patch], dash_x) -> None:
 def add_pfd_static_overlay(static: dict[str, core.Patch], *, x: float, y: float, z: float) -> None:
     half_w = 0.158
     half_h = 0.158
-    append_panel_rect(static, "gtvr_cockpit_black", x=x + 0.002, center_y=y, center_z=z, width_y=0.322, height_z=0.322)
     for line in (
         (y - half_w, z - half_h, y + half_w, z - half_h),
         (y - half_w, z + half_h, y + half_w, z + half_h),
@@ -1100,7 +1127,6 @@ def add_pfd_static_overlay(static: dict[str, core.Patch], *, x: float, y: float,
     append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=y, start_z=z - 0.145, end_y=y, end_z=z + 0.145, thickness=0.0016)
 
     for tape_y in (y - 0.098, y + 0.098):
-        append_panel_rect(static, "gtvr_cockpit_black", x=x + 0.001, center_y=tape_y, center_z=z, width_y=0.090, height_z=0.255)
         append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.045, start_z=z - 0.128, end_y=tape_y - 0.045, end_z=z + 0.128, thickness=0.002)
         append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y + 0.045, start_z=z - 0.128, end_y=tape_y + 0.045, end_z=z + 0.128, thickness=0.002)
         append_panel_line(static, "gtvr_glass_cyan", x=x, start_y=tape_y - 0.045, start_z=z - 0.128, end_y=tape_y + 0.045, end_z=z - 0.128, thickness=0.002)
@@ -1210,7 +1236,6 @@ def add_live_map_display(*, screen_x: float) -> None:
     y = 0.0
     z = -0.12
     static = live_display_geometry("GTVRMapStatic")
-    moving = live_display_geometry("GTVRMapMoving")
 
     _current_live_display_pivots["Map"] = (x, y, z)
 
@@ -1221,28 +1246,6 @@ def add_live_map_display(*, screen_x: float) -> None:
         x=x - 0.002,
         points_yz=[(y - 0.014, z - 0.010), (y, z + 0.024), (y + 0.014, z - 0.010)],
     )
-    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y - 0.052, start_z=z - 0.112, end_y=y, end_z=z, thickness=0.003)
-    append_panel_line(static, "gtvr_glass_yellow", x=x, start_y=y, start_z=z, end_y=y + 0.074, end_z=z + 0.086, thickness=0.003)
-
-    append_panel_ring(moving, "gtvr_glass_green", x=x - 0.004, center_y=y, center_z=z, radius=0.118, thickness=0.002, segments=32)
-    append_panel_ring(moving, "gtvr_glass_cyan", x=x - 0.004, center_y=y, center_z=z, radius=0.062, thickness=0.0015, segments=24)
-    for grid in (-0.080, -0.040, 0.040, 0.080):
-        append_panel_line(moving, "gtvr_glass_green", x=x - 0.004, start_y=y + grid, start_z=z - 0.112, end_y=y + grid, end_z=z + 0.112, thickness=0.001)
-        append_panel_line(moving, "gtvr_glass_green", x=x - 0.004, start_y=y - 0.120, start_z=z + grid, end_y=y + 0.120, end_z=z + grid, thickness=0.001)
-    for angle in range(0, 360, 30):
-        radians = math.radians(angle)
-        inner = 0.102 if angle % 90 else 0.092
-        outer = 0.122
-        append_panel_line(
-            moving,
-            "gtvr_glass_white" if angle % 90 == 0 else "gtvr_glass_green",
-            x=x - 0.004,
-            start_y=y + math.cos(radians) * inner,
-            start_z=z + math.sin(radians) * inner,
-            end_y=y + math.cos(radians) * outer,
-            end_z=z + math.sin(radians) * outer,
-            thickness=0.002,
-        )
 
 
 def add_live_glass_displays(*, screen_x: float) -> None:
@@ -1543,7 +1546,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     for side_y in (-0.39, 0.39):
         add_framed_screen(
             body,
-            material_name="gtvr_cockpit_black",
+            material_name=COCKPIT_PFD_MATERIAL,
             center=(screen_x, side_y, -0.12),
             width_y=0.34,
             height_z=0.34,
@@ -1558,6 +1561,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
         width_y=0.30,
         height_z=0.34,
     )
+    add_pfd_source_texture_keepalive(body, screen_x=screen_x)
     add_stock_display_surfaces(screen_x=screen_x)
     add_live_glass_displays(screen_x=screen_x)
     add_static_display_fallback(body)
@@ -1568,7 +1572,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
-        "lowered rearward flat pedal pads and live left/right speed-altitude overlays with a center map."
+        "lowered rearward flat pedal pads, live left/right speed-altitude screens and a native moving-map center screen."
     )
 
 
@@ -1792,7 +1796,7 @@ def live_display_graphics_objects() -> str:
 
     return "\n".join(
         [
-            "            // GTVR live side displays: moving speed and altitude tapes only.",
+            "            // GTVR live side displays: numeric knots/feet plus moving speed and altitude tapes.",
             "            <[graphics_input][GTVRGlassAirspeedInput][]",
             "                <[uint32][InputID][GTVRAirspeedTapeValue.Output]>",
             "            >",
@@ -1815,16 +1819,92 @@ def live_display_graphics_objects() -> str:
             "                <[string8][Input][GTVRGlassAltTapeMapping.Output]>",
             "                <[tmvector3d][Axis][0.0 0.0 1.0]>",
             "            >",
+            "            <[texture_animation][GTVRPFDTextureAnimation][]",
+            f"                <[string8][TextureName][{COCKPIT_PFD_TEXTURE}]>",
+            "                <[tmvector4d][ClearColor][ 0.004 0.012 0.016 1.0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[string8][RenderList][ GTVRPFDBackground GTVRPFDSpeedDigits GTVRPFDAltitudeDigits ]>",
+            "            >",
+            "            <[texture_animation_rectangle][GTVRPFDBackground][]",
+            f"                <[string8][TextureName][{COCKPIT_PFD_SOURCE_TEXTURE}]>",
+            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[tmvector2d][TargetScale][ 512 512 ]>",
+            "                <[tmvector2d][SourcePosition][ 0 512 ]>",
+            "                <[tmvector2d][SourceSize][ 512 512 ]>",
+            "                <[tmvector2d][SourceScale][ 1024 1024 ]>",
+            "            >",
+            "            <[texture_animation_numeric_display][GTVRPFDSpeedDigits][]",
+            f"                <[string8][TextureName][{COCKPIT_PFD_SOURCE_TEXTURE}]>",
+            "                <[string8][Input][GTVRGlassAirspeedInput.Output]>",
+            "                <[tmvector2d][TargetPosition][ 152 156 ]>",
+            "                <[tmvector2d][TargetSize][ 64 98 ]>",
+            "                <[tmvector2d][TargetScale][ 512 512 ]>",
+            "                <[float64][TargetStride][ 72 ]>",
+            "                <[float64][TargetDecimalStride][ 0 ]>",
+            "                <[tmvector2d][SourcePosition][ 0 0 ]>",
+            "                <[tmvector2d][SourceSize][ 64 98 ]>",
+            "                <[tmvector2d][SourceScale][ 1024 1024 ]>",
+            "                <[tmvector2d][SourceDotSize][ 1 1 ]>",
+            "                <[float64][SourceStride][ 64 ]>",
+            "                <[int32][Digits][3]>",
+            "                <[int32][DecimalPlaces][0]>",
+            "                <[int32][DotPosition][0]>",
+            "                <[bool][ShowLeadingZeroes][false]>",
+            "                <[float64][Scaling][1.943844]>",
+            "            >",
+            "            <[texture_animation_numeric_display][GTVRPFDAltitudeDigits][]",
+            f"                <[string8][TextureName][{COCKPIT_PFD_SOURCE_TEXTURE}]>",
+            "                <[string8][Input][GTVRGlassAltInput.Output]>",
+            "                <[tmvector2d][TargetPosition][ 80 344 ]>",
+            "                <[tmvector2d][TargetSize][ 64 98 ]>",
+            "                <[tmvector2d][TargetScale][ 512 512 ]>",
+            "                <[float64][TargetStride][ 72 ]>",
+            "                <[float64][TargetDecimalStride][ 0 ]>",
+            "                <[tmvector2d][SourcePosition][ 0 0 ]>",
+            "                <[tmvector2d][SourceSize][ 64 98 ]>",
+            "                <[tmvector2d][SourceScale][ 1024 1024 ]>",
+            "                <[tmvector2d][SourceDotSize][ 1 1 ]>",
+            "                <[float64][SourceStride][ 64 ]>",
+            "                <[int32][Digits][5]>",
+            "                <[int32][DecimalPlaces][0]>",
+            "                <[int32][DotPosition][0]>",
+            "                <[bool][ShowLeadingZeroes][false]>",
+            "                <[float64][Scaling][3.280840]>",
+            "            >",
             static_block,
             *pfd_blocks,
-            "            <[hingedbodygraphics][GTVRMapMovingGraphics][]",
-            "                <[string8][GeometryList][ GTVRMapMoving ]>",
+            "            // Native Aerofly moving map, rendered directly into the center-screen texture.",
+            "            <[graphics_mapping_linear][GTVRMapZoom][]",
+            "                <[string8][Input][GTVRGlassAirspeedInput.Output]>",
+            "                <[float64][Scaling][0.0]>",
+            "                <[float64][Offset][5.0]>",
+            "            >",
+            "            <[texture_animation][GTVRMapTextureAnimation][]",
+            f"                <[string8][TextureName][{COCKPIT_MAP_TEXTURE}]>",
+            "                <[tmvector4d][ClearColor][ 0.02 0.025 0.02 1.0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[string8][RenderList][ GTVRMapDisplay ]>",
+            "            >",
+            "            <[graphics_animation_display][GTVRMapDisplay][]",
             "                <[uint32][PositionID][Fuselage.R]>",
             "                <[uint32][OrientationID][Fuselage.Q]>",
-            "                <[uint32][InputID][HeadingAngle.Output]>",
-            "                <[float64][Scaling][-0.017453]>",
-            "                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>",
-            f"                <[tmvector3d][Pivot][ {fmt_vector(map_pivot)} ]>",
+            f"                <[tmvector3d][R0][ {fmt_vector(map_pivot)} ]>",
+            "                <[float64][Radius][0.18]>",
+            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[tmvector2d][TargetScale][ 512 512 ]>",
+            "                <[string8][InputDisplay][0]>",
+            "                <[string8][RenderList][ GTVRNativeMovingMap ]>",
+            "            >",
+            "            <[texture_animation_map_display][GTVRNativeMovingMap][]",
+            "                <[uint32][PositionID][Fuselage.R]>",
+            "                <[uint32][OrientationID][Fuselage.Q]>",
+            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[tmvector2d][TargetScale][ 512 512 ]>",
+            "                <[string8][InputZoom][GTVRMapZoom.Output]>",
+            "                <[tmvector3d][Color][ 0.85 0.85 0.85 ]>",
             "            >",
         ]
     )
@@ -2043,10 +2123,10 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and left/right speed-altitude tape panels with a center map",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and left/right speed-altitude data screens with a native moving-map center screen",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
-                "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
+                "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for numeric knots/feet and moving airspeed/altitude tape geometry; center display renders Aerofly's native moving map into the generated map texture",
+                "stock_display_surfaces=DisplayNDL is populated for the generated center map texture; side PFD stock textures are intentionally suppressed because the dev side panels own their live texture",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
@@ -2113,11 +2193,11 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, side speed-altitude tape panels and a center map.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, side numeric speed-altitude data panels and a native moving-map center screen.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
-                "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
+                "Generated side display overlays bind numeric knots/feet plus moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center display renders Aerofly's native moving map into the generated map texture.",
+                "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed because the side displays use the dev-owned live texture.",
                 "Recessed fixed display cues are merged into the visible dash mesh as an EC135-TMQ-safe fallback without duplicating moving live layers.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
