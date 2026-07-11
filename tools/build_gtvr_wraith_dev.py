@@ -144,10 +144,8 @@ DEV_AUXILIARY_TEXTURE_NAMES = tuple(
     sorted({texture_name for slots in DEV_MATERIAL_SURFACE_MAPS.values() for _, texture_name in slots})
 )
 COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
-COCKPIT_MAP_MATERIAL = "gtvr_cockpit_map"
 COCKPIT_PFD_TEXTURE = "gtvr_cockpit_flight"
 COCKPIT_PFD_SOURCE_TEXTURE = "gtvr_cockpit_flight_source"
-COCKPIT_MAP_TEXTURE = "gtvr_cockpit_map"
 STOCK_DISPLAY_MATERIAL = "display_light"
 STOCK_DISPLAY_TEXTURE = "display_light"
 STOCK_DISPLAY_STATE_INPUTS = (
@@ -157,6 +155,14 @@ STOCK_DISPLAY_STATE_INPUTS = (
     "CopilotPFDModeSetOn",
     "PilotNDSelectedOn",
     "CopilotNDSelectedOn",
+)
+EC135_ND_MAP_STATE_INPUTS = (
+    # EC135 ships only the ND on/off state entries as text.  The compiled TMQ still owns
+    # the actual ND mode logic, so seed the most likely EC135 mode toggles by name.
+    ("input_binary", "PilotNDModeSetOn", 1.0),
+    ("input_binary", "CopilotNDModeSetOn", 1.0),
+    ("input_binary", "ICPPilotNDMode", 1.0),
+    ("input_binary", "ICPCopilotNDMode", 1.0),
 )
 # Crop the shared runtime display atlas instead of showing the entire source atlas on each Wraith screen.
 # The EC135 runtime renders its glass cockpit into a shared display atlas. The Wraith side screens
@@ -168,8 +174,7 @@ LEFT_PFD_DISPLAY_UV_RECT = (0.35, 0.045, 0.71, 0.385)
 RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.045, 0.355, 0.385)
 SIDE_PFD_DISPLAY_WIDTH_Y = 0.305
 SIDE_PFD_DISPLAY_HEIGHT_Z = 0.315
-CENTER_MAP_TARGET_SIZE = 1024
-CENTER_MAP_STATE_MARKER = "GTVR centre floating moving map"
+CENTER_MAP_DISPLAY_UV_RECT = (0.23, 0.20, 0.74, 0.78)
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -598,11 +603,9 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
 
     pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
     pfd_source_path = core.SOURCE_DIR / f"{COCKPIT_PFD_SOURCE_TEXTURE}.png"
-    map_path = core.SOURCE_DIR / f"{COCKPIT_MAP_TEXTURE}.png"
     write_png(core.SOURCE_DIR / f"{STOCK_DISPLAY_TEXTURE}.png", (0, 0, 0))
     write_cockpit_pfd_texture(pfd_path)
     write_cockpit_pfd_source_texture(pfd_source_path)
-    write_cockpit_map_texture(map_path)
     if not any(material.name == STOCK_DISPLAY_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
             name=STOCK_DISPLAY_MATERIAL,
@@ -623,13 +626,6 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
             texture_name=COCKPIT_PFD_SOURCE_TEXTURE,
             source_uri="generated-gtvr-dev-cockpit-flight-source",
             color=(225, 245, 238, 255),
-        )
-    if not any(material.name == COCKPIT_MAP_MATERIAL for material in materials.values()):
-        materials[next_material_index(materials)] = Material(
-            name=COCKPIT_MAP_MATERIAL,
-            texture_name=COCKPIT_MAP_TEXTURE,
-            source_uri="generated-gtvr-dev-cockpit-map",
-            color=(20, 160, 120, 255),
         )
 
 
@@ -1318,11 +1314,11 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
     _current_center_map_pivot = (display_x, 0.0, -0.12)
     append_textured_panel(
         stock_display_geometry("DisplayNDL"),
-        COCKPIT_MAP_MATERIAL,
+        STOCK_DISPLAY_MATERIAL,
         center=_current_center_map_pivot,
         width_y=0.30,
         height_z=0.34,
-        uv_rect=(0.0, 0.0, 1.0, 1.0),
+        uv_rect=CENTER_MAP_DISPLAY_UV_RECT,
         double_sided=False,
     )
 
@@ -1632,7 +1628,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
-        "lowered rearward flat pedal pads, Wraith side PFD screens and a borderless centre moving-map surface."
+        "lowered rearward flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface."
     )
 
 
@@ -1809,41 +1805,14 @@ def visual_control_graphics_objects() -> str:
 
 
 def center_map_dynamic_objects() -> str:
-    return "\n".join(
-        [
-            f"            // {CENTER_MAP_STATE_MARKER}: AN2/DR400-style GPS zoom input.",
-            "            <[input_discrete][GTVRCenterMapZoom][]",
-            "                <[string8][Message][GPS.Zoom]>",
-            "                <[string8][Range][ -5.0 4.0 ]>",
-            "                <[float64][Value][-1.0]>",
-            "                <[bool][Toggle][true]>",
-            "            >",
-        ]
-    )
+    # DR400/AN2-style moving-map renderers only load from the aircraft's main text TMD.
+    # Wraith keeps the EC135 compiled TMQ for its working helicopter systems, so the centre
+    # screen must use the already-loaded EC135 runtime display_light feed instead.
+    return ""
 
 
 def center_map_graphics_objects() -> str:
-    size = CENTER_MAP_TARGET_SIZE
-    return "\n".join(
-        [
-            f"            // {CENTER_MAP_STATE_MARKER}: map-only texture rendered to the borderless centre screen.",
-            "            <[texture_animation][GTVRCenterMapTexture][]",
-            f"                <[string8][TextureName][{COCKPIT_MAP_TEXTURE}]>",
-            "                <[tmvector4d][ClearColor][ 0.03 0.03 0.03 1.0 ]>",
-            f"                <[tmvector2d][TargetSize][ {size} {size} ]>",
-            "                <[string8][RenderList][ GTVRCenterMovingMap ]>",
-            "            >",
-            "            <[texture_animation_map_display][GTVRCenterMovingMap][]",
-            "                <[uint32][PositionID][Fuselage.R]>",
-            "                <[uint32][OrientationID][Fuselage.Q]>",
-            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
-            f"                <[tmvector2d][TargetSize][ {size} {size} ]>",
-            f"                <[tmvector2d][TargetScale][ {size} {size} ]>",
-            "                <[string8][InputZoom][GTVRCenterMapZoom.Output]>",
-            "                <[tmvector3d][Color][ 0.7 0.7 0.7 ]>",
-            "            >",
-        ]
-    )
+    return ""
 
 
 def live_display_static_geometry_names() -> list[str]:
@@ -1859,7 +1828,6 @@ def live_display_graphics_objects() -> str:
     if not _current_live_display_geometries:
         return ""
 
-    map_pivot = _current_live_display_pivots.get("Map", (current_interior_x(2.47), 0.0, -0.12))
     static_names = live_display_static_geometry_names()
     static_block = ""
     if static_names:
@@ -1972,38 +1940,6 @@ def live_display_graphics_objects() -> str:
             "            >",
             static_block,
             *pfd_blocks,
-            "            // Native Aerofly moving map, rendered directly into the center-screen texture.",
-            "            <[graphics_mapping_linear][GTVRMapZoom][]",
-            "                <[string8][Input][GTVRGlassAirspeedInput.Output]>",
-            "                <[float64][Scaling][0.0]>",
-            "                <[float64][Offset][5.0]>",
-            "            >",
-            "            <[texture_animation][GTVRMapTextureAnimation][]",
-            f"                <[string8][TextureName][{COCKPIT_MAP_TEXTURE}]>",
-            "                <[tmvector4d][ClearColor][ 0.02 0.025 0.02 1.0 ]>",
-            "                <[tmvector2d][TargetSize][ 512 512 ]>",
-            "                <[string8][RenderList][ GTVRMapDisplay ]>",
-            "            >",
-            "            <[graphics_animation_display][GTVRMapDisplay][]",
-            "                <[uint32][PositionID][Fuselage.R]>",
-            "                <[uint32][OrientationID][Fuselage.Q]>",
-            f"                <[tmvector3d][R0][ {fmt_vector(map_pivot)} ]>",
-            "                <[float64][Radius][0.18]>",
-            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
-            "                <[tmvector2d][TargetSize][ 512 512 ]>",
-            "                <[tmvector2d][TargetScale][ 512 512 ]>",
-            "                <[string8][InputDisplay][0]>",
-            "                <[string8][RenderList][ GTVRNativeMovingMap ]>",
-            "            >",
-            "            <[texture_animation_map_display][GTVRNativeMovingMap][]",
-            "                <[uint32][PositionID][Fuselage.R]>",
-            "                <[uint32][OrientationID][Fuselage.Q]>",
-            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
-            "                <[tmvector2d][TargetSize][ 512 512 ]>",
-            "                <[tmvector2d][TargetScale][ 512 512 ]>",
-            "                <[string8][InputZoom][GTVRMapZoom.Output]>",
-            "                <[tmvector3d][Color][ 0.85 0.85 0.85 ]>",
-            "            >",
         ]
     )
 
@@ -2225,11 +2161,11 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre moving-map surface",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a separate gtvr_cockpit_map texture for the borderless centre moving map",
-                "center_map=AN2/DR400-style texture_animation_map_display renderer is packaged in the generated dev text TMD so the centre display has a real moving-map host",
-                "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
+                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a centre crop of the inherited EC135 runtime display_light ND/map feed",
+                "center_map=DR400/AN2 native map renderers require a loaded text main TMD; Wraith keeps EC135 TMQ, so centre uses EC135's loaded ND/map texture path",
+                "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default and seed likely EC135 ND mode toggles",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
@@ -2296,11 +2232,11 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre moving-map surface.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a separate gtvr_cockpit_map texture for an AN2/DR400-style moving map renderer hosted by the generated dev text TMD.",
-                "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a centre crop of the inherited EC135 runtime display_light ND/map feed.",
+                "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files, with likely EC135 ND mode toggles seeded for the centre map feed.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
@@ -2321,15 +2257,6 @@ def copy_dev_auxiliary_textures() -> int:
         shutil.copy2(source, DEV_PACKAGE_DIR / source.name)
         copied += 1
     return copied
-
-
-def copy_dev_text_model_tmd() -> Path:
-    source = core.SOURCE_DIR / f"{DEV_AIRCRAFT_NAME}.tmd"
-    target = DEV_PACKAGE_DIR / f"{DEV_AIRCRAFT_NAME}.tmd"
-    if not source.exists():
-        raise FileNotFoundError(f"Missing generated dev text TMD: {source}")
-    shutil.copy2(source, target)
-    return target
 
 
 def patch_dev_controls_tmd(path: Path) -> int:
@@ -2382,6 +2309,27 @@ def force_dev_stock_display_state(path: Path) -> int:
             re.MULTILINE,
         )
         text, replacements = pattern.subn(r"\1<[float64][Value][1.0]>", text)
+        changed += replacements
+
+    for object_type, input_name, value in EC135_ND_MAP_STATE_INPUTS:
+        value_text = f"{value:.1f}"
+        existing_pattern = re.compile(
+            rf"(<\[[^\]]+\]\[{re.escape(input_name)}\]\[\](?:(?!\n\s*<\[[^\]]+\]\[[^\]]+\]\[\]).)*?"
+            r"<\[float64\]\[Value\]\[)[^\]]+(\]>)",
+            re.DOTALL,
+        )
+        text, replacements = existing_pattern.subn(rf"\g<1>{value_text}\2", text, count=1)
+        if replacements:
+            changed += replacements
+            continue
+
+        closing_pattern = re.compile(r"(\n\s{8}>\s*\n\s{4}>\s*\n>\s*)\Z")
+        block = (
+            f"\n            <[{object_type}][{input_name}][]\n"
+            f"                <[float64][Value][{value_text}]>\n"
+            "            >"
+        )
+        text, replacements = closing_pattern.subn(block + r"\1", text, count=1)
         changed += replacements
 
     if changed:
@@ -2524,8 +2472,6 @@ def main() -> int:
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
-            dev_text_tmd = copy_dev_text_model_tmd()
-            print(f"Dev displays: packaged generated text TMD for centre moving map: {dev_text_tmd.name}")
             copied_surface_textures = copy_dev_auxiliary_textures()
             print(f"Dev cockpit materials: packaged {copied_surface_textures} auxiliary surface textures.")
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
