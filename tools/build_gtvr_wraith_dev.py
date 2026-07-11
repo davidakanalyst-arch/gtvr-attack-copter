@@ -178,6 +178,13 @@ SIDE_PFD_DISPLAY_WIDTH_Y = 0.305
 SIDE_PFD_DISPLAY_HEIGHT_Z = 0.315
 MAP_PANEL_DIR_NAME = "gtvr_map_panel"
 MAP_PANEL_DISPLAY_SIZE = 1024
+MAP_PANEL_SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_map_panel_source" / "aircraft"
+MAP_PANEL_SOURCE_DIR = MAP_PANEL_SOURCE_ROOT / MAP_PANEL_DIR_NAME
+MAP_PANEL_BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_map_panel_build_user"
+MAP_PANEL_LAUNCH_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_map_panel_launch"
+MAP_PANEL_SOURCE_STAMP = MAP_PANEL_SOURCE_DIR / "_GTVR_WRAITH_MAP_PANEL_SOURCE_STAMP.txt"
+MAP_PANEL_TEXTURE = "gtvr_map_panel_light"
+MAP_PANEL_MATERIAL = "gtvr_map_panel_light"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -224,6 +231,10 @@ def assert_dev_paths() -> None:
         core.BUILD_USER,
         core.PACKAGE_DIR,
         DEV_LAUNCH_USER,
+        MAP_PANEL_SOURCE_ROOT,
+        MAP_PANEL_SOURCE_DIR,
+        MAP_PANEL_BUILD_USER,
+        MAP_PANEL_LAUNCH_USER,
     ]
     for path in checked_paths:
         if STABLE_AIRCRAFT_NAME in path.parts:
@@ -236,6 +247,10 @@ def assert_dev_paths() -> None:
 
 def converted_tmb() -> Path:
     return DEV_BUILD_USER / "aircraft" / DEV_AIRCRAFT_NAME / f"{DEV_AIRCRAFT_NAME}.tmb"
+
+
+def converted_map_panel_tmb() -> Path:
+    return MAP_PANEL_BUILD_USER / "aircraft" / MAP_PANEL_DIR_NAME / f"{MAP_PANEL_DIR_NAME}.tmb"
 
 
 def legacy_rotor_patch_maps_for_dev() -> tuple[dict[str, core.Patch], dict[str, core.Patch]]:
@@ -1324,15 +1339,6 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
         double_sided=False,
     )
     _current_center_map_pivot = (display_x, 0.0, -0.12)
-    append_textured_panel(
-        stock_display_geometry("DisplayNDL"),
-        CENTER_MAP_MATERIAL,
-        center=_current_center_map_pivot,
-        width_y=0.30,
-        height_z=0.34,
-        uv_rect=(0.0, 0.0, 1.0, 1.0),
-        double_sided=False,
-    )
 
 
 def add_static_display_fallback(body: dict[str, core.Patch]) -> None:
@@ -2083,6 +2089,95 @@ def patch_dev_tgi_material_shaders(path: Path) -> tuple[int, int]:
     return patched, surface_slots
 
 
+def fallback_center_map_pivot() -> tuple[float, float, float]:
+    return (
+        2.47 + DEFAULT_COCKPIT_X_DELTA + DEFAULT_DASH_FORWARD_X_DELTA - 0.020,
+        0.0,
+        -0.12,
+    )
+
+
+def write_map_panel_source_tmc(path: Path) -> None:
+    path.write_text(
+        f"""<[file][][]
+    <[modelinformation][][]
+        <[int32][Version][230]>
+        <[list_vector4_float64][ContactSpheres][ (0.0 0.0 0.0 0.05) ]>
+        <[stringt8c][ICAO][GTMP]>
+        <[string8][DisplayName][Wraith Centre Map Panel]>
+        <[string8][DisplayNameFull][Wraith Centre Map Panel]>
+        <[float64][MaximumTakeoffMass][1.0]>
+        <[uint32][MaximumPersonsOnBoard][0]>
+        <[float64][WingSpan][0.30]>
+        <[float64][Length][0.01]>
+        <[float64][Height][0.34]>
+        <[uint32][Year][2026]>
+        <[uint32][EngineCount][0]>
+        <[float64][EnginePower][0.0]>
+        <[float64][MinimumAirspeed][0.0]>
+        <[float64][ApproachAirspeed][0.0]>
+        <[float64][CruiseAirspeed][0.0]>
+        <[float64][CruiseAltitude][0.0]>
+        <[float64][CruiseSpeed][0.0]>
+        <[float64][MaximumAirspeed][0.0]>
+        <[float64][MaximumAltitude][0.0]>
+        <[float64][MaximumSpeed][0.0]>
+        <[string8][Tags][ panel experimental ]>
+    >
+>
+""",
+        encoding="utf-8",
+    )
+
+
+def prepare_dev_map_panel_source(args: argparse.Namespace) -> Path:
+    if MAP_PANEL_SOURCE_DIR.exists():
+        shutil.rmtree(MAP_PANEL_SOURCE_DIR)
+    MAP_PANEL_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+    core.ensure_runtime_resources(MAP_PANEL_SOURCE_ROOT)
+
+    center = _current_center_map_pivot or fallback_center_map_pivot()
+    surface: dict[str, core.Patch] = {}
+    append_textured_panel(
+        surface,
+        MAP_PANEL_MATERIAL,
+        center=(center[0] - 0.006, center[1], center[2]),
+        width_y=0.30,
+        height_z=0.34,
+        uv_rect=(0.0, 0.0, 1.0, 1.0),
+        double_sided=False,
+    )
+    geometries = {"GTVRMapScreen": surface}
+    materials = {
+        0: Material(
+            name=MAP_PANEL_MATERIAL,
+            texture_name=MAP_PANEL_TEXTURE,
+            source_uri="generated-gtvr-dev-independent-map-panel-light",
+            color=(0, 0, 0, 255),
+        )
+    }
+
+    write_map_panel_source_tmc(MAP_PANEL_SOURCE_DIR / f"{MAP_PANEL_DIR_NAME}.tmc")
+    core.write_minimal_tmd(MAP_PANEL_SOURCE_DIR / f"{MAP_PANEL_DIR_NAME}.tmd", sorted(geometries))
+    core.write_tgi(MAP_PANEL_SOURCE_DIR / f"{MAP_PANEL_DIR_NAME}.tgi", materials, geometries)
+    core.write_model_tmc(MAP_PANEL_SOURCE_DIR / "model.tmc", materials, geometries, args.max_texture_size)
+    core.write_root_converter_config(MAP_PANEL_SOURCE_ROOT / "config.tmc", MAP_PANEL_SOURCE_ROOT, MAP_PANEL_BUILD_USER)
+    write_png(MAP_PANEL_SOURCE_DIR / f"{MAP_PANEL_TEXTURE}.png", (0, 0, 0))
+    MAP_PANEL_SOURCE_STAMP.write_text(
+        "\n".join(
+            [
+                "GTVR Wraith independent centre map panel source prepared.",
+                f"texture={MAP_PANEL_TEXTURE}",
+                f"center={fmt_vector(center)}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(f"Wrote dev centre map panel source: {MAP_PANEL_SOURCE_DIR}")
+    return MAP_PANEL_SOURCE_DIR
+
+
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
     if core.SOURCE_DIR.exists():
         shutil.rmtree(core.SOURCE_DIR)
@@ -2161,6 +2256,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     if surface_slots:
         print(f"Dev cockpit materials: added {surface_slots} explicit specular/reflection slots.")
     print(f"Imported body faces: {imported_faces}")
+    prepare_dev_map_panel_source(args)
 
 
 def write_source_stamp() -> None:
@@ -2173,10 +2269,10 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a dedicated gtvr_center_map_light texture",
-                "center_map=minimal hidden gtvr_map_panel option hosts a native texture_animation_map_display renderer with no copied C172 panel TMB or extra dynamic objects",
+                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
+                "center_map=gtvr_map_panel option includes its own compiled screen TMB and native texture_animation_map_display renderer targeting gtvr_map_panel_light",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
@@ -2211,6 +2307,18 @@ def assert_fresh_converted_tmb(allow_stale_tmb: bool) -> None:
             "Run the full converter with --convert, or pass --allow-stale-tmb intentionally."
         )
 
+    panel_tmb_path = converted_map_panel_tmb()
+    if not panel_tmb_path.exists():
+        raise FileNotFoundError(
+            f"Missing centre map panel converter output: {panel_tmb_path}. "
+            "Run the full converter with --convert, or pass --allow-stale-tmb intentionally."
+        )
+    if MAP_PANEL_SOURCE_STAMP.exists() and panel_tmb_path.stat().st_mtime < MAP_PANEL_SOURCE_STAMP.stat().st_mtime:
+        raise RuntimeError(
+            f"Refusing to assemble stale centre map panel TMB: {panel_tmb_path} is older than {MAP_PANEL_SOURCE_STAMP}. "
+            "Run the full converter with --convert, or pass --allow-stale-tmb intentionally."
+        )
+
 
 def run_converter(timeout: float) -> int:
     command = [
@@ -2226,7 +2334,26 @@ def run_converter(timeout: float) -> int:
     print("Running full Aerofly converter for GTVR Wraith Dev:")
     print(" ".join(command))
     completed = subprocess.run(command, cwd=ROOT, check=False)
-    return completed.returncode
+    if completed.returncode != 0:
+        return completed.returncode
+
+    if MAP_PANEL_SOURCE_DIR.exists():
+        panel_command = [
+            sys.executable,
+            str(ROOT / "tools" / "run_aerofly_converter.py"),
+            MAP_PANEL_DIR_NAME,
+            str(MAP_PANEL_SOURCE_ROOT),
+            "--userfolder",
+            str(MAP_PANEL_LAUNCH_USER),
+            "--timeout",
+            str(timeout),
+        ]
+        print("Running full Aerofly converter for Wraith independent centre map panel:")
+        print(" ".join(panel_command))
+        panel_completed = subprocess.run(panel_command, cwd=ROOT, check=False)
+        return panel_completed.returncode
+
+    return 0
 
 
 def write_dev_package_marker() -> None:
@@ -2244,11 +2371,11 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a dedicated gtvr_center_map_light texture.",
-                "Minimal hidden gtvr_map_panel option hosts a native texture_animation_map_display renderer for the centre texture; it does not copy the C172 compiled panel TMB or add zoom dynamic objects.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center map is a separate gtvr_map_panel option with its own compiled screen TMB.",
+                "The gtvr_map_panel option hosts a native texture_animation_map_display renderer targeting its own gtvr_map_panel_light texture; it does not copy the C172 compiled panel TMB or add duplicate avionics dynamic objects.",
                 "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
@@ -2295,21 +2422,42 @@ def empty_modelmanager_tmd() -> str:
 
 def dev_map_panel_system_tmd() -> str:
     size = MAP_PANEL_DISPLAY_SIZE
+    center = _current_center_map_pivot or fallback_center_map_pivot()
+    display_position = fmt_vector(center)
     return f"""<[file][][]
     <[modelmanager][][]
         <[pointer_list_tmuniverse][DynamicObjects][]
         >
         <[pointer_list_tmgraphics][GraphicObjects][]
-            // GTVR minimal centre map panel: no C172 compiled panel, no extra avionics objects.
+            // GTVR independent centre map panel: owns its own TMB surface and map texture.
             <[graphics_mapping_linear][GTVRMapPanelZoomConstant][]
                 <[string8][Input][0.0]>
                 <[float64][Scaling][0.0]>
                 <[float64][Offset][2.0]>
             >
+            <[rigidbodygraphics][GTVRMapPanelScreen][]
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[string8][GeometryList][ GTVRMapScreen ]>
+            >
             <[texture_animation][GTVRMapPanelTexture][]
-                <[string8][TextureName][{CENTER_MAP_TEXTURE}]>
+                <[string8][TextureName][{MAP_PANEL_TEXTURE}]>
                 <[tmvector4d][ClearColor][ 0.025 0.030 0.025 1.0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
+                <[string8][RenderList][ GTVRMapPanelDisplay ]>
+            >
+            <[graphics_animation_display][GTVRMapPanelDisplay][]
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[tmvector3d][R0][ {display_position} ]>
+                <[float64][Radius][0.25]>
+                <[tmvector2d][TargetPosition][ 0 0 ]>
+                <[tmvector2d][TargetSize][ {size} {size} ]>
+                <[tmvector2d][TargetScale][ {size} {size} ]>
+                <[string8][InputDisplay][0]>
+                <[string8][RenderList][ GTVRMapPanelRenderList ]>
+            >
+            <[graphics_animation_render_list][GTVRMapPanelRenderList][]
                 <[string8][RenderList][ GTVRMapPanelMovingMap ]>
             >
             <[texture_animation_map_display][GTVRMapPanelMovingMap][]
@@ -2319,7 +2467,7 @@ def dev_map_panel_system_tmd() -> str:
                 <[tmvector2d][TargetSize][ {size} {size} ]>
                 <[tmvector2d][TargetScale][ {size} {size} ]>
                 <[string8][InputZoom][GTVRMapPanelZoomConstant.Output]>
-                <[tmvector3d][Color][ 0.75 0.75 0.75 ]>
+                <[tmvector3d][Color][ 1.0 1.0 1.0 ]>
             >
         >
     >
@@ -2358,9 +2506,15 @@ def write_dev_map_panel_option() -> Path:
     (panel_dir / "system_cold.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
     (panel_dir / "system_start.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
 
-    center_map_texture = DEV_PACKAGE_DIR / f"{CENTER_MAP_TEXTURE}.ttx"
-    if center_map_texture.exists():
-        shutil.copy2(center_map_texture, panel_dir / center_map_texture.name)
+    panel_tmb = converted_map_panel_tmb()
+    if not panel_tmb.exists():
+        raise FileNotFoundError(f"Missing converted centre map panel TMB: {panel_tmb}")
+    shutil.copy2(panel_tmb, panel_dir / panel_tmb.name)
+
+    panel_texture = panel_tmb.parent / f"{MAP_PANEL_TEXTURE}.ttx"
+    if not panel_texture.exists():
+        raise FileNotFoundError(f"Missing converted centre map panel texture: {panel_texture}")
+    shutil.copy2(panel_texture, panel_dir / panel_texture.name)
 
     return panel_dir
 
@@ -2578,9 +2732,8 @@ def main() -> int:
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
-            center_map_texture = copy_center_map_texture_to_package()
             map_panel_dir = write_dev_map_panel_option()
-            print(f"Dev centre map: packaged minimal hidden panel {map_panel_dir.name} using {center_map_texture.name}.")
+            print(f"Dev centre map: packaged independent panel {map_panel_dir.name} using {MAP_PANEL_TEXTURE}.ttx.")
             copied_surface_textures = copy_dev_auxiliary_textures()
             print(f"Dev cockpit materials: packaged {copied_surface_textures} auxiliary surface textures.")
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
