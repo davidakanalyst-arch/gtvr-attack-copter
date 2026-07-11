@@ -2422,19 +2422,29 @@ def empty_modelmanager_tmd() -> str:
 
 def dev_map_panel_system_tmd() -> str:
     size = MAP_PANEL_DISPLAY_SIZE
-    center = _current_center_map_pivot or fallback_center_map_pivot()
-    display_position = fmt_vector(center)
     return f"""<[file][][]
     <[modelmanager][][]
         <[pointer_list_tmuniverse][DynamicObjects][]
+            // Keep the AN2 phone-map inputs as a real dynamic chain.  A literal value in the
+            // graphics graph is not a valid substitute for an Aerofly object output.
+            <[input_discrete][GTVRMapPanelZoom][]
+                <[string8][Message][GPS.Zoom]>
+                <[string8][Range][ -5.0 4.0 ]>
+                <[float64][Value][-1.0]>
+                <[bool][Toggle][true]>
+            >
+            <[output_free][GTVRMapPanelZoomOutput][]
+                <[string8][Input][GTVRMapPanelZoom.Output]>
+            >
+            <[heading_indicator][GTVRMapPanelHeadingIndicator][]
+                <[string8][Body][Fuselage]>
+            >
+            <[output][GTVRMapPanelHeadingAngle][]
+                <[string8][Input][GTVRMapPanelHeadingIndicator.MagneticHeading]>
+            >
         >
         <[pointer_list_tmgraphics][GraphicObjects][]
-            // GTVR independent centre map panel: owns its own TMB surface and map texture.
-            <[graphics_mapping_linear][GTVRMapPanelZoomConstant][]
-                <[string8][Input][0.0]>
-                <[float64][Scaling][0.0]>
-                <[float64][Offset][2.0]>
-            >
+            // Independent centre panel using the AN2 phone's proven direct map-render chain.
             <[rigidbodygraphics][GTVRMapPanelScreen][]
                 <[uint32][PositionID][Fuselage.R]>
                 <[uint32][OrientationID][Fuselage.Q]>
@@ -2442,32 +2452,38 @@ def dev_map_panel_system_tmd() -> str:
             >
             <[texture_animation][GTVRMapPanelTexture][]
                 <[string8][TextureName][{MAP_PANEL_TEXTURE}]>
-                <[tmvector4d][ClearColor][ 0.025 0.030 0.025 1.0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
-                <[string8][RenderList][ GTVRMapPanelDisplay ]>
+                <[string8][RenderList][ GTVRMapPanelMovingMap GTVRMapPanelOverlay ]>
             >
-            <[graphics_animation_display][GTVRMapPanelDisplay][]
-                <[uint32][PositionID][Fuselage.R]>
-                <[uint32][OrientationID][Fuselage.Q]>
-                <[tmvector3d][R0][ {display_position} ]>
-                <[float64][Radius][0.25]>
-                <[tmvector2d][TargetPosition][ 0 0 ]>
-                <[tmvector2d][TargetSize][ {size} {size} ]>
-                <[tmvector2d][TargetScale][ {size} {size} ]>
-                <[string8][InputDisplay][0]>
-                <[string8][RenderList][ GTVRMapPanelRenderList ]>
-            >
-            <[graphics_animation_render_list][GTVRMapPanelRenderList][]
-                <[string8][RenderList][ GTVRMapPanelMovingMap ]>
+            <[graphics_input][GTVRMapPanelZoomInput][]
+                <[uint32][InputID][GTVRMapPanelZoom.Output]>
             >
             <[texture_animation_map_display][GTVRMapPanelMovingMap][]
                 <[uint32][PositionID][Fuselage.R]>
                 <[uint32][OrientationID][Fuselage.Q]>
                 <[tmvector2d][TargetPosition][ 0 0 ]>
+                <[tmvector2d][TargetSize][ 1.0 1.0 ]>
+                <[tmvector2d][TargetScale][ {size} {size} ]>
+                <[string8][InputZoom][GTVRMapPanelZoomInput.Output]>
+            >
+            <[graphics_input][GTVRMapPanelHeadingInput][]
+                <[uint32][InputID][GTVRMapPanelHeadingAngle.Output]>
+            >
+            <[display_c172][GTVRMapPanelOverlay][]
+                <[tmvector2d][TargetPosition][ 0 0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
                 <[tmvector2d][TargetScale][ {size} {size} ]>
-                <[string8][InputZoom][GTVRMapPanelZoomConstant.Output]>
-                <[tmvector3d][Color][ 1.0 1.0 1.0 ]>
+                <[float64][FontSize][ 40 ]>
+                <[tmvector4f][ColorAircraft][ 0.373 0.992 0.000 1.0 ]>
+                <[tmvector4f][ColorVOR][ 0.200 1.000 1.000 1.0 ]>
+                <[tmvector4f][ColorNDB][ 1.000 0.500 0.500 1.0 ]>
+                <[tmvector4f][ColorAirport][ 1.000 1.000 1.000 1.0 ]>
+                <[tmvector4f][ColorRoute][ 0.373 0.992 0.000 1.0 ]>
+                <[tmvector4f][ColorWaypoint][ 1.000 1.000 1.000 1.0 ]>
+                <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 1.0 ]>
+                <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 1.0 ]>
+                <[string8][InputHeading][GTVRMapPanelHeadingInput.Output]>
+                <[string8][InputZoom][GTVRMapPanelZoomInput.Output]>
             >
         >
     >
