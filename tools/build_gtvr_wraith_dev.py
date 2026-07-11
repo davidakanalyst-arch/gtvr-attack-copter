@@ -182,6 +182,7 @@ _current_animated_control_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_live_display_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_live_display_pivots: dict[str, tuple[float, float, float]] = {}
 _current_stock_display_geometries: dict[str, dict[str, core.Patch]] = {}
+_current_center_map_pivot: tuple[float, float, float] | None = None
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -1293,6 +1294,7 @@ def add_live_glass_displays(*, screen_x: float) -> None:
 
 
 def add_stock_display_surfaces(*, screen_x: float) -> None:
+    global _current_center_map_pivot
     display_x = screen_x - 0.020
     append_textured_panel(
         stock_display_geometry("DisplayPFDL"),
@@ -1312,22 +1314,14 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
         uv_rect=RIGHT_PFD_DISPLAY_UV_RECT,
         double_sided=False,
     )
+    _current_center_map_pivot = (display_x, 0.0, -0.12)
     append_textured_panel(
         stock_display_geometry("DisplayNDL"),
-        STOCK_DISPLAY_MATERIAL,
-        center=(display_x, 0.0, -0.12),
+        COCKPIT_MAP_MATERIAL,
+        center=_current_center_map_pivot,
         width_y=0.30,
         height_z=0.34,
-        uv_rect=CENTER_MAP_DISPLAY_UV_RECT,
-        double_sided=False,
-    )
-    append_textured_panel(
-        stock_display_geometry("DisplayNDR"),
-        STOCK_DISPLAY_MATERIAL,
-        center=(display_x - 0.006, 0.0, -0.12),
-        width_y=0.30,
-        height_z=0.34,
-        uv_rect=CENTER_MAP_DISPLAY_UV_RECT,
+        uv_rect=(0.0, 0.0, 1.0, 1.0),
         double_sided=False,
     )
 
@@ -1585,13 +1579,14 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
 
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
     global _current_animated_control_geometries, _current_live_display_geometries, _current_live_display_pivots
-    global _current_stock_display_geometries
+    global _current_stock_display_geometries, _current_center_map_pivot
     global _current_cockpit_x_delta
     global _current_dash_forward_x_delta, _current_interior_forward_x_delta
     _current_animated_control_geometries = {}
     _current_live_display_geometries = {}
     _current_live_display_pivots = {}
     _current_stock_display_geometries = {}
+    _current_center_map_pivot = None
     _current_cockpit_x_delta = args.cockpit_x_delta
     _current_interior_forward_x_delta = args.interior_forward_x_delta
     _current_dash_forward_x_delta = args.dash_forward_x_delta
@@ -1636,7 +1631,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
-        "lowered rearward flat pedal pads and Wraith glass screens connected to the inherited runtime PFD/ND display feed."
+        "lowered rearward flat pedal pads, Wraith side PFD screens and a native rolling-map center screen."
     )
 
 
@@ -1810,6 +1805,65 @@ def visual_control_graphics_objects() -> str:
             ]
         )
     return "\n".join(lines)
+
+
+def center_map_dynamic_objects() -> str:
+    if _current_center_map_pivot is None:
+        return ""
+
+    return """
+            // Fixed zoom input for the Wraith center rolling map.
+            <[input_discrete][GTVRCenterMapZoomInput][]
+                <[string8][Message][GTVR.CenterMapZoom]>
+                <[tmvector2d][Range][ -4.0 5.0 ]>
+                <[float64][Value][-1.5]>
+            >"""
+
+
+def center_map_graphics_objects() -> str:
+    if _current_center_map_pivot is None:
+        return ""
+
+    map_pivot = _current_center_map_pivot
+    return "\n".join(
+        [
+            "            // Native Aerofly moving map rendered into the Wraith center-screen texture.",
+            "            <[graphics_input][GTVRCenterMapZoom][]",
+            "                <[uint32][InputID][GTVRCenterMapZoomInput.Output]>",
+            "            >",
+            "            <[graphics_mapping_linear][GTVRCenterMapZoomMap][]",
+            "                <[string8][Input][GTVRCenterMapZoom.Output]>",
+            "                <[float64][Scaling][1.0]>",
+            "                <[float64][Offset][5.0]>",
+            "            >",
+            "            <[texture_animation][GTVRCenterMapTexture][]",
+            f"                <[string8][TextureName][{COCKPIT_MAP_TEXTURE}]>",
+            "                <[tmvector4d][ClearColor][ 0.03 0.03 0.03 1.0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[string8][RenderList][ GTVRCenterMovingMapDisplay ]>",
+            "            >",
+            "            <[graphics_animation_display][GTVRCenterMovingMapDisplay][]",
+            "                <[uint32][PositionID][Fuselage.R]>",
+            "                <[uint32][OrientationID][Fuselage.Q]>",
+            f"                <[tmvector3d][R0][ {fmt_vector(map_pivot)} ]>",
+            "                <[float64][Radius][0.18]>",
+            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[tmvector2d][TargetScale][ 512 512 ]>",
+            "                <[string8][InputDisplay][0]>",
+            "                <[string8][RenderList][ GTVRCenterMovingMap ]>",
+            "            >",
+            "            <[texture_animation_map_display][GTVRCenterMovingMap][]",
+            "                <[uint32][PositionID][Fuselage.R]>",
+            "                <[uint32][OrientationID][Fuselage.Q]>",
+            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
+            "                <[tmvector2d][TargetSize][ 512 512 ]>",
+            "                <[tmvector2d][TargetScale][ 512 512 ]>",
+            "                <[string8][InputZoom][GTVRCenterMapZoomMap.Output]>",
+            "                <[tmvector3d][Color][ 0.7 0.7 0.7 ]>",
+            "            >",
+        ]
+    )
 
 
 def live_display_static_geometry_names() -> list[str]:
@@ -2027,7 +2081,9 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
         if name not in animated_names and not is_dev_static_visual_hidden(name)
     ]
     telemetry_objects = live_telemetry_dynamic_objects()
+    center_map_dynamic = center_map_dynamic_objects()
     display_graphics = live_display_graphics_objects()
+    center_map_graphics = center_map_graphics_objects()
     control_transforms = visual_control_dynamic_objects()
     graphic_objects = visual_control_graphics_objects()
     text = f"""<[file][][]
@@ -2040,6 +2096,7 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
                 <[tmmatrix3d][B0][1.0 0.0 0.0  0.0 1.0 0.0  0.0 0.0 1.0]>
             >
 {telemetry_objects}
+{center_map_dynamic}
         >
         <[pointer_list_tmgraphics][GraphicObjects][]
             <[rigidbodygraphics][Fuselage][]
@@ -2048,6 +2105,7 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
                 <[string8][GeometryList][ {' '.join(static_geometry_names)} ]>
             >
 {display_graphics}
+{center_map_graphics}
 {control_transforms}
 {graphic_objects}
         >
@@ -2187,9 +2245,9 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and three Wraith glass screens connected to the runtime PFD/ND display feed",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a native rolling-map center screen",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL and DisplayNDR are both populated on the center screen with a map-only crop so the rolling-map feed reaches the middle panel without the side data stack",
+                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a dedicated native Aerofly moving-map texture for the center screen",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
@@ -2257,10 +2315,10 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, and three Wraith glass screens connected to the runtime display feed.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a native rolling-map center screen.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates both DisplayNDL and DisplayNDR with a map-only crop so the rolling-map feed remains on the middle panel without the side data stack.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a dedicated native Aerofly moving-map texture.",
                 "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
