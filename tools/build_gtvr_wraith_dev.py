@@ -146,6 +146,8 @@ DEV_AUXILIARY_TEXTURE_NAMES = tuple(
 COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
 COCKPIT_PFD_TEXTURE = "gtvr_cockpit_flight"
 COCKPIT_PFD_SOURCE_TEXTURE = "gtvr_cockpit_flight_source"
+CENTER_MAP_MATERIAL = "gtvr_center_map_light"
+CENTER_MAP_TEXTURE = "gtvr_center_map_light"
 STOCK_DISPLAY_MATERIAL = "display_light"
 STOCK_DISPLAY_TEXTURE = "display_light"
 STOCK_DISPLAY_STATE_INPUTS = (
@@ -174,7 +176,8 @@ LEFT_PFD_DISPLAY_UV_RECT = (0.35, 0.045, 0.71, 0.385)
 RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.045, 0.355, 0.385)
 SIDE_PFD_DISPLAY_WIDTH_Y = 0.305
 SIDE_PFD_DISPLAY_HEIGHT_Z = 0.315
-CENTER_MAP_DISPLAY_UV_RECT = (0.23, 0.20, 0.74, 0.78)
+MAP_PANEL_DIR_NAME = "gtvr_map_panel"
+MAP_PANEL_DISPLAY_SIZE = 1024
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -603,9 +606,11 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
 
     pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
     pfd_source_path = core.SOURCE_DIR / f"{COCKPIT_PFD_SOURCE_TEXTURE}.png"
+    center_map_path = core.SOURCE_DIR / f"{CENTER_MAP_TEXTURE}.png"
     write_png(core.SOURCE_DIR / f"{STOCK_DISPLAY_TEXTURE}.png", (0, 0, 0))
     write_cockpit_pfd_texture(pfd_path)
     write_cockpit_pfd_source_texture(pfd_source_path)
+    write_cockpit_map_texture(center_map_path)
     if not any(material.name == STOCK_DISPLAY_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
             name=STOCK_DISPLAY_MATERIAL,
@@ -626,6 +631,13 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
             texture_name=COCKPIT_PFD_SOURCE_TEXTURE,
             source_uri="generated-gtvr-dev-cockpit-flight-source",
             color=(225, 245, 238, 255),
+        )
+    if not any(material.name == CENTER_MAP_MATERIAL for material in materials.values()):
+        materials[next_material_index(materials)] = Material(
+            name=CENTER_MAP_MATERIAL,
+            texture_name=CENTER_MAP_TEXTURE,
+            source_uri="generated-gtvr-dev-center-map-panel-target",
+            color=(20, 160, 120, 255),
         )
 
 
@@ -1314,11 +1326,11 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
     _current_center_map_pivot = (display_x, 0.0, -0.12)
     append_textured_panel(
         stock_display_geometry("DisplayNDL"),
-        STOCK_DISPLAY_MATERIAL,
+        CENTER_MAP_MATERIAL,
         center=_current_center_map_pivot,
         width_y=0.30,
         height_z=0.34,
-        uv_rect=CENTER_MAP_DISPLAY_UV_RECT,
+        uv_rect=(0.0, 0.0, 1.0, 1.0),
         double_sided=False,
     )
 
@@ -2163,9 +2175,9 @@ def write_source_stamp() -> None:
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a centre crop of the inherited EC135 runtime display_light ND/map feed",
-                "center_map=DR400/AN2 native map renderers require a loaded text main TMD; Wraith keeps EC135 TMQ, so centre uses EC135's loaded ND/map texture path",
-                "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default and seed likely EC135 ND mode toggles",
+                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a dedicated gtvr_center_map_light texture",
+                "center_map=minimal hidden gtvr_map_panel option hosts a native texture_animation_map_display renderer with no copied C172 panel TMB or extra dynamic objects",
+                "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
                 f"interior_forward_x_delta={_current_interior_forward_x_delta:.3f}",
@@ -2235,8 +2247,9 @@ def write_dev_package_marker() -> None:
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a centre crop of the inherited EC135 runtime display_light ND/map feed.",
-                "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files, with likely EC135 ND mode toggles seeded for the centre map feed.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a dedicated gtvr_center_map_light texture.",
+                "Minimal hidden gtvr_map_panel option hosts a native texture_animation_map_display renderer for the centre texture; it does not copy the C172 compiled panel TMB or add zoom dynamic objects.",
+                "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
                 f"Visual shell is shifted X {DEFAULT_PILOT_ALIGNMENT_X_DELTA:.2f}m for pilot/window alignment.",
@@ -2257,6 +2270,94 @@ def copy_dev_auxiliary_textures() -> int:
         shutil.copy2(source, DEV_PACKAGE_DIR / source.name)
         copied += 1
     return copied
+
+
+def copy_center_map_texture_to_package() -> Path:
+    source = converted_tmb().parent / f"{CENTER_MAP_TEXTURE}.ttx"
+    target = DEV_PACKAGE_DIR / source.name
+    if not source.exists():
+        raise FileNotFoundError(f"Missing converted centre-map texture: {source}")
+    shutil.copy2(source, target)
+    return target
+
+
+def empty_modelmanager_tmd() -> str:
+    return """<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmuniverse][DynamicObjects][]
+        >
+        <[pointer_list_tmgraphics][GraphicObjects][]
+        >
+    >
+>
+"""
+
+
+def dev_map_panel_system_tmd() -> str:
+    size = MAP_PANEL_DISPLAY_SIZE
+    return f"""<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmuniverse][DynamicObjects][]
+        >
+        <[pointer_list_tmgraphics][GraphicObjects][]
+            // GTVR minimal centre map panel: no C172 compiled panel, no extra avionics objects.
+            <[texture_animation][GTVRMapPanelTexture][]
+                <[string8][TextureName][{CENTER_MAP_TEXTURE}]>
+                <[tmvector4d][ClearColor][ 0.025 0.030 0.025 1.0 ]>
+                <[tmvector2d][TargetSize][ {size} {size} ]>
+                <[string8][RenderList][ GTVRMapPanelMovingMap ]>
+            >
+            <[texture_animation_map_display][GTVRMapPanelMovingMap][]
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[tmvector2d][TargetPosition][ 0 0 ]>
+                <[tmvector2d][TargetSize][ {size} {size} ]>
+                <[tmvector2d][TargetScale][ {size} {size} ]>
+                <[string8][InputZoom][2.0]>
+                <[tmvector3d][Color][ 0.75 0.75 0.75 ]>
+            >
+        >
+    >
+>
+"""
+
+
+def write_dev_map_panel_option() -> Path:
+    panel_dir = DEV_PACKAGE_DIR / MAP_PANEL_DIR_NAME
+    if panel_dir.exists():
+        shutil.rmtree(panel_dir)
+    panel_dir.mkdir(parents=True)
+
+    (panel_dir / "option.tmc").write_text(
+        """<[file][][]
+  <[object][][]
+    <[string8][Description][Wraith Centre Map]>
+    <[string8][Type][default]>
+    <[string8][Tags][panel]>
+  >
+>
+""",
+        encoding="utf-8",
+    )
+    (panel_dir / "system.tmd").write_text(dev_map_panel_system_tmd(), encoding="utf-8")
+    (panel_dir / "controls.tmd").write_text(
+        """<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmcontrol][ControlObjects][]
+        >
+    >
+>
+""",
+        encoding="utf-8",
+    )
+    (panel_dir / "system_cold.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
+    (panel_dir / "system_start.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
+
+    center_map_texture = DEV_PACKAGE_DIR / f"{CENTER_MAP_TEXTURE}.ttx"
+    if center_map_texture.exists():
+        shutil.copy2(center_map_texture, panel_dir / center_map_texture.name)
+
+    return panel_dir
 
 
 def patch_dev_controls_tmd(path: Path) -> int:
@@ -2472,6 +2573,9 @@ def main() -> int:
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
+            center_map_texture = copy_center_map_texture_to_package()
+            map_panel_dir = write_dev_map_panel_option()
+            print(f"Dev centre map: packaged minimal hidden panel {map_panel_dir.name} using {center_map_texture.name}.")
             copied_surface_textures = copy_dev_auxiliary_textures()
             print(f"Dev cockpit materials: packaged {copied_surface_textures} auxiliary surface textures.")
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
