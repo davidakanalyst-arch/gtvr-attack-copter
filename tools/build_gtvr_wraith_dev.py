@@ -158,6 +158,10 @@ STOCK_DISPLAY_STATE_INPUTS = (
     "PilotNDSelectedOn",
     "CopilotNDSelectedOn",
 )
+# Crop the shared runtime display atlas instead of showing the entire source atlas on each Wraith screen.
+# High-U is the left side inside the Wraith glass panel, where the flickering duplicate group appears.
+SIDE_FLIGHT_DISPLAY_UV_RECT = (0.0, 0.03, 0.66, 0.88)
+CENTER_MAP_DISPLAY_UV_RECT = (0.23, 0.20, 0.74, 0.78)
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -777,19 +781,21 @@ def append_textured_panel(
     center: tuple[float, float, float],
     width_y: float,
     height_z: float,
+    uv_rect: tuple[float, float, float, float] | None = None,
 ) -> None:
     patch = patch_for(body, material_name)
     x, y, z = center
     half_w = width_y * 0.5
     half_h = height_z * 0.5
+    u_min, v_min, u_max, v_max = uv_rect or (0.0, 0.0, 1.0, 1.0)
     front = [
         (x, y - half_w, z - half_h),
         (x, y - half_w, z + half_h),
         (x, y + half_w, z + half_h),
         (x, y + half_w, z - half_h),
     ]
-    append_quad(patch, front, (-1.0, 0.0, 0.0), [(1.0, 1.0), (1.0, 0.0), (0.0, 0.0), (0.0, 1.0)])
-    append_quad(patch, list(reversed(front)), (1.0, 0.0, 0.0), [(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)])
+    append_quad(patch, front, (-1.0, 0.0, 0.0), [(u_max, v_max), (u_max, v_min), (u_min, v_min), (u_min, v_max)])
+    append_quad(patch, list(reversed(front)), (1.0, 0.0, 0.0), [(u_min, v_max), (u_min, v_min), (u_max, v_min), (u_max, v_max)])
 
 
 def append_triangle(
@@ -1280,6 +1286,7 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
         center=(display_x, -0.39, -0.12),
         width_y=0.34,
         height_z=0.34,
+        uv_rect=SIDE_FLIGHT_DISPLAY_UV_RECT,
     )
     append_textured_panel(
         stock_display_geometry("DisplayPFDR"),
@@ -1287,6 +1294,7 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
         center=(display_x, 0.39, -0.12),
         width_y=0.34,
         height_z=0.34,
+        uv_rect=SIDE_FLIGHT_DISPLAY_UV_RECT,
     )
     append_textured_panel(
         stock_display_geometry("DisplayNDL"),
@@ -1294,13 +1302,15 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
         center=(display_x, 0.0, -0.12),
         width_y=0.30,
         height_z=0.34,
+        uv_rect=CENTER_MAP_DISPLAY_UV_RECT,
     )
     append_textured_panel(
         stock_display_geometry("DisplayNDR"),
         STOCK_DISPLAY_MATERIAL,
-        center=(display_x - 0.001, 0.0, -0.12),
+        center=(display_x - 0.006, 0.0, -0.12),
         width_y=0.30,
         height_z=0.34,
+        uv_rect=CENTER_MAP_DISPLAY_UV_RECT,
     )
 
 
@@ -2161,7 +2171,7 @@ def write_source_stamp() -> None:
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and three Wraith glass screens connected to the runtime PFD/ND display feed",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "runtime_displays=DisplayPFDL and DisplayPFDR are populated for left/right flight displays; DisplayNDL and DisplayNDR are both populated on the center screen so the rolling-map feed reaches the middle panel",
+                "runtime_displays=DisplayPFDL and DisplayPFDR are populated for cropped left/right flight displays; DisplayNDL and DisplayNDR are both populated on the center screen with a map-only crop so the rolling-map feed reaches the middle panel without the side data stack",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
@@ -2232,7 +2242,7 @@ def write_dev_package_marker() -> None:
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, and three Wraith glass screens connected to the runtime display feed.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR for flight data; the center screen populates both DisplayNDL and DisplayNDR so the rolling-map feed remains on the middle panel.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with cropped flight data; the center screen populates both DisplayNDL and DisplayNDR with a map-only crop so the rolling-map feed remains on the middle panel without the side data stack.",
                 "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
