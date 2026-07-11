@@ -1364,32 +1364,68 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
     )
 
 
-def add_cyclic_controls() -> None:
-    # A single, unobstructed floor stick for each seat. The front of each seat is
-    # shortened above so the shaft can rise between the pilot's legs. Use the
-    # stock StickL/StickR geometry slots because the compiled EC135 TMQ already
-    # renders and animates those names at runtime.
+def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
+    # Keep the lower shaft fixed to the floor and begin the animated shaft at
+    # the exact EC135 runtime pivot used by controls.tmd.
     cyclic_references = (
-        ((2.32, -0.39, -0.785), (2.233, -0.379, -0.310), (2.233, -0.379, -0.100), "StickL"),
-        ((2.32, 0.39, -0.785), (2.239, 0.400, -0.310), (2.239, 0.400, -0.100), "StickR"),
+        (
+            (2.32, -0.39, -0.785),
+            (2.25, -0.39, -0.642),
+            (2.233, -0.379, -0.305),
+            (2.205, -0.379, -0.190),
+            (2.180, -0.379, -0.105),
+            "StickL",
+        ),
+        (
+            (2.32, 0.39, -0.785),
+            (2.25, 0.39, -0.642),
+            (2.239, 0.400, -0.305),
+            (2.211, 0.400, -0.190),
+            (2.186, 0.400, -0.105),
+            "StickR",
+        ),
     )
-    for pivot, grip_bottom, grip_top, geometry_name in cyclic_references:
+    for floor_base, pivot, grip_bottom, grip_mid, grip_top, geometry_name in cyclic_references:
+        append_cylinder_between(
+            body,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            floor_base,
+            pivot,
+            0.028,
+            segments=36,
+        )
         control = animated_control_geometry(geometry_name)
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
             pivot,
             grip_bottom,
-            0.032,
-            segments=40,
+            0.023,
+            segments=36,
         )
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
             grip_bottom,
+            grip_mid,
+            0.032,
+            segments=36,
+        )
+        append_cylinder_between(
+            control,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            grip_mid,
             grip_top,
-            0.047,
-            segments=40,
+            0.029,
+            segments=36,
+        )
+        append_pillowed_back_cushion(
+            control,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            center=(grip_top[0] - 0.005, grip_top[1], grip_top[2] + 0.008),
+            size=(0.075, 0.070, 0.055),
+            segments_y=6,
+            segments_z=5,
         )
 
 
@@ -1453,29 +1489,13 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
                 segments=28,
             )
             pedal = animated_control_geometry(geometry_name)
-            append_cylinder_between(
+            append_pillowed_back_cushion(
                 pedal,
                 PEDAL_BLACK_MATERIAL,
-                (pad_x - 0.035, pedal_y - 0.050, pz(-0.515)),
-                (pad_x - 0.035, pedal_y + 0.050, pz(-0.515)),
-                0.018,
-                segments=24,
-            )
-            append_cylinder_between(
-                pedal,
-                PEDAL_BLACK_MATERIAL,
-                (pad_x, pedal_y - 0.060, pz(-0.500)),
-                (pad_x, pedal_y + 0.060, pz(-0.500)),
-                0.032,
-                segments=28,
-            )
-            append_cylinder_between(
-                pedal,
-                PEDAL_BLACK_MATERIAL,
-                (pad_x + 0.035, pedal_y - 0.055, pz(-0.455)),
-                (pad_x + 0.035, pedal_y + 0.055, pz(-0.455)),
-                0.025,
-                segments=28,
+                center=(pad_x, pedal_y, pz(-0.482)),
+                size=(0.030, 0.170, 0.105),
+                segments_y=7,
+                segments_z=6,
             )
 
 
@@ -1528,13 +1548,13 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_live_glass_displays(screen_x=screen_x)
     add_static_display_fallback(body)
 
-    add_cyclic_controls()
+    add_cyclic_controls(body)
     add_collective_controls(body, interior_x)
     add_pedal_set(body, interior_x)
 
     print(
         "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
-        "lowered rearward rounded pedals and live left/right speed-altitude overlays with a center map."
+        "lowered rearward flat pedal pads and live left/right speed-altitude overlays with a center map."
     )
 
 
@@ -2009,8 +2029,8 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, simple animated matte dark-grey floor cyclics, lowered left-side collectives, lowered rearward pedals and left/right speed-altitude tape panels with a center map",
-                "animated_controls=simple cyclic meshes occupy the stock StickL/StickR runtime slots; collectives and pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads and left/right speed-altitude tape panels with a center map",
+                "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and shaped upper grips occupy stock StickL/StickR runtime slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "live_glass=side displays use dev-owned pitot/airspeed/altimeter telemetry outputs for moving airspeed and altitude tape geometry; center map heading remains separate",
                 "stock_display_surfaces=DisplayNDL is populated for the preserved center map texture; side PFD stock textures are intentionally suppressed",
                 "glass_fallback=fixed display cues are merged into the visible dash mesh without duplicating moving live layers",
@@ -2079,8 +2099,8 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, simple animated matte dark-grey floor cyclics, lowered left-shifted collectives, lowered rearward rounded pedals, side speed-altitude tape panels and a center map.",
-                "Simple floor cyclic meshes occupy the stock StickL and StickR geometry slots so the compiled EC135 runtime renders and animates them; collectives and pedals retain their dev visual groups.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, side speed-altitude tape panels and a center map.",
+                "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while shaped upper grips occupy the stock StickL and StickR slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Generated side display overlays bind moving airspeed and altitude tape graphics to dev-owned pitot/airspeed/altimeter telemetry outputs; the center map remains heading-driven.",
                 "Only DisplayNDL is populated as a stock display surface; DisplayPFDL and DisplayPFDR are suppressed so the side displays are live geometry instead of static PFD textures.",
