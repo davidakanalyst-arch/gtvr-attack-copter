@@ -2223,7 +2223,7 @@ def run_converter(timeout: float) -> int:
         "--timeout",
         str(timeout),
     ]
-    print("Running full Aerofly converter for GTVR Wraith Dev:")
+    print(f"Running full Aerofly converter for {DEV_DISPLAY_NAME}:")
     print(" ".join(command))
     completed = subprocess.run(command, cwd=ROOT, check=False)
     return completed.returncode
@@ -2531,16 +2531,16 @@ def add_core_args(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Dev-only build/install pipeline for GTVR Wraith Dev.",
+        description=f"Build/install pipeline for {DEV_DISPLAY_NAME}.",
     )
     add_core_args(parser)
     parser.add_argument("--prepare-source", action="store_true")
-    parser.add_argument("--convert", action="store_true", help="Run the full Aerofly converter for the dev source.")
+    parser.add_argument("--convert", action="store_true", help=f"Run the full Aerofly converter for the {DEV_AIRCRAFT_NAME} source.")
     parser.add_argument("--assemble-package", action="store_true")
-    parser.add_argument("--install", action="store_true", help="Install only to the gtvr_wraith_dev FS4 folder.")
-    parser.add_argument("--full", action="store_true", help="Prepare, convert, assemble and install the dev package.")
-    parser.add_argument("--force-install", action="store_true", help="Replace the existing gtvr_wraith_dev install.")
-    parser.add_argument("--allow-stale-tmb", action="store_true", help="Allow assembling without a fresh dev converter run.")
+    parser.add_argument("--install", action="store_true", help=f"Install only to the {DEV_AIRCRAFT_NAME} FS4 folder.")
+    parser.add_argument("--full", action="store_true", help=f"Prepare, convert, assemble and install the {DEV_AIRCRAFT_NAME} package.")
+    parser.add_argument("--force-install", action="store_true", help=f"Replace the existing {DEV_AIRCRAFT_NAME} install.")
+    parser.add_argument("--allow-stale-tmb", action="store_true", help=f"Allow assembling without a fresh {DEV_AIRCRAFT_NAME} converter run.")
     parser.add_argument("--user-root", type=Path, default=DEFAULT_FS4_USER)
     parser.add_argument("--converter-timeout", type=float, default=180.0)
     return parser
@@ -2561,8 +2561,8 @@ def main() -> int:
     if not any(requested_actions):
         parser.print_help()
         print("")
-        print("Recommended dev iteration:")
-        print("  python tools\\build_gtvr_wraith_dev.py --full --force-install")
+        print(f"Recommended {DEV_DISPLAY_NAME} iteration:")
+        print(f"  python tools\\{Path(sys.argv[0]).name} --full --force-install")
         return 0
 
     try:
@@ -2595,7 +2595,7 @@ def main() -> int:
 
         if args.install:
             installed = install_dev_package(args.user_root, args.force_install)
-            print(f"Installed dev package: {installed}")
+            print(f"Installed {DEV_DISPLAY_NAME} package: {installed}")
     except (FileExistsError, FileNotFoundError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
