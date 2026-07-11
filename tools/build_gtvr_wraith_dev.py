@@ -161,9 +161,10 @@ STOCK_DISPLAY_STATE_INPUTS = (
 # Crop the shared runtime display atlas instead of showing the entire source atlas on each Wraith screen.
 # The EC135 runtime renders its glass cockpit into a shared display atlas. The Wraith side screens
 # should use only the top PFD atlas windows: live speed, altitude, attitude and the heading tape.
-# Do not expose the lower ND/HSI/compass region on the side screens; the centre screen owns ND/map.
-LEFT_PFD_DISPLAY_UV_RECT = (0.26, 0.00, 0.66, 0.30)
-RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.00, 0.40, 0.30)
+# Keep the horizontal PFD window wide enough for both tapes, but crop vertically hard enough that
+# the lower ND/HSI/compass and spare edge symbology cannot spill onto the Wraith side screens.
+LEFT_PFD_DISPLAY_UV_RECT = (0.26, 0.00, 0.66, 0.24)
+RIGHT_PFD_DISPLAY_UV_RECT = (0.0, 0.00, 0.40, 0.24)
 CENTER_MAP_DISPLAY_UV_RECT = (0.23, 0.20, 0.74, 0.78)
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
