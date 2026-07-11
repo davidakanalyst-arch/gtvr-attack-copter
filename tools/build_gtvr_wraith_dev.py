@@ -104,7 +104,6 @@ DEV_INTERIOR_SHADER_MATERIALS = {
     "gtvr_cockpit_rubber",
     "gtvr_cockpit_button_green",
     "gtvr_cockpit_button_red",
-    "gtvr_center_map",
     INNER_SHELL_MATERIAL_NAME,
 }
 DEV_MATERIAL_SURFACE_MAPS = {
@@ -140,13 +139,6 @@ DEV_MATERIAL_SURFACE_MAPS = {
         ("specular", LEATHER_SPECULAR_TEXTURE),
         ("reflection", LEATHER_REFLECTION_TEXTURE),
     ),
-    "gtvr_center_map": (
-        ("light", "gtvr_center_map_light"),
-        ("luminance", "gtvr_center_map_light"),
-        ("illumination", "gtvr_center_map_light"),
-        ("specular", MATTE_BLACK_SURFACE_TEXTURE),
-        ("reflection", MATTE_BLACK_SURFACE_TEXTURE),
-    ),
 }
 DEV_AUXILIARY_TEXTURE_NAMES = tuple(
     sorted({texture_name for slots in DEV_MATERIAL_SURFACE_MAPS.values() for _, texture_name in slots})
@@ -155,7 +147,6 @@ COCKPIT_PFD_MATERIAL = "gtvr_cockpit_flight"
 COCKPIT_PFD_TEXTURE = "gtvr_cockpit_flight"
 COCKPIT_PFD_SOURCE_TEXTURE = "gtvr_cockpit_flight_source"
 CENTER_MAP_MATERIAL = "gtvr_center_map"
-CENTER_MAP_BASE_TEXTURE = "gtvr_center_map"
 CENTER_MAP_TEXTURE = "gtvr_center_map_light"
 STOCK_DISPLAY_MATERIAL = "display_light"
 STOCK_DISPLAY_TEXTURE = "display_light"
@@ -615,12 +606,10 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
 
     pfd_path = core.SOURCE_DIR / f"{COCKPIT_PFD_TEXTURE}.png"
     pfd_source_path = core.SOURCE_DIR / f"{COCKPIT_PFD_SOURCE_TEXTURE}.png"
-    center_map_base_path = core.SOURCE_DIR / f"{CENTER_MAP_BASE_TEXTURE}.png"
     center_map_path = core.SOURCE_DIR / f"{CENTER_MAP_TEXTURE}.png"
     write_png(core.SOURCE_DIR / f"{STOCK_DISPLAY_TEXTURE}.png", (0, 0, 0))
     write_cockpit_pfd_texture(pfd_path)
     write_cockpit_pfd_source_texture(pfd_source_path)
-    write_cockpit_map_texture(center_map_base_path)
     write_cockpit_map_texture(center_map_path)
     if not any(material.name == STOCK_DISPLAY_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
@@ -646,7 +635,7 @@ def ensure_cockpit_materials(materials: dict[int, Material]) -> None:
     if not any(material.name == CENTER_MAP_MATERIAL for material in materials.values()):
         materials[next_material_index(materials)] = Material(
             name=CENTER_MAP_MATERIAL,
-            texture_name=CENTER_MAP_BASE_TEXTURE,
+            texture_name=CENTER_MAP_TEXTURE,
             source_uri="generated-gtvr-dev-center-map-panel-target",
             color=(20, 160, 120, 255),
         )
