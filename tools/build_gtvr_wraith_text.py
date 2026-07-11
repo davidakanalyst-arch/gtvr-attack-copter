@@ -35,6 +35,8 @@ DR400_MAP_TEXTURE = dev.CENTER_MAP_TEXTURE
 DR400_CENTER_MAP_GEOMETRY = "GPSDisp"
 TEXT_MARKER = "_GTVR_WRAITH_TEXT.txt"
 
+ROTOR_TEST_PIVOT = "0.2 0.0 2.55"
+
 
 def configure_dev_geometry_for_text() -> None:
     """Point the accepted Wraith dev geometry generator at the text-test source tree."""
@@ -258,6 +260,85 @@ def patch_tmd_for_center_map(path: Path) -> None:
         "<[tmvector3d][Color]         [ 0.7 0.7 0.7 ]>",
         "<[tmvector3d][Color]         [ 1.0 1.0 1.0 ]>",
         1,
+    )
+
+    # Flight viability gate: the map-capable text route is only worth pursuing if it can be
+    # made to lift like a rotorcraft.  Keep this deliberately blunt and reversible: rotate the
+    # DR400 propeller/engine axis upward, enlarge it to main-rotor scale, and give the piston
+    # graph enough power to prove whether a hover/lift path exists before polishing displays.
+    text = replace_block(
+        text,
+        "<[rigidbody][PropellerBody][]",
+        {
+            "<[float64][Mass][10.0]>": "<[float64][Mass][24.0]>",
+            "<[tmvector3d][InertiaLength][ 0.2 0.2 1.60 ]>": "<[tmvector3d][InertiaLength][ 4.8 4.8 0.2 ]>",
+            "<[tmvector3d][R0][ 1.97347 0.0 0.53221 ]>": f"<[tmvector3d][R0][ {ROTOR_TEST_PIVOT} ]>",
+        },
+    )
+    text = replace_block(
+        text,
+        "<[multibody_joint][PropellerJoint][]",
+        {
+            "<[tmvector3d][R0][ 1.97347 0.0 0.53221 ]>": f"<[tmvector3d][R0][ {ROTOR_TEST_PIVOT} ]>",
+            "<[tmvector3d][X0][ 1.0 0.0 0.0 ]>": "<[tmvector3d][X0][ 0.0 0.0 1.0 ]>",
+            "<[float64][InitialVelocity][63.0]>": "<[float64][InitialVelocity][90.0]>",
+        },
+    )
+    text = replace_block(
+        text,
+        "<[jointtorque][DriveShaft][]",
+        {"<[tmvector3d][Z0][ 1.0 0.0 0.0 ]>": "<[tmvector3d][Z0][ 0.0 0.0 1.0 ]>"},
+    )
+    text = replace_block(
+        text,
+        "<[propeller][Propeller][]",
+        {
+            "<[tmvector3d][R0][ 1.97 0.00023 0.53225 ]>": f"<[tmvector3d][R0][ {ROTOR_TEST_PIVOT} ]>",
+            "<[tmvector3d][X0][ 1.0 0.0 0.0 ]>": "<[tmvector3d][X0][ 0.0 0.0 1.0 ]>",
+            "<[tmvector3d][Y0][ 0.0 1.0 0.0 ]>": "<[tmvector3d][Y0][ 1.0 0.0 0.0 ]>",
+            "<[tmvector3d][Z0][ 0.0 0.0 1.0 ]>": "<[tmvector3d][Z0][ 0.0 1.0 0.0 ]>",
+            "<[uint32][NumberBlades][2]>": "<[uint32][NumberBlades][4]>",
+            "<[float64][Radius]      [0.9398]>": "<[float64][Radius]      [4.8]>",
+            "<[float64][Pitch]       [1.6256]>": "<[float64][Pitch]       [1.05]>",
+            "<[float64][CutOut]      [0.2]>": "<[float64][CutOut]      [0.08]>",
+        },
+    )
+    text = replace_block(
+        text,
+        "<[engine2][Engine][]",
+        {
+            "<[float64][Friction][40.0]>": "<[float64][Friction][20.0]>",
+            "<[float64][RatedRotationSpeed][282.7]>": "<[float64][RatedRotationSpeed][90.0]>",
+            "<[float64][RatedPower][119200.0]>": "<[float64][RatedPower][520000.0]>",
+        },
+    )
+    text = replace_block(
+        text,
+        "<[rotatingbodygraphics][Spinner][]",
+        {
+            "<[tmvector3d][Axis][ 1.0 0.0 0.0 ]>": "<[tmvector3d][Axis][ 0.0 0.0 1.0 ]>",
+            "<[tmvector3d][Pivot][ 1.97 0.00023 0.53225 ]>": f"<[tmvector3d][Pivot][ {ROTOR_TEST_PIVOT} ]>",
+        },
+    )
+    text = replace_block(
+        text,
+        "<[graphics_propeller_blade][PropellerBlade][]",
+        {
+            "<[tmvector3d][Axis][ 1.0 0.0 0.0 ]>": "<[tmvector3d][Axis][ 0.0 0.0 1.0 ]>",
+            "<[tmvector3d][Pivot][ 1.97 0.00023 0.53225 ]>": f"<[tmvector3d][Pivot][ {ROTOR_TEST_PIVOT} ]>",
+            "<[float64][Radius][0.955575]>": "<[float64][Radius][4.8]>",
+        },
+    )
+    text = replace_block(
+        text,
+        "<[propellergraphics][Propeller][]",
+        {
+            "<[tmvector3d][Axis][ 1.0 0.0 0.0 ]>": "<[tmvector3d][Axis][ 0.0 0.0 1.0 ]>",
+            "<[tmvector3d][Pivot][ 1.97 0.00023 0.53225 ]>": f"<[tmvector3d][Pivot][ {ROTOR_TEST_PIVOT} ]>",
+            "<[uint32][BladeNumber][2]>": "<[uint32][BladeNumber][4]>",
+            "<[float64][Radius][0.955575]>": "<[float64][Radius][4.8]>",
+            "<[float64][BladePitch][-0.5]>": "<[float64][BladePitch][0.15]>",
+        },
     )
 
     path.write_text(text, encoding="utf-8")
