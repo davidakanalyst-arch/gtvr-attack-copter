@@ -1317,11 +1317,11 @@ def add_stock_display_surfaces(*, screen_x: float) -> None:
     _current_center_map_pivot = (display_x, 0.0, -0.12)
     append_textured_panel(
         stock_display_geometry("DisplayNDL"),
-        COCKPIT_MAP_MATERIAL,
+        STOCK_DISPLAY_MATERIAL,
         center=_current_center_map_pivot,
         width_y=0.30,
         height_z=0.34,
-        uv_rect=(0.0, 0.0, 1.0, 1.0),
+        uv_rect=CENTER_MAP_DISPLAY_UV_RECT,
         double_sided=False,
     )
 
@@ -1631,7 +1631,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
 
     print(
         "Dev cockpit kit: added shortened dark-brown leather seats, simple matte dark-grey floor cyclics, lowered left-side collectives, "
-        "lowered rearward flat pedal pads, Wraith side PFD screens and a native rolling-map center screen."
+        "lowered rearward flat pedal pads, Wraith side PFD screens and a runtime map-feed center screen."
     )
 
 
@@ -1808,62 +1808,14 @@ def visual_control_graphics_objects() -> str:
 
 
 def center_map_dynamic_objects() -> str:
-    if _current_center_map_pivot is None:
-        return ""
-
-    return """
-            // Fixed zoom input for the Wraith center rolling map.
-            <[input_discrete][GTVRCenterMapZoomInput][]
-                <[string8][Message][GTVR.CenterMapZoom]>
-                <[tmvector2d][Range][ -4.0 5.0 ]>
-                <[float64][Value][-1.5]>
-            >"""
+    # AN2-style GPS map objects require a text main TMD. This Wraith dev package keeps
+    # the EC135 compiled TMQ system model, so the safe working route is the inherited
+    # EC135 runtime display_light map feed on the centre surface.
+    return ""
 
 
 def center_map_graphics_objects() -> str:
-    if _current_center_map_pivot is None:
-        return ""
-
-    map_pivot = _current_center_map_pivot
-    return "\n".join(
-        [
-            "            // Native Aerofly moving map rendered into the Wraith center-screen texture.",
-            "            <[graphics_input][GTVRCenterMapZoom][]",
-            "                <[uint32][InputID][GTVRCenterMapZoomInput.Output]>",
-            "            >",
-            "            <[graphics_mapping_linear][GTVRCenterMapZoomMap][]",
-            "                <[string8][Input][GTVRCenterMapZoom.Output]>",
-            "                <[float64][Scaling][1.0]>",
-            "                <[float64][Offset][5.0]>",
-            "            >",
-            "            <[texture_animation][GTVRCenterMapTexture][]",
-            f"                <[string8][TextureName][{COCKPIT_MAP_TEXTURE}]>",
-            "                <[tmvector4d][ClearColor][ 0.03 0.03 0.03 1.0 ]>",
-            "                <[tmvector2d][TargetSize][ 512 512 ]>",
-            "                <[string8][RenderList][ GTVRCenterMovingMapDisplay ]>",
-            "            >",
-            "            <[graphics_animation_display][GTVRCenterMovingMapDisplay][]",
-            "                <[uint32][PositionID][Fuselage.R]>",
-            "                <[uint32][OrientationID][Fuselage.Q]>",
-            f"                <[tmvector3d][R0][ {fmt_vector(map_pivot)} ]>",
-            "                <[float64][Radius][0.18]>",
-            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
-            "                <[tmvector2d][TargetSize][ 512 512 ]>",
-            "                <[tmvector2d][TargetScale][ 512 512 ]>",
-            "                <[string8][InputDisplay][0]>",
-            "                <[string8][RenderList][ GTVRCenterMovingMap ]>",
-            "            >",
-            "            <[texture_animation_map_display][GTVRCenterMovingMap][]",
-            "                <[uint32][PositionID][Fuselage.R]>",
-            "                <[uint32][OrientationID][Fuselage.Q]>",
-            "                <[tmvector2d][TargetPosition][ 0 0 ]>",
-            "                <[tmvector2d][TargetSize][ 512 512 ]>",
-            "                <[tmvector2d][TargetScale][ 512 512 ]>",
-            "                <[string8][InputZoom][GTVRCenterMapZoomMap.Output]>",
-            "                <[tmvector3d][Color][ 0.7 0.7 0.7 ]>",
-            "            >",
-        ]
-    )
+    return ""
 
 
 def live_display_static_geometry_names() -> list[str]:
@@ -2245,9 +2197,9 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a native rolling-map center screen",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a runtime map-feed center screen",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
-                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a dedicated native Aerofly moving-map texture for the center screen",
+                "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; DisplayNDL uses a single centre crop of the inherited EC135 runtime display_light map feed",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
                 "glass_fallback=placeholder display cues are not merged over the runtime display surfaces",
                 f"cockpit_x_delta={_current_cockpit_x_delta:.3f}",
@@ -2315,10 +2267,10 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a native rolling-map center screen.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and a runtime map-feed center screen.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
-                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a dedicated native Aerofly moving-map texture.",
+                "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center screen populates DisplayNDL with a single centre crop of the inherited EC135 runtime display_light map feed.",
                 "Pilot/copilot PFD and ND display state inputs are forced on in the dev state files.",
                 "Placeholder display cues are not merged over the runtime display surfaces.",
                 f"Dev pilot uses {DEV_PILOT}, the known-good EC135 pilot object.",
