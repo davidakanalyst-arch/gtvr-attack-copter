@@ -70,6 +70,18 @@ TAIL_ROTOR_BLUR_INNER_RADIUS = 0.28
 TAIL_ROTOR_BLUR_OUTER_RADIUS = 0.98
 TAIL_ROTOR_BLUR_STREAKS = 12
 TAIL_ROTOR_BLUR_SWEEP = math.radians(8.0)
+MAIN_ROTOR_MAST_MATERIAL = "dark_metal"
+MAIN_ROTOR_MAST_HOLE_X_RANGE = (0.0, 0.9)
+MAIN_ROTOR_MAST_HOLE_Y_RANGE = (-0.16, 0.16)
+MAIN_ROTOR_MAST_HOLE_Z_RANGE = (1.30, 1.75)
+MAIN_ROTOR_SOURCE_MAST_BASE_Z = 1.62
+MAIN_ROTOR_SOURCE_MAST_TOP_Z = 2.42
+MAIN_ROTOR_SOURCE_CENTER_Z = 2.55
+MAIN_ROTOR_BASE_TO_CENTER_Z = MAIN_ROTOR_SOURCE_CENTER_Z - MAIN_ROTOR_SOURCE_MAST_BASE_Z
+MAIN_ROTOR_CENTER_TO_MAST_TOP_Z = MAIN_ROTOR_SOURCE_CENTER_Z - MAIN_ROTOR_SOURCE_MAST_TOP_Z
+MAIN_ROTOR_MAST_RADIUS = 0.095
+MAIN_ROTOR_MAST_COLLAR_RADIUS = 0.155
+MAIN_ROTOR_MAST_COLLAR_HALF_HEIGHT = 0.035
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
 LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
@@ -2020,6 +2032,102 @@ def patch_map_local_axis_max(
     return max(values)
 
 
+def patch_map_highest_point_in_box(
+    patches: dict[str, core.Patch],
+    *,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    z_range: tuple[float, float],
+) -> tuple[float, float, float] | None:
+    highest: tuple[float, float, float] | None = None
+    for patch in patches.values():
+        for offset in range(0, len(patch.vertices), 8):
+            point = (
+                patch.vertices[offset],
+                patch.vertices[offset + 1],
+                patch.vertices[offset + 2],
+            )
+            if (
+                x_range[0] <= point[0] <= x_range[1]
+                and y_range[0] <= point[1] <= y_range[1]
+                and z_range[0] <= point[2] <= z_range[1]
+                and (highest is None or point[2] > highest[2])
+            ):
+                highest = point
+    return highest
+
+
+def align_main_rotor_visual_to_body(
+    body: dict[str, core.Patch],
+    main_rotor: dict[str, core.Patch],
+) -> None:
+    mast_base = patch_map_highest_point_in_box(
+        body,
+        x_range=MAIN_ROTOR_MAST_HOLE_X_RANGE,
+        y_range=MAIN_ROTOR_MAST_HOLE_Y_RANGE,
+        z_range=MAIN_ROTOR_MAST_HOLE_Z_RANGE,
+    )
+    if mast_base is None:
+        print("Dev main rotor visual alignment: skipped; could not find roof mast hole.")
+        return
+
+    rotor_center = patch_map_bounds_center(
+        main_rotor,
+        fallback=(
+            (MAIN_ROTOR_MAST_HOLE_X_RANGE[0] + MAIN_ROTOR_MAST_HOLE_X_RANGE[1]) * 0.5,
+            0.0,
+            mast_base[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
+        ),
+    )
+    target_center = (
+        mast_base[0],
+        mast_base[1],
+        mast_base[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
+    )
+    rotor_delta = vector_sub(target_center, rotor_center)
+    core.translate_patch_map(main_rotor, rotor_delta[0], rotor_delta[1], rotor_delta[2])
+
+    mast_bottom = (
+        mast_base[0],
+        mast_base[1],
+        mast_base[2] - MAIN_ROTOR_MAST_COLLAR_HALF_HEIGHT,
+    )
+    mast_top = (
+        target_center[0],
+        target_center[1],
+        target_center[2] - MAIN_ROTOR_CENTER_TO_MAST_TOP_Z,
+    )
+    append_cylinder_between(
+        body,
+        MAIN_ROTOR_MAST_MATERIAL,
+        mast_bottom,
+        mast_top,
+        MAIN_ROTOR_MAST_RADIUS,
+        segments=32,
+    )
+    append_cylinder_between(
+        body,
+        MAIN_ROTOR_MAST_MATERIAL,
+        (
+            mast_base[0],
+            mast_base[1],
+            mast_base[2] - MAIN_ROTOR_MAST_COLLAR_HALF_HEIGHT,
+        ),
+        (
+            mast_base[0],
+            mast_base[1],
+            mast_base[2] + MAIN_ROTOR_MAST_COLLAR_HALF_HEIGHT,
+        ),
+        MAIN_ROTOR_MAST_COLLAR_RADIUS,
+        segments=32,
+    )
+    print(
+        "Dev main rotor visual alignment: "
+        f"moved rotor by ({rotor_delta[0]:.3f}, {rotor_delta[1]:.3f}, {rotor_delta[2]:.3f})m "
+        f"onto mast base ({mast_base[0]:.3f}, {mast_base[1]:.3f}, {mast_base[2]:.3f})."
+    )
+
+
 def control_graphic_groups() -> list[tuple[str, list[str], str]]:
     candidates = [
         ("GTVRLeftCollectiveGraphics", ["LeftCollectiveLever"], "GTVRLeftCollectiveTransform.Output"),
@@ -2506,6 +2614,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     main_rotor, fallback_tail_rotor = core.legacy_rotor_patch_maps()
     core.translate_patch_map(main_rotor, 0.0, 0.0, args.visual_body_lift)
     core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
+    align_main_rotor_visual_to_body(body, main_rotor)
     visual_tail_rotor = tail_rotor or fallback_tail_rotor
     body_aft_x = patch_map_axis_min(body, 0)
     tail_rotor_x = (
@@ -2606,6 +2715,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
+                "main_rotor=legacy visual rotor is lowered/centered onto the Wraith roof mast hole and a generated dark mast shaft/collar is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
