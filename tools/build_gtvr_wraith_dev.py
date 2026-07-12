@@ -50,9 +50,10 @@ MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
 TIRE_BLACK_MATERIAL = "gtvr_tire_black"
 TIRE_BLACK_COLOR = (1, 1, 1)
 REAR_STRUT_LENGTH_SCALE = 0.65
-TAIL_ROTOR_AXIS = (1.0, 0.0, 0.0)
-TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.0, 2.27417)
-TAIL_ROTOR_AFT_CLEARANCE = 0.18
+TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
+TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
+TAIL_ROTOR_X_FROM_TAIL_END = 0.42
+TAIL_ROTOR_SIDE_CLEARANCE = 0.24
 TAIL_ROTOR_PROCEDURAL_RADIUS = 1.05
 TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.16
 TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH = 0.20
@@ -917,9 +918,9 @@ def append_tail_rotor_blade(
     *,
     angle: float,
 ) -> None:
-    radial = (0.0, math.cos(angle), math.sin(angle))
-    tangent = (0.0, -math.sin(angle), math.cos(angle))
-    thickness_axis = (1.0, 0.0, 0.0)
+    radial = (math.cos(angle), 0.0, math.sin(angle))
+    tangent = (-math.sin(angle), 0.0, math.cos(angle))
+    thickness_axis = (0.0, 1.0, 0.0)
     pivot = _current_tail_rotor_pivot
 
     def point(
@@ -1036,16 +1037,16 @@ def build_procedural_tail_rotor_geometry() -> dict[str, core.Patch]:
     append_cylinder_between(
         rotor,
         CYCLIC_OPAQUE_MATERIAL,
-        (pivot[0] - 0.16, pivot[1], pivot[2]),
-        (pivot[0] + 0.16, pivot[1], pivot[2]),
+        (pivot[0], pivot[1] - 0.16, pivot[2]),
+        (pivot[0], pivot[1] + 0.16, pivot[2]),
         0.085,
         segments=32,
     )
     append_cylinder_between(
         rotor,
         CONTROL_MATTE_BLACK_MATERIAL,
-        (pivot[0] - 0.22, pivot[1], pivot[2]),
-        (pivot[0] + 0.22, pivot[1], pivot[2]),
+        (pivot[0], pivot[1] - 0.22, pivot[2]),
+        (pivot[0], pivot[1] + 0.22, pivot[2]),
         0.045,
         segments=24,
     )
@@ -1942,6 +1943,25 @@ def patch_map_axis_min(patches: dict[str, core.Patch], axis_index: int) -> float
     return min(values)
 
 
+def patch_map_local_axis_max(
+    patches: dict[str, core.Patch],
+    axis_index: int,
+    *,
+    x_range: tuple[float, float],
+    z_range: tuple[float, float],
+) -> float | None:
+    values: list[float] = []
+    for patch in patches.values():
+        for offset in range(0, len(patch.vertices), 8):
+            x = patch.vertices[offset]
+            z = patch.vertices[offset + 2]
+            if x_range[0] <= x <= x_range[1] and z_range[0] <= z <= z_range[1]:
+                values.append(patch.vertices[offset + axis_index])
+    if not values:
+        return None
+    return max(values)
+
+
 def control_graphic_groups() -> list[tuple[str, list[str], str]]:
     candidates = [
         ("GTVRLeftCollectiveGraphics", ["LeftCollectiveLever"], "GTVRLeftCollectiveTransform.Output"),
@@ -2430,11 +2450,22 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
     visual_tail_rotor = tail_rotor or fallback_tail_rotor
     body_aft_x = patch_map_axis_min(body, 0)
-    _current_tail_rotor_pivot = (
-        (body_aft_x - TAIL_ROTOR_AFT_CLEARANCE)
+    tail_rotor_x = (
+        body_aft_x + TAIL_ROTOR_X_FROM_TAIL_END
         if body_aft_x is not None
-        else TAIL_ROTOR_BASE_PIVOT[0] + _current_pilot_alignment_x_delta,
-        TAIL_ROTOR_BASE_PIVOT[1],
+        else TAIL_ROTOR_BASE_PIVOT[0] + _current_pilot_alignment_x_delta
+    )
+    local_tail_side_y = patch_map_local_axis_max(
+        body,
+        1,
+        x_range=(tail_rotor_x - 0.50, tail_rotor_x + 0.50),
+        z_range=(TAIL_ROTOR_BASE_PIVOT[2] - 0.75, TAIL_ROTOR_BASE_PIVOT[2] + 0.75),
+    )
+    _current_tail_rotor_pivot = (
+        tail_rotor_x,
+        (local_tail_side_y + TAIL_ROTOR_SIDE_CLEARANCE)
+        if local_tail_side_y is not None
+        else TAIL_ROTOR_BASE_PIVOT[1],
         TAIL_ROTOR_BASE_PIVOT[2],
     )
     merge_patch_map_into(body, build_procedural_tail_rotor_geometry())
@@ -2517,7 +2548,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "tail_rotor=generated rear-facing four-blade tapered physical tail rotor with red blade tips is placed just aft of the actual tail end and baked into the Fuselage mesh",
+                "tail_rotor=generated side-mounted four-blade tapered physical tail rotor with red blade tips is placed outside the tail side and baked into the Fuselage mesh",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2620,7 +2651,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "A generated rear-facing four-blade tapered physical tail rotor with red blade tips is placed just aft of the actual tail end and baked into the Fuselage mesh.",
+                "A generated side-mounted four-blade tapered physical tail rotor with red blade tips is placed outside the tail side and baked into the Fuselage mesh.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
