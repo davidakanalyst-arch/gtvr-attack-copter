@@ -2422,11 +2422,6 @@ def empty_modelmanager_tmd() -> str:
 
 def dev_map_panel_system_tmd() -> str:
     size = MAP_PANEL_DISPLAY_SIZE
-    center = _current_center_map_pivot or fallback_center_map_pivot()
-    display_center_x = center[0] - 0.006
-    display_center_y = center[1]
-    display_center_z = center[2]
-    display_radius = math.hypot(0.30 * 0.5, 0.34 * 0.5)
     return f"""<[file][][]
     <[modelmanager][][]
         <[pointer_list_tmuniverse][DynamicObjects][]
@@ -2449,7 +2444,7 @@ def dev_map_panel_system_tmd() -> str:
             >
         >
         <[pointer_list_tmgraphics][GraphicObjects][]
-            // Independent centre panel using Aerofly's position-aware moving-map chain.
+            // Independent centre panel using the AN2 phone's proven direct map-render chain.
             <[rigidbodygraphics][GTVRMapPanelScreen][]
                 <[uint32][PositionID][Fuselage.R]>
                 <[uint32][OrientationID][Fuselage.Q]>
@@ -2458,23 +2453,6 @@ def dev_map_panel_system_tmd() -> str:
             <[texture_animation][GTVRMapPanelTexture][]
                 <[string8][TextureName][{MAP_PANEL_TEXTURE}]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
-                <[string8][RenderList][ GTVRMapPanelDisplay ]>
-            >
-            // Position-aware display container: map imagery, route geometry and ownship are
-            // evaluated together against the Wraith screen's real cockpit position.  This is
-            // the complete chain used by Aerofly's integrated moving-map installations.
-            <[graphics_animation_display][GTVRMapPanelDisplay][]
-                <[uint32][PositionID][Fuselage.R]>
-                <[uint32][OrientationID][Fuselage.Q]>
-                <[tmvector3d][R0][ {display_center_x:.6f} {display_center_y:.6f} {display_center_z:.6f} ]>
-                <[float64][Radius][{display_radius:.6f}]>
-                <[tmvector2d][TargetPosition][ 0 0 ]>
-                <[tmvector2d][TargetSize][ {size} {size} ]>
-                <[tmvector2d][TargetScale][ {size} {size} ]>
-                <[string8][InputDisplay][0]>
-                <[string8][RenderList][ GTVRMapPanelPositionedRenderList ]>
-            >
-            <[graphics_animation_render_list][GTVRMapPanelPositionedRenderList][]
                 <[string8][RenderList][ GTVRMapPanelMovingMap GTVRMapPanelOverlay ]>
             >
             <[graphics_input][GTVRMapPanelZoomInput][]
@@ -2494,6 +2472,9 @@ def dev_map_panel_system_tmd() -> str:
             <[graphics_input][GTVRMapPanelHeadingInput][]
                 <[uint32][InputID][GTVRMapPanelHeadingAngle.Output]>
             >
+            // Aerofly's generic navigation overlay keeps ownship and route geometry in the
+            // same geographic frame as the moving map.  The C172-specific overlay used by
+            // the AN2 phone can draw the symbols, but they are not map-locked in this option.
             <[display_navigation_overlay][GTVRMapPanelOverlay][]
                 <[tmvector2d][TargetPosition][ 0 0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
@@ -2506,13 +2487,14 @@ def dev_map_panel_system_tmd() -> str:
                 // navaid and airport label layer on the much smaller Wraith centre screen.
                 <[tmvector4f][ColorVOR][ 0.200 1.000 1.000 0.0 ]>
                 <[tmvector4f][ColorNDB][ 1.000 0.500 0.500 0.0 ]>
-                // Keep general airport labels hidden to avoid clutter; the active route and
-                // destination geometry remain visible through the route colours below.
+                // Airport labels from this option-hosted overlay do not receive the moving
+                // map's live position transform, so keep them hidden rather than show false
+                // static locations over moving terrain.
                 <[tmvector4f][ColorAirport][ 1.000 1.000 1.000 0.0 ]>
                 <[tmvector4f][ColorRoute][ 0.373 0.992 0.000 1.0 ]>
                 <[tmvector4f][ColorWaypoint][ 1.000 1.000 1.000 0.0 ]>
-                <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 1.0 ]>
-                <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 1.0 ]>
+                <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 0.0 ]>
+                <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 0.0 ]>
                 <[string8][InputHeading][GTVRMapPanelHeadingInput.Output]>
                 <[string8][InputZoom][GTVRMapPanelZoomInput.Output]>
             >
