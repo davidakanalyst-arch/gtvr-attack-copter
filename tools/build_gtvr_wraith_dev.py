@@ -2453,21 +2453,13 @@ def dev_map_panel_system_tmd() -> str:
             <[texture_animation][GTVRMapPanelTexture][]
                 <[string8][TextureName][{MAP_PANEL_TEXTURE}]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
-                <[string8][RenderList][ GTVRMapPanelMovingMap GTVRMapPanelOverlay GTVRMapPanelAirports ]>
+                <[string8][RenderList][ GTVRMapPanelMovingMap GTVRMapPanelOverlay ]>
             >
             <[graphics_input][GTVRMapPanelZoomInput][]
                 <[uint32][InputID][GTVRMapPanelZoom.Output]>
-                // One Aerofly zoom level closer than the previous +log2(1.5) setting.
-                // This halves the visible linear range so only the useful nearby airport
-                // group is labelled, while keeping the terrain and overlays aligned.
-                <[float64][Offset][-0.4150375]>
-            >
-            // The generic navigation overlay uses the inverse zoom convention documented by
-            // the working DR400 chain: overlay zoom = 5 - terrain-map zoom.
-            <[graphics_mapping_linear][GTVRMapPanelAirportZoom][]
-                <[string8][Input][GTVRMapPanelZoomInput.Output]>
-                <[float64][Scaling][-1.0]>
-                <[float64][Offset][5.0]>
+                // Aerofly map zoom is base-2 logarithmic.  +log2(1.5) shows 50% more
+                // map range than the AN2 original while preserving overlay alignment.
+                <[float64][Offset][0.5849625]>
             >
             <[texture_animation_map_display][GTVRMapPanelMovingMap][]
                 <[uint32][PositionID][Fuselage.R]>
@@ -2484,7 +2476,8 @@ def dev_map_panel_system_tmd() -> str:
                 <[tmvector2d][TargetPosition][ 0 0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
                 <[tmvector2d][TargetScale][ {size} {size} ]>
-                // Proven at commit 0bf193d: 60 is 50% larger than the AN2 original of 40.
+                // The AN2 aircraft symbol is a display glyph; 60 is 50% larger than its
+                // original size of 40.  All unwanted text glyph categories remain transparent.
                 <[float64][FontSize][ 60 ]>
                 <[tmvector4f][ColorAircraft][ 0.373 0.992 0.000 1.0 ]>
                 // Keep the useful aircraft/route overlay but suppress the AN2 phone's dense
@@ -2498,24 +2491,6 @@ def dev_map_panel_system_tmd() -> str:
                 <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 0.0 ]>
                 <[string8][InputHeading][GTVRMapPanelHeadingInput.Output]>
                 <[string8][InputZoom][GTVRMapPanelZoomInput.Output]>
-            >
-            // Separate airport-only pass: nearby airport symbols and ICAO labels remain
-            // correctly georeferenced without restoring the dense VOR/NDB/waypoint clutter.
-            <[display_navigation_overlay][GTVRMapPanelAirports][]
-                <[tmvector2d][TargetPosition][ 0 0 ]>
-                <[tmvector2d][TargetSize][ {size} {size} ]>
-                <[tmvector2d][TargetScale][ {size} {size} ]>
-                <[float64][FontSize][ 40 ]>
-                <[tmvector4f][ColorAircraft][ 0.373 0.992 0.000 0.0 ]>
-                <[tmvector4f][ColorVOR][ 0.200 1.000 1.000 0.0 ]>
-                <[tmvector4f][ColorNDB][ 1.000 0.500 0.500 0.0 ]>
-                <[tmvector4f][ColorAirport][ 1.000 1.000 1.000 1.0 ]>
-                <[tmvector4f][ColorRoute][ 0.373 0.992 0.000 0.0 ]>
-                <[tmvector4f][ColorWaypoint][ 1.000 1.000 1.000 0.0 ]>
-                <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 0.0 ]>
-                <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 0.0 ]>
-                <[string8][InputHeading][GTVRMapPanelHeadingInput.Output]>
-                <[string8][InputZoom][GTVRMapPanelAirportZoom.Output]>
             >
         >
     >
