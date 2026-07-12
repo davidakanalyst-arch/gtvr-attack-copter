@@ -2457,9 +2457,10 @@ def dev_map_panel_system_tmd() -> str:
             >
             <[graphics_input][GTVRMapPanelZoomInput][]
                 <[uint32][InputID][GTVRMapPanelZoom.Output]>
-                // Aerofly map zoom is base-2 logarithmic.  +log2(1.5) shows 50% more
-                // map range than the AN2 original while preserving overlay alignment.
-                <[float64][Offset][0.5849625]>
+                // One Aerofly zoom level closer than the previous +log2(1.5) setting.
+                // This halves the visible linear range so only the useful nearby airport
+                // group is labelled, while keeping the terrain and overlays aligned.
+                <[float64][Offset][-0.4150375]>
             >
             <[texture_animation_map_display][GTVRMapPanelMovingMap][]
                 <[uint32][PositionID][Fuselage.R]>
