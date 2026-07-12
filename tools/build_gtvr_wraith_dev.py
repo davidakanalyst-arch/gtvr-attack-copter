@@ -83,10 +83,25 @@ MAIN_ROTOR_SOURCE_MAST_TOP_Z = 2.42
 MAIN_ROTOR_SOURCE_CENTER_Z = 2.55
 MAIN_ROTOR_BASE_TO_CENTER_Z = MAIN_ROTOR_SOURCE_CENTER_Z - MAIN_ROTOR_SOURCE_MAST_BASE_Z
 MAIN_ROTOR_CENTER_TO_MAST_TOP_Z = MAIN_ROTOR_SOURCE_CENTER_Z - MAIN_ROTOR_SOURCE_MAST_TOP_Z
-MAIN_ROTOR_VISUAL_X_OFFSET_FROM_MAST = -0.85
 MAIN_ROTOR_MAST_RADIUS = 0.095
 MAIN_ROTOR_MAST_COLLAR_RADIUS = 0.155
 MAIN_ROTOR_MAST_COLLAR_HALF_HEIGHT = 0.035
+MAIN_ROTOR_PROCEDURAL_BLADE_COUNT = 4
+MAIN_ROTOR_PROCEDURAL_RADIUS = 4.90
+MAIN_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.24
+MAIN_ROTOR_PROCEDURAL_MID_RADIUS = 2.45
+MAIN_ROTOR_PROCEDURAL_ROOT_WIDTH = 0.34
+MAIN_ROTOR_PROCEDURAL_MID_WIDTH = 0.22
+MAIN_ROTOR_PROCEDURAL_TIP_WIDTH = 0.12
+MAIN_ROTOR_PROCEDURAL_TIP_SWEEP = -0.10
+MAIN_ROTOR_PROCEDURAL_BLADE_THICKNESS = 0.035
+MAIN_ROTOR_PROCEDURAL_PLANE_Z_OFFSET = MAIN_ROTOR_CENTER_TO_MAST_TOP_Z
+MAIN_ROTOR_PROCEDURAL_HUB_RADIUS = 0.18
+MAIN_ROTOR_PROCEDURAL_HUB_HEIGHT = MAIN_ROTOR_CENTER_TO_MAST_TOP_Z * 2.0
+MAIN_ROTOR_BLUR_STREAKS = 16
+MAIN_ROTOR_BLUR_INNER_RADIUS = 0.55
+MAIN_ROTOR_BLUR_OUTER_RADIUS = 4.70
+MAIN_ROTOR_BLUR_SWEEP = math.radians(5.0)
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
 LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
@@ -2098,9 +2113,181 @@ def patch_map_material_top_center_in_box(
     )
 
 
-def align_main_rotor_visual_to_body(
+def append_main_rotor_blade(
+    rotor: dict[str, core.Patch],
+    *,
+    center: tuple[float, float, float],
+    angle: float,
+) -> None:
+    radial = (math.cos(angle), math.sin(angle), 0.0)
+    tangent = (-math.sin(angle), math.cos(angle), 0.0)
+    vertical = (0.0, 0.0, 1.0)
+
+    def point(
+        radius: float,
+        width: float,
+        side: float,
+        thickness_side: float,
+        sweep: float,
+    ) -> tuple[float, float, float]:
+        return vector_add(
+            center,
+            vector_add(
+                vector_mul(radial, radius),
+                vector_add(
+                    vector_mul(tangent, width * 0.5 * side + sweep),
+                    vector_mul(vertical, MAIN_ROTOR_PROCEDURAL_BLADE_THICKNESS * 0.5 * thickness_side),
+                ),
+            ),
+        )
+
+    stations = [
+        (
+            MAIN_ROTOR_PROCEDURAL_ROOT_RADIUS,
+            MAIN_ROTOR_PROCEDURAL_ROOT_WIDTH,
+            0.000,
+        ),
+        (
+            MAIN_ROTOR_PROCEDURAL_MID_RADIUS,
+            MAIN_ROTOR_PROCEDURAL_MID_WIDTH,
+            MAIN_ROTOR_PROCEDURAL_TIP_SWEEP * 0.35,
+        ),
+        (
+            MAIN_ROTOR_PROCEDURAL_RADIUS,
+            MAIN_ROTOR_PROCEDURAL_TIP_WIDTH,
+            MAIN_ROTOR_PROCEDURAL_TIP_SWEEP,
+        ),
+    ]
+
+    def station_points(station: tuple[float, float, float]) -> dict[str, tuple[float, float, float]]:
+        radius, width, sweep = station
+        return {
+            "leading_top": point(radius, width, -1.0, 1.0, sweep),
+            "trailing_top": point(radius, width, 1.0, 1.0, sweep),
+            "leading_bottom": point(radius, width, -1.0, -1.0, sweep),
+            "trailing_bottom": point(radius, width, 1.0, -1.0, sweep),
+        }
+
+    section_points = [station_points(station) for station in stations]
+    for index in range(len(section_points) - 1):
+        current = section_points[index]
+        next_station = section_points[index + 1]
+        u0 = index / (len(section_points) - 1)
+        u1 = (index + 1) / (len(section_points) - 1)
+        append_double_sided_auto_quad(
+            rotor,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            [
+                current["leading_top"],
+                next_station["leading_top"],
+                next_station["trailing_top"],
+                current["trailing_top"],
+            ],
+            [(u0, 0.0), (u1, 0.0), (u1, 1.0), (u0, 1.0)],
+        )
+        append_double_sided_auto_quad(
+            rotor,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            [
+                current["trailing_bottom"],
+                next_station["trailing_bottom"],
+                next_station["leading_bottom"],
+                current["leading_bottom"],
+            ],
+            [(u0, 1.0), (u1, 1.0), (u1, 0.0), (u0, 0.0)],
+        )
+        append_double_sided_auto_quad(
+            rotor,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            [
+                current["leading_bottom"],
+                next_station["leading_bottom"],
+                next_station["leading_top"],
+                current["leading_top"],
+            ],
+        )
+        append_double_sided_auto_quad(
+            rotor,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            [
+                current["trailing_top"],
+                next_station["trailing_top"],
+                next_station["trailing_bottom"],
+                current["trailing_bottom"],
+            ],
+        )
+
+    for cap in (section_points[0], section_points[-1]):
+        append_double_sided_auto_quad(
+            rotor,
+            CONTROL_MATTE_BLACK_MATERIAL,
+            [
+                cap["leading_bottom"],
+                cap["leading_top"],
+                cap["trailing_top"],
+                cap["trailing_bottom"],
+            ],
+        )
+
+
+def append_main_rotor_blur_streak(
+    rotor: dict[str, core.Patch],
+    *,
+    center: tuple[float, float, float],
+    angle: float,
+) -> None:
+    blur_center = (center[0], center[1], center[2] + MAIN_ROTOR_PROCEDURAL_BLADE_THICKNESS * 1.2)
+
+    def point(radius: float, theta: float) -> tuple[float, float, float]:
+        return (
+            blur_center[0] + math.cos(theta) * radius,
+            blur_center[1] + math.sin(theta) * radius,
+            blur_center[2],
+        )
+
+    a0 = angle - MAIN_ROTOR_BLUR_SWEEP * 0.5
+    a1 = angle + MAIN_ROTOR_BLUR_SWEEP * 0.5
+    append_double_sided_auto_quad(
+        rotor,
+        TAIL_ROTOR_BLUR_MATERIAL,
+        [
+            point(MAIN_ROTOR_BLUR_INNER_RADIUS, a0),
+            point(MAIN_ROTOR_BLUR_OUTER_RADIUS, a0 + MAIN_ROTOR_BLUR_SWEEP * 0.35),
+            point(MAIN_ROTOR_BLUR_OUTER_RADIUS, a1 + MAIN_ROTOR_BLUR_SWEEP * 0.35),
+            point(MAIN_ROTOR_BLUR_INNER_RADIUS, a1),
+        ],
+    )
+
+
+def build_procedural_main_rotor_geometry(
+    center: tuple[float, float, float],
+) -> dict[str, core.Patch]:
+    rotor: dict[str, core.Patch] = {}
+    append_cylinder_between(
+        rotor,
+        CONTROL_MATTE_BLACK_MATERIAL,
+        (center[0], center[1], center[2] - MAIN_ROTOR_PROCEDURAL_HUB_HEIGHT * 0.5),
+        (center[0], center[1], center[2] + MAIN_ROTOR_PROCEDURAL_HUB_HEIGHT * 0.5),
+        MAIN_ROTOR_PROCEDURAL_HUB_RADIUS,
+        segments=32,
+    )
+    for blade_index in range(MAIN_ROTOR_PROCEDURAL_BLADE_COUNT):
+        append_main_rotor_blade(
+            rotor,
+            center=center,
+            angle=blade_index * math.tau / MAIN_ROTOR_PROCEDURAL_BLADE_COUNT,
+        )
+    for streak_index in range(MAIN_ROTOR_BLUR_STREAKS):
+        append_main_rotor_blur_streak(
+            rotor,
+            center=center,
+            angle=streak_index * math.tau / MAIN_ROTOR_BLUR_STREAKS + math.radians(3.0),
+        )
+    return rotor
+
+
+def add_generated_main_rotor_visual_to_body(
     body: dict[str, core.Patch],
-    main_rotor: dict[str, core.Patch],
 ) -> None:
     mast_height_anchor = patch_map_highest_point_in_box(
         body,
@@ -2120,22 +2307,6 @@ def align_main_rotor_visual_to_body(
     )
     mast_base = mast_socket or mast_height_anchor
 
-    rotor_center = patch_map_bounds_center(
-        main_rotor,
-        fallback=(
-            (MAIN_ROTOR_MAST_HOLE_X_RANGE[0] + MAIN_ROTOR_MAST_HOLE_X_RANGE[1]) * 0.5,
-            0.0,
-            mast_height_anchor[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
-        ),
-    )
-    target_center = (
-        mast_base[0] + MAIN_ROTOR_VISUAL_X_OFFSET_FROM_MAST,
-        mast_base[1],
-        mast_height_anchor[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
-    )
-    rotor_delta = vector_sub(target_center, rotor_center)
-    core.translate_patch_map(main_rotor, rotor_delta[0], rotor_delta[1], rotor_delta[2])
-
     mast_bottom = (
         mast_base[0],
         mast_base[1],
@@ -2144,7 +2315,12 @@ def align_main_rotor_visual_to_body(
     mast_top = (
         mast_base[0],
         mast_base[1],
-        target_center[2] - MAIN_ROTOR_CENTER_TO_MAST_TOP_Z,
+        mast_height_anchor[2] + MAIN_ROTOR_BASE_TO_CENTER_Z - MAIN_ROTOR_CENTER_TO_MAST_TOP_Z,
+    )
+    rotor_center = (
+        mast_top[0],
+        mast_top[1],
+        mast_top[2] + MAIN_ROTOR_PROCEDURAL_PLANE_Z_OFFSET,
     )
     append_cylinder_between(
         body,
@@ -2170,10 +2346,11 @@ def align_main_rotor_visual_to_body(
         MAIN_ROTOR_MAST_COLLAR_RADIUS,
         segments=32,
     )
+    merge_patch_map_into(body, build_procedural_main_rotor_geometry(rotor_center))
     print(
-        "Dev main rotor visual alignment: "
-        f"moved rotor by ({rotor_delta[0]:.3f}, {rotor_delta[1]:.3f}, {rotor_delta[2]:.3f})m "
-        f"onto mast base ({mast_base[0]:.3f}, {mast_base[1]:.3f}, {mast_base[2]:.3f})."
+        "Dev main rotor visual replacement: "
+        f"generated shaft-top four-blade main prop at ({rotor_center[0]:.3f}, "
+        f"{rotor_center[1]:.3f}, {rotor_center[2]:.3f}) and hid inherited RotorBlade0-3 geometry."
     )
 
 
@@ -2660,10 +2837,9 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
 
     materials, body, tail_rotor, visual_gear, source_faces, imported_faces = core.build_body(args)
     core.add_flat_materials(materials, core.SOURCE_DIR)
-    main_rotor, fallback_tail_rotor = core.legacy_rotor_patch_maps()
-    core.translate_patch_map(main_rotor, 0.0, 0.0, args.visual_body_lift)
+    _legacy_main_rotor, fallback_tail_rotor = core.legacy_rotor_patch_maps()
     core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
-    align_main_rotor_visual_to_body(body, main_rotor)
+    add_generated_main_rotor_visual_to_body(body)
     visual_tail_rotor = tail_rotor or fallback_tail_rotor
     body_aft_x = patch_map_axis_min(body, 0)
     tail_rotor_x = (
@@ -2702,7 +2878,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         elif geometry_name == "SkidsMiddle":
             geometries[geometry_name] = core.copy_patch_map(visual_gear)
         elif geometry_name in {"RotorBlade0", "RotorBlade1", "RotorBlade2", "RotorBlade3"}:
-            geometries[geometry_name] = core.clone_patch_map(main_rotor)
+            geometries[geometry_name] = {}
         elif geometry_name == "TailBlade0":
             geometries[geometry_name] = {}
         elif geometry_name.startswith("TailBlade") or geometry_name in {"TailRotorHub", "TailRotorCont"}:
@@ -2764,7 +2940,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "main_rotor=legacy visual rotor is lowered/centered onto the Wraith roof mast hole and a generated dark mast shaft/collar is baked into the Fuselage mesh",
+                "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
