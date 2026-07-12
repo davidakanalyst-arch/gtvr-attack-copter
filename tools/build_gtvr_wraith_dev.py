@@ -2498,9 +2498,9 @@ def dev_map_panel_system_tmd() -> str:
                 <[tmvector2d][TargetPosition][ 0 0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
                 <[tmvector2d][TargetScale][ {size} {size} ]>
-                // The AN2 aircraft symbol is a display glyph; 60 is 50% larger than its
-                // original size of 40.  All unwanted text glyph categories remain transparent.
-                <[float64][FontSize][ 60 ]>
+                // Enlarge the active aircraft/route/destination glyphs to make the
+                // geographically positioned navigation markers legible on the Wraith panel.
+                <[float64][FontSize][ 180 ]>
                 <[tmvector4f][ColorAircraft][ 0.373 0.992 0.000 1.0 ]>
                 // Keep the useful aircraft/route overlay but suppress the AN2 phone's dense
                 // navaid and airport label layer on the much smaller Wraith centre screen.
