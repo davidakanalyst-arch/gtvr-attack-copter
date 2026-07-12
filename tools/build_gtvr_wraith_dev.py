@@ -2472,7 +2472,10 @@ def dev_map_panel_system_tmd() -> str:
             <[graphics_input][GTVRMapPanelHeadingInput][]
                 <[uint32][InputID][GTVRMapPanelHeadingAngle.Output]>
             >
-            <[display_c172][GTVRMapPanelOverlay][]
+            // Aerofly's generic navigation overlay keeps ownship and route geometry in the
+            // same geographic frame as the moving map.  The C172-specific overlay used by
+            // the AN2 phone can draw the symbols, but they are not map-locked in this option.
+            <[display_navigation_overlay][GTVRMapPanelOverlay][]
                 <[tmvector2d][TargetPosition][ 0 0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
                 <[tmvector2d][TargetScale][ {size} {size} ]>
