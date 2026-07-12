@@ -50,9 +50,15 @@ MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
 TIRE_BLACK_MATERIAL = "gtvr_tire_black"
 TIRE_BLACK_COLOR = (1, 1, 1)
 REAR_STRUT_LENGTH_SCALE = 0.65
-TAIL_ROTOR_GEOMETRIES = ("TailBlade0",)
+TAIL_ROTOR_PROCEDURAL_GEOMETRY = "GTVRProceduralTailRotor"
+TAIL_ROTOR_GEOMETRIES = (TAIL_ROTOR_PROCEDURAL_GEOMETRY,)
 TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
 TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
+TAIL_ROTOR_PROCEDURAL_RADIUS = 0.72
+TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.12
+TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH = 0.12
+TAIL_ROTOR_PROCEDURAL_TIP_WIDTH = 0.055
+TAIL_ROTOR_PROCEDURAL_TIP_MARKER = 0.11
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
 LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
@@ -890,6 +896,88 @@ def append_auto_quad(
     edge_b = vector_sub(points[2], points[0])
     normal = vector_normalize(vector_cross(edge_a, edge_b))
     append_quad(patch_for(body, material_name), points, normal, uvs)
+
+
+def append_double_sided_auto_quad(
+    body: dict[str, core.Patch],
+    material_name: str,
+    points: list[tuple[float, float, float]],
+    uvs: list[tuple[float, float]] | None = None,
+) -> None:
+    append_auto_quad(body, material_name, points, uvs)
+    reversed_uvs = list(reversed(uvs)) if uvs is not None else None
+    append_auto_quad(body, material_name, list(reversed(points)), reversed_uvs)
+
+
+def append_tail_rotor_blade(
+    rotor: dict[str, core.Patch],
+    *,
+    angle: float,
+) -> None:
+    radial = (math.cos(angle), 0.0, math.sin(angle))
+    tangent = (-math.sin(angle), 0.0, math.cos(angle))
+    pivot = _current_tail_rotor_pivot
+
+    def point(radius: float, width: float, side: float) -> tuple[float, float, float]:
+        return vector_add(
+            pivot,
+            vector_add(
+                vector_mul(radial, radius),
+                vector_mul(tangent, width * 0.5 * side),
+            ),
+        )
+
+    root_radius = TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS
+    tip_radius = TAIL_ROTOR_PROCEDURAL_RADIUS
+    marker_root = max(root_radius, tip_radius - TAIL_ROTOR_PROCEDURAL_TIP_MARKER)
+    blade_points = [
+        point(root_radius, TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH, -1.0),
+        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, -1.0),
+        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, 1.0),
+        point(root_radius, TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH, 1.0),
+    ]
+    tip_points = [
+        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, -1.0),
+        point(tip_radius, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH * 0.72, -1.0),
+        point(tip_radius, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH * 0.72, 1.0),
+        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, 1.0),
+    ]
+    append_double_sided_auto_quad(
+        rotor,
+        CONTROL_MATTE_BLACK_MATERIAL,
+        blade_points,
+        [(0.0, 0.0), (0.85, 0.0), (0.85, 1.0), (0.0, 1.0)],
+    )
+    append_double_sided_auto_quad(
+        rotor,
+        "gtvr_cockpit_button_red",
+        tip_points,
+        [(0.85, 0.0), (1.0, 0.0), (1.0, 1.0), (0.85, 1.0)],
+    )
+
+
+def build_procedural_tail_rotor_geometry() -> dict[str, core.Patch]:
+    rotor: dict[str, core.Patch] = {}
+    pivot = _current_tail_rotor_pivot
+    append_cylinder_between(
+        rotor,
+        CYCLIC_OPAQUE_MATERIAL,
+        (pivot[0], pivot[1] - 0.12, pivot[2]),
+        (pivot[0], pivot[1] + 0.12, pivot[2]),
+        0.085,
+        segments=32,
+    )
+    append_cylinder_between(
+        rotor,
+        CONTROL_MATTE_BLACK_MATERIAL,
+        (pivot[0], pivot[1] - 0.16, pivot[2]),
+        (pivot[0], pivot[1] + 0.16, pivot[2]),
+        0.045,
+        segments=24,
+    )
+    for blade_index in range(4):
+        append_tail_rotor_blade(rotor, angle=blade_index * math.tau / 4.0 + math.radians(10.0))
+    return rotor
 
 
 def append_pillowed_seat_cushion(
@@ -1739,7 +1827,7 @@ def fmt_vector(values: tuple[float, float, float]) -> str:
 def tail_rotor_graphics_objects() -> str:
     geometry_list = " ".join(TAIL_ROTOR_GEOMETRIES)
     return f"""
-            // GTVR animated rear rotor; drive the imported blade mesh from the EC135 shaft angle.
+            // GTVR animated rear rotor; drive explicit visible blades from the EC135 shaft angle.
             <[rotatingbodygraphics][GTVRTailRotorGraphics][]
                 <[string8][GeometryList][ {geometry_list} ]>
                 <[uint32][PositionID][Fuselage.R]>
@@ -2290,11 +2378,13 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         elif geometry_name in {"RotorBlade0", "RotorBlade1", "RotorBlade2", "RotorBlade3"}:
             geometries[geometry_name] = core.clone_patch_map(main_rotor)
         elif geometry_name == "TailBlade0":
-            geometries[geometry_name] = core.copy_patch_map(visual_tail_rotor)
+            geometries[geometry_name] = {}
         elif geometry_name.startswith("TailBlade") or geometry_name in {"TailRotorHub", "TailRotorCont"}:
             geometries[geometry_name] = {}
         else:
             geometries[geometry_name] = {}
+
+    geometries[TAIL_ROTOR_PROCEDURAL_GEOMETRY] = build_procedural_tail_rotor_geometry()
 
     for geometry_name, patches in _current_animated_control_geometries.items():
         geometries.setdefault(geometry_name, core.copy_patch_map(patches))
@@ -2350,7 +2440,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "tail_rotor=TailBlade0 is removed from the static fuselage list and rotated about the generated blade hub center from the EC135 TailRotorShaft angle",
+                "tail_rotor=generated four-blade rear prop with red tips is rotated about the tail hub center from the EC135 TailRotorShaft angle",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2453,7 +2543,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "The imported rear rotor is removed from the static fuselage list and rendered by a dedicated rotating graphics object driven by the inherited EC135 tail-rotor shaft angle.",
+                "A generated four-blade rear prop with red tips is rendered by a dedicated rotating graphics object driven by the inherited EC135 tail-rotor shaft angle.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
