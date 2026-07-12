@@ -55,7 +55,7 @@ TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
 TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
 TAIL_ROTOR_X_FROM_TAIL_END = 0.42
 TAIL_ROTOR_SIDE_CLEARANCE = 0.08
-TAIL_ROTOR_PLANE_ROLL = math.radians(-25.0)
+TAIL_ROTOR_PLANE_ROLL = math.radians(25.7)
 TAIL_ROTOR_BLADE_PHASE = math.radians(10.0)
 TAIL_ROTOR_PROCEDURAL_RADIUS = 1.05
 TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.16
@@ -2606,7 +2606,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, tail-matching tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
+                "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2709,7 +2709,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, tail-matching tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
+                "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
