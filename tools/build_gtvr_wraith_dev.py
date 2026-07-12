@@ -55,7 +55,8 @@ TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
 TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
 TAIL_ROTOR_X_FROM_TAIL_END = 0.42
 TAIL_ROTOR_SIDE_CLEARANCE = 0.08
-TAIL_ROTOR_MOUNT_TILT = math.radians(-18.0)
+TAIL_ROTOR_PLANE_ROLL = math.radians(-25.0)
+TAIL_ROTOR_BLADE_PHASE = math.radians(10.0)
 TAIL_ROTOR_PROCEDURAL_RADIUS = 1.05
 TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.16
 TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH = 0.20
@@ -920,15 +921,26 @@ def append_double_sided_auto_quad(
     append_auto_quad(body, material_name, list(reversed(points)), reversed_uvs)
 
 
+def tail_rotor_roll_vector(vector: tuple[float, float, float]) -> tuple[float, float, float]:
+    x, y, z = vector
+    cos_roll = math.cos(TAIL_ROTOR_PLANE_ROLL)
+    sin_roll = math.sin(TAIL_ROTOR_PLANE_ROLL)
+    return (x, y * cos_roll - z * sin_roll, y * sin_roll + z * cos_roll)
+
+
+def tail_rotor_axis_vector() -> tuple[float, float, float]:
+    return tail_rotor_roll_vector(TAIL_ROTOR_AXIS)
+
+
 def append_tail_rotor_blade(
     rotor: dict[str, core.Patch],
     *,
     angle: float,
 ) -> None:
-    tilted_angle = angle + TAIL_ROTOR_MOUNT_TILT
-    radial = (math.cos(tilted_angle), 0.0, math.sin(tilted_angle))
-    tangent = (-math.sin(tilted_angle), 0.0, math.cos(tilted_angle))
-    thickness_axis = (0.0, 1.0, 0.0)
+    blade_angle = angle + TAIL_ROTOR_BLADE_PHASE
+    radial = tail_rotor_roll_vector((math.cos(blade_angle), 0.0, math.sin(blade_angle)))
+    tangent = tail_rotor_roll_vector((-math.sin(blade_angle), 0.0, math.cos(blade_angle)))
+    thickness_axis = tail_rotor_axis_vector()
     pivot = _current_tail_rotor_pivot
 
     def point(
@@ -1045,20 +1057,19 @@ def append_tail_rotor_blur_streak(
     angle: float,
 ) -> None:
     pivot = _current_tail_rotor_pivot
-    y = pivot[1] + TAIL_ROTOR_PROCEDURAL_TIP_THICKNESS * 1.4
-    tilted_angle = angle + TAIL_ROTOR_MOUNT_TILT
+    axis_offset = vector_mul(tail_rotor_axis_vector(), TAIL_ROTOR_PROCEDURAL_TIP_THICKNESS * 1.4)
+    blade_angle = angle + TAIL_ROTOR_BLADE_PHASE
 
     def point(radius: float, theta: float) -> tuple[float, float, float]:
-        return (
-            pivot[0] + math.cos(theta) * radius,
-            y,
-            pivot[2] + math.sin(theta) * radius,
+        return vector_add(
+            vector_add(pivot, axis_offset),
+            tail_rotor_roll_vector((math.cos(theta) * radius, 0.0, math.sin(theta) * radius)),
         )
 
     inner = TAIL_ROTOR_BLUR_INNER_RADIUS
     outer = TAIL_ROTOR_BLUR_OUTER_RADIUS
-    a0 = tilted_angle - TAIL_ROTOR_BLUR_SWEEP * 0.5
-    a1 = tilted_angle + TAIL_ROTOR_BLUR_SWEEP * 0.5
+    a0 = blade_angle - TAIL_ROTOR_BLUR_SWEEP * 0.5
+    a1 = blade_angle + TAIL_ROTOR_BLUR_SWEEP * 0.5
     # Slightly skew the outer edge to mimic a moving blade smear instead of a rigid spoke.
     append_double_sided_auto_quad(
         rotor,
@@ -1075,24 +1086,25 @@ def append_tail_rotor_blur_streak(
 def build_procedural_tail_rotor_geometry() -> dict[str, core.Patch]:
     rotor: dict[str, core.Patch] = {}
     pivot = _current_tail_rotor_pivot
+    rotor_axis = tail_rotor_axis_vector()
     append_cylinder_between(
         rotor,
         CYCLIC_OPAQUE_MATERIAL,
-        (pivot[0], pivot[1] - 0.16, pivot[2]),
-        (pivot[0], pivot[1] + 0.16, pivot[2]),
+        vector_add(pivot, vector_mul(rotor_axis, -0.16)),
+        vector_add(pivot, vector_mul(rotor_axis, 0.16)),
         0.085,
         segments=32,
     )
     append_cylinder_between(
         rotor,
         CONTROL_MATTE_BLACK_MATERIAL,
-        (pivot[0], pivot[1] - 0.22, pivot[2]),
-        (pivot[0], pivot[1] + 0.22, pivot[2]),
+        vector_add(pivot, vector_mul(rotor_axis, -0.22)),
+        vector_add(pivot, vector_mul(rotor_axis, 0.22)),
         0.045,
         segments=24,
     )
     for blade_index in range(4):
-        append_tail_rotor_blade(rotor, angle=blade_index * math.tau / 4.0 + math.radians(10.0))
+        append_tail_rotor_blade(rotor, angle=blade_index * math.tau / 4.0)
     for streak_index in range(TAIL_ROTOR_BLUR_STREAKS):
         append_tail_rotor_blur_streak(
             rotor,
