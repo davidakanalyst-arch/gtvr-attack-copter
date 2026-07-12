@@ -2457,9 +2457,9 @@ def dev_map_panel_system_tmd() -> str:
             >
             <[graphics_input][GTVRMapPanelZoomInput][]
                 <[uint32][InputID][GTVRMapPanelZoom.Output]>
-                // Aerofly map zoom is base-2 logarithmic.  -log2(1.5) gives 50% more
-                // magnification while preserving the AN2 zoom control and overlay alignment.
-                <[float64][Offset][-0.5849625]>
+                // Aerofly map zoom is base-2 logarithmic.  +log2(1.5) shows 50% more
+                // map range than the AN2 original while preserving overlay alignment.
+                <[float64][Offset][0.5849625]>
             >
             <[texture_animation_map_display][GTVRMapPanelMovingMap][]
                 <[uint32][PositionID][Fuselage.R]>
@@ -2476,7 +2476,9 @@ def dev_map_panel_system_tmd() -> str:
                 <[tmvector2d][TargetPosition][ 0 0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
                 <[tmvector2d][TargetScale][ {size} {size} ]>
-                <[float64][FontSize][ 40 ]>
+                // The AN2 aircraft symbol is a display glyph; 60 is 50% larger than its
+                // original size of 40.  All unwanted text glyph categories remain transparent.
+                <[float64][FontSize][ 60 ]>
                 <[tmvector4f][ColorAircraft][ 0.373 0.992 0.000 1.0 ]>
                 // Keep the useful aircraft/route overlay but suppress the AN2 phone's dense
                 // navaid and airport label layer on the much smaller Wraith centre screen.
