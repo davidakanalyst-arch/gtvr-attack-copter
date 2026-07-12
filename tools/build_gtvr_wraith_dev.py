@@ -52,13 +52,17 @@ TIRE_BLACK_COLOR = (1, 1, 1)
 REAR_STRUT_LENGTH_SCALE = 0.65
 TAIL_ROTOR_PROCEDURAL_GEOMETRY = "GTVRProceduralTailRotor"
 TAIL_ROTOR_GEOMETRIES = (TAIL_ROTOR_PROCEDURAL_GEOMETRY,)
-TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
-TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
-TAIL_ROTOR_PROCEDURAL_RADIUS = 0.72
-TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.12
-TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH = 0.12
-TAIL_ROTOR_PROCEDURAL_TIP_WIDTH = 0.055
-TAIL_ROTOR_PROCEDURAL_TIP_MARKER = 0.11
+TAIL_ROTOR_AXIS = (1.0, 0.0, 0.0)
+TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.0, 2.27417)
+TAIL_ROTOR_PROCEDURAL_RADIUS = 1.05
+TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.16
+TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH = 0.20
+TAIL_ROTOR_PROCEDURAL_MID_WIDTH = 0.13
+TAIL_ROTOR_PROCEDURAL_TIP_WIDTH = 0.075
+TAIL_ROTOR_PROCEDURAL_TIP_MARKER = 0.18
+TAIL_ROTOR_PROCEDURAL_ROOT_THICKNESS = 0.060
+TAIL_ROTOR_PROCEDURAL_MID_THICKNESS = 0.040
+TAIL_ROTOR_PROCEDURAL_TIP_THICKNESS = 0.026
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
 LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
@@ -914,46 +918,117 @@ def append_tail_rotor_blade(
     *,
     angle: float,
 ) -> None:
-    radial = (math.cos(angle), 0.0, math.sin(angle))
-    tangent = (-math.sin(angle), 0.0, math.cos(angle))
+    radial = (0.0, math.cos(angle), math.sin(angle))
+    tangent = (0.0, -math.sin(angle), math.cos(angle))
+    thickness_axis = (1.0, 0.0, 0.0)
     pivot = _current_tail_rotor_pivot
 
-    def point(radius: float, width: float, side: float) -> tuple[float, float, float]:
+    def point(
+        radius: float,
+        width: float,
+        side: float,
+        thickness: float,
+        thickness_side: float,
+        sweep: float,
+    ) -> tuple[float, float, float]:
         return vector_add(
             pivot,
             vector_add(
                 vector_mul(radial, radius),
-                vector_mul(tangent, width * 0.5 * side),
+                vector_add(
+                    vector_mul(tangent, sweep + width * 0.5 * side),
+                    vector_mul(thickness_axis, thickness * 0.5 * thickness_side),
+                ),
             ),
         )
 
     root_radius = TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS
+    mid_radius = (TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS + TAIL_ROTOR_PROCEDURAL_RADIUS) * 0.55
     tip_radius = TAIL_ROTOR_PROCEDURAL_RADIUS
     marker_root = max(root_radius, tip_radius - TAIL_ROTOR_PROCEDURAL_TIP_MARKER)
-    blade_points = [
-        point(root_radius, TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH, -1.0),
-        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, -1.0),
-        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, 1.0),
-        point(root_radius, TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH, 1.0),
+
+    stations = [
+        (root_radius, TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH, TAIL_ROTOR_PROCEDURAL_ROOT_THICKNESS, 0.000),
+        (mid_radius, TAIL_ROTOR_PROCEDURAL_MID_WIDTH, TAIL_ROTOR_PROCEDURAL_MID_THICKNESS, -0.030),
+        (marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, TAIL_ROTOR_PROCEDURAL_TIP_THICKNESS, -0.060),
+        (tip_radius, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH * 0.72, TAIL_ROTOR_PROCEDURAL_TIP_THICKNESS, -0.075),
     ]
-    tip_points = [
-        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, -1.0),
-        point(tip_radius, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH * 0.72, -1.0),
-        point(tip_radius, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH * 0.72, 1.0),
-        point(marker_root, TAIL_ROTOR_PROCEDURAL_TIP_WIDTH, 1.0),
-    ]
-    append_double_sided_auto_quad(
-        rotor,
-        CONTROL_MATTE_BLACK_MATERIAL,
-        blade_points,
-        [(0.0, 0.0), (0.85, 0.0), (0.85, 1.0), (0.0, 1.0)],
-    )
-    append_double_sided_auto_quad(
-        rotor,
-        "gtvr_cockpit_button_red",
-        tip_points,
-        [(0.85, 0.0), (1.0, 0.0), (1.0, 1.0), (0.85, 1.0)],
-    )
+
+    def station_points(station: tuple[float, float, float, float]) -> dict[str, tuple[float, float, float]]:
+        radius, width, thickness, sweep = station
+        return {
+            "leading_top": point(radius, width, -1.0, thickness, 1.0, sweep),
+            "trailing_top": point(radius, width, 1.0, thickness, 1.0, sweep),
+            "leading_bottom": point(radius, width, -1.0, thickness, -1.0, sweep),
+            "trailing_bottom": point(radius, width, 1.0, thickness, -1.0, sweep),
+        }
+
+    section_points = [station_points(station) for station in stations]
+    for index in range(len(section_points) - 1):
+        material_name = "gtvr_cockpit_button_red" if index == len(section_points) - 2 else CONTROL_MATTE_BLACK_MATERIAL
+        current = section_points[index]
+        next_station = section_points[index + 1]
+        u0 = index / (len(section_points) - 1)
+        u1 = (index + 1) / (len(section_points) - 1)
+        append_double_sided_auto_quad(
+            rotor,
+            material_name,
+            [
+                current["leading_top"],
+                next_station["leading_top"],
+                next_station["trailing_top"],
+                current["trailing_top"],
+            ],
+            [(u0, 0.0), (u1, 0.0), (u1, 1.0), (u0, 1.0)],
+        )
+        append_double_sided_auto_quad(
+            rotor,
+            material_name,
+            [
+                current["trailing_bottom"],
+                next_station["trailing_bottom"],
+                next_station["leading_bottom"],
+                current["leading_bottom"],
+            ],
+            [(u0, 1.0), (u1, 1.0), (u1, 0.0), (u0, 0.0)],
+        )
+        append_double_sided_auto_quad(
+            rotor,
+            material_name,
+            [
+                current["leading_bottom"],
+                next_station["leading_bottom"],
+                next_station["leading_top"],
+                current["leading_top"],
+            ],
+        )
+        append_double_sided_auto_quad(
+            rotor,
+            material_name,
+            [
+                current["trailing_top"],
+                next_station["trailing_top"],
+                next_station["trailing_bottom"],
+                current["trailing_bottom"],
+            ],
+        )
+
+    root = section_points[0]
+    tip = section_points[-1]
+    for material_name, cap in (
+        (CONTROL_MATTE_BLACK_MATERIAL, root),
+        ("gtvr_cockpit_button_red", tip),
+    ):
+        append_double_sided_auto_quad(
+            rotor,
+            material_name,
+            [
+                cap["leading_bottom"],
+                cap["leading_top"],
+                cap["trailing_top"],
+                cap["trailing_bottom"],
+            ],
+        )
 
 
 def build_procedural_tail_rotor_geometry() -> dict[str, core.Patch]:
@@ -962,16 +1037,16 @@ def build_procedural_tail_rotor_geometry() -> dict[str, core.Patch]:
     append_cylinder_between(
         rotor,
         CYCLIC_OPAQUE_MATERIAL,
-        (pivot[0], pivot[1] - 0.12, pivot[2]),
-        (pivot[0], pivot[1] + 0.12, pivot[2]),
+        (pivot[0] - 0.16, pivot[1], pivot[2]),
+        (pivot[0] + 0.16, pivot[1], pivot[2]),
         0.085,
         segments=32,
     )
     append_cylinder_between(
         rotor,
         CONTROL_MATTE_BLACK_MATERIAL,
-        (pivot[0], pivot[1] - 0.16, pivot[2]),
-        (pivot[0], pivot[1] + 0.16, pivot[2]),
+        (pivot[0] - 0.22, pivot[1], pivot[2]),
+        (pivot[0] + 0.22, pivot[1], pivot[2]),
         0.045,
         segments=24,
     )
@@ -1825,17 +1900,12 @@ def fmt_vector(values: tuple[float, float, float]) -> str:
 
 
 def tail_rotor_graphics_objects() -> str:
-    geometry_list = " ".join(TAIL_ROTOR_GEOMETRIES)
-    return f"""
-            // GTVR animated rear rotor; drive explicit visible blades from the EC135 shaft angle.
-            <[rotatingbodygraphics][GTVRTailRotorGraphics][]
-                <[string8][GeometryList][ {geometry_list} ]>
-                <[uint32][PositionID][Fuselage.R]>
-                <[uint32][OrientationID][Fuselage.Q]>
-                <[uint32][AngleID][TailRotorShaft.Output]>
-                <[tmvector3d][Axis][ {fmt_vector(TAIL_ROTOR_AXIS)} ]>
-                <[tmvector3d][Pivot][ {fmt_vector(_current_tail_rotor_pivot)} ]>
-            >"""
+    # Keep the tail rotor blade mesh in the single fuselage draw list for now.
+    # The Aerofly converter rejects a geometry name when it appears in both the
+    # static rigidbodygraphics list and a second rotatingbodygraphics object.
+    # Physical visible blades come first; animation can be reintroduced later
+    # only with a separate non-duplicated geometry path.
+    return ""
 
 
 def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
@@ -2166,7 +2236,6 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     animated_names = (
         set(_current_animated_control_geometries)
         | set(_current_live_display_geometries)
-        | set(TAIL_ROTOR_GEOMETRIES)
     )
     static_geometry_names = [
         name for name in sorted(geometry_names)
@@ -2351,13 +2420,10 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     core.translate_patch_map(main_rotor, 0.0, 0.0, args.visual_body_lift)
     core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
     visual_tail_rotor = tail_rotor or fallback_tail_rotor
-    _current_tail_rotor_pivot = patch_map_bounds_center(
-        visual_tail_rotor,
-        (
-            TAIL_ROTOR_BASE_PIVOT[0] + _current_pilot_alignment_x_delta,
-            TAIL_ROTOR_BASE_PIVOT[1],
-            TAIL_ROTOR_BASE_PIVOT[2],
-        ),
+    _current_tail_rotor_pivot = (
+        TAIL_ROTOR_BASE_PIVOT[0] + _current_pilot_alignment_x_delta,
+        TAIL_ROTOR_BASE_PIVOT[1],
+        TAIL_ROTOR_BASE_PIVOT[2],
     )
 
     animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
@@ -2440,7 +2506,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "tail_rotor=generated four-blade rear prop with red tips is rotated about the tail hub center from the EC135 TailRotorShaft angle",
+                "tail_rotor=generated rear-facing four-blade tapered physical tail rotor with red blade tips is included in the fuselage static draw list",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2543,7 +2609,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "A generated four-blade rear prop with red tips is rendered by a dedicated rotating graphics object driven by the inherited EC135 tail-rotor shaft angle.",
+                "A generated rear-facing four-blade tapered physical tail rotor with red blade tips is included in the fuselage static draw list.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
