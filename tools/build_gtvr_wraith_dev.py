@@ -50,8 +50,7 @@ MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
 TIRE_BLACK_MATERIAL = "gtvr_tire_black"
 TIRE_BLACK_COLOR = (1, 1, 1)
 REAR_STRUT_LENGTH_SCALE = 0.65
-PROTRUDING_MAIN_GEAR_SUPPORT_TOP_DROP = 0.30
-TAIL_ROTOR_GEOMETRY = "TailBlade0"
+TAIL_ROTOR_GEOMETRIES = ("TailBlade0",)
 TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
 TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
@@ -207,6 +206,7 @@ _current_live_display_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_live_display_pivots: dict[str, tuple[float, float, float]] = {}
 _current_stock_display_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_center_map_pivot: tuple[float, float, float] | None = None
+_current_tail_rotor_pivot: tuple[float, float, float] = TAIL_ROTOR_BASE_PIVOT
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -453,7 +453,7 @@ def build_selected_nodes_for_dev(
     )
     if shortened_support_nodes:
         shortened_names: list[str] = []
-        lowered_side_support_names: list[str] = []
+        hidden_side_support_names: list[str] = []
         # Shorten each support separately. Combining the center tail-wheel support
         # with the paired side supports would produce a false PCA axis spanning the
         # length of the aircraft and deform otherwise unrelated landing gear.
@@ -469,33 +469,26 @@ def build_selected_nodes_for_dev(
                 z_offset=z_offset,
                 node_regex=node_regex,
             )
+            if PROTRUDING_MAIN_GEAR_SUPPORT_NODE_RE.fullmatch(support_name):
+                hidden_side_support_names.append(support_name)
+                continue
             for material_name, support_patch in support_patches.items():
                 shorten_patch_along_xz_axis(support_patch, REAR_STRUT_LENGTH_SCALE)
-                if PROTRUDING_MAIN_GEAR_SUPPORT_NODE_RE.fullmatch(support_name):
-                    # The core gear pipeline subsequently stretches every gear patch
-                    # back to the runway plane while preserving its current top. Drop
-                    # these side-support tops first so that ground stretch cannot
-                    # restore the cabin-intruding height.
-                    for offset in range(0, len(support_patch.vertices), 8):
-                        support_patch.vertices[offset + 2] -= (
-                            PROTRUDING_MAIN_GEAR_SUPPORT_TOP_DROP
-                        )
-                    lowered_side_support_names.append(support_name)
                 append_patch_geometry(
                     patches.setdefault(material_name, core.Patch(material_name)),
                     support_patch,
                 )
             shortened_names.append(support_name)
-        print(
-            "Dev gear cleanup: shortened visual supports "
-            f"{', '.join(shortened_names)} to {REAR_STRUT_LENGTH_SCALE:.0%} length "
-            "from their wheel-side anchors."
-        )
-        if lowered_side_support_names:
+        if shortened_names:
             print(
-                "Dev gear cleanup: lowered side-support tops "
-                f"{', '.join(lowered_side_support_names)} by "
-                f"{PROTRUDING_MAIN_GEAR_SUPPORT_TOP_DROP:.2f}m before runway-plane stretch."
+                "Dev gear cleanup: shortened visual supports "
+                f"{', '.join(shortened_names)} to {REAR_STRUT_LENGTH_SCALE:.0%} length "
+                "from their wheel-side anchors."
+            )
+        if hidden_side_support_names:
+            print(
+                "Dev gear cleanup: hid protruding side/rear support meshes "
+                f"{', '.join(hidden_side_support_names)}."
             )
 
     if not tire_nodes:
@@ -1744,25 +1737,42 @@ def fmt_vector(values: tuple[float, float, float]) -> str:
 
 
 def tail_rotor_graphics_objects() -> str:
-    pivot = (
-        TAIL_ROTOR_BASE_PIVOT[0] + _current_pilot_alignment_x_delta,
-        TAIL_ROTOR_BASE_PIVOT[1],
-        TAIL_ROTOR_BASE_PIVOT[2],
-    )
+    geometry_list = " ".join(TAIL_ROTOR_GEOMETRIES)
     return f"""
-            // GTVR animated rear rotor; use the inherited EC135 shaft angle only.
+            // GTVR animated rear rotor; drive the imported blade mesh from the EC135 shaft angle.
             <[rotatingbodygraphics][GTVRTailRotorGraphics][]
-                <[string8][GeometryList][ {TAIL_ROTOR_GEOMETRY} ]>
+                <[string8][GeometryList][ {geometry_list} ]>
                 <[uint32][PositionID][Fuselage.R]>
                 <[uint32][OrientationID][Fuselage.Q]>
                 <[uint32][AngleID][TailRotorShaft.Output]>
                 <[tmvector3d][Axis][ {fmt_vector(TAIL_ROTOR_AXIS)} ]>
-                <[tmvector3d][Pivot][ {fmt_vector(pivot)} ]>
+                <[tmvector3d][Pivot][ {fmt_vector(_current_tail_rotor_pivot)} ]>
             >"""
 
 
 def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
     return any(patch.indices for patch in patches.values())
+
+
+def patch_map_bounds_center(
+    patches: dict[str, core.Patch],
+    fallback: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    xs: list[float] = []
+    ys: list[float] = []
+    zs: list[float] = []
+    for patch in patches.values():
+        for offset in range(0, len(patch.vertices), 8):
+            xs.append(patch.vertices[offset])
+            ys.append(patch.vertices[offset + 1])
+            zs.append(patch.vertices[offset + 2])
+    if not xs:
+        return fallback
+    return (
+        (min(xs) + max(xs)) / 2.0,
+        (min(ys) + max(ys)) / 2.0,
+        (min(zs) + max(zs)) / 2.0,
+    )
 
 
 def control_graphic_groups() -> list[tuple[str, list[str], str]]:
@@ -2068,7 +2078,7 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     animated_names = (
         set(_current_animated_control_geometries)
         | set(_current_live_display_geometries)
-        | {TAIL_ROTOR_GEOMETRY}
+        | set(TAIL_ROTOR_GEOMETRIES)
     )
     static_geometry_names = [
         name for name in sorted(geometry_names)
@@ -2241,6 +2251,7 @@ def prepare_dev_map_panel_source(args: argparse.Namespace) -> Path:
 
 
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
+    global _current_tail_rotor_pivot
     if core.SOURCE_DIR.exists():
         shutil.rmtree(core.SOURCE_DIR)
     core.SOURCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -2252,6 +2263,14 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     core.translate_patch_map(main_rotor, 0.0, 0.0, args.visual_body_lift)
     core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
     visual_tail_rotor = tail_rotor or fallback_tail_rotor
+    _current_tail_rotor_pivot = patch_map_bounds_center(
+        visual_tail_rotor,
+        (
+            TAIL_ROTOR_BASE_PIVOT[0] + _current_pilot_alignment_x_delta,
+            TAIL_ROTOR_BASE_PIVOT[1],
+            TAIL_ROTOR_BASE_PIVOT[2],
+        ),
+    )
 
     animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
     geometries: dict[str, dict[str, core.Patch]] = {}
@@ -2330,8 +2349,8 @@ def write_source_stamp() -> None:
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
-                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel and paired side gear supports shortened independently from their wheel-side anchors, with side-support tops lowered 0.30m before runway-plane stretch",
-                "tail_rotor=TailBlade0 is removed from the static fuselage list and rotated about its imported hub by the inherited TailRotorShaft angle",
+                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
+                "tail_rotor=TailBlade0 is removed from the static fuselage list and rotated about the generated blade hub center from the EC135 TailRotorShaft angle",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2433,7 +2452,7 @@ def write_dev_package_marker() -> None:
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
-                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support and both layers of each protruding side gear strut are shortened independently from their wheel-side anchors, with the side-support tops lowered 0.30m before runway-plane stretch.",
+                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
                 "The imported rear rotor is removed from the static fuselage list and rendered by a dedicated rotating graphics object driven by the inherited EC135 tail-rotor shaft angle.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
