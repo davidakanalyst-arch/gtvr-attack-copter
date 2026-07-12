@@ -74,6 +74,10 @@ MAIN_ROTOR_MAST_MATERIAL = "dark_metal"
 MAIN_ROTOR_MAST_HOLE_X_RANGE = (0.0, 0.9)
 MAIN_ROTOR_MAST_HOLE_Y_RANGE = (-0.16, 0.16)
 MAIN_ROTOR_MAST_HOLE_Z_RANGE = (1.30, 1.75)
+MAIN_ROTOR_MAST_SOCKET_MATERIALS = ("black_venting",)
+MAIN_ROTOR_MAST_SOCKET_X_RANGE = (-0.90, -0.10)
+MAIN_ROTOR_MAST_SOCKET_Y_RANGE = (-0.65, 0.65)
+MAIN_ROTOR_MAST_SOCKET_Z_RANGE = (1.20, 1.50)
 MAIN_ROTOR_SOURCE_MAST_BASE_Z = 1.62
 MAIN_ROTOR_SOURCE_MAST_TOP_Z = 2.42
 MAIN_ROTOR_SOURCE_CENTER_Z = 2.55
@@ -2057,32 +2061,76 @@ def patch_map_highest_point_in_box(
     return highest
 
 
+def patch_map_material_top_center_in_box(
+    patches: dict[str, core.Patch],
+    *,
+    material_names: tuple[str, ...],
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    z_range: tuple[float, float],
+) -> tuple[float, float, float] | None:
+    xs: list[float] = []
+    ys: list[float] = []
+    zs: list[float] = []
+    for material_name in material_names:
+        patch = patches.get(material_name)
+        if patch is None:
+            continue
+        for offset in range(0, len(patch.vertices), 8):
+            x = patch.vertices[offset]
+            y = patch.vertices[offset + 1]
+            z = patch.vertices[offset + 2]
+            if (
+                x_range[0] <= x <= x_range[1]
+                and y_range[0] <= y <= y_range[1]
+                and z_range[0] <= z <= z_range[1]
+            ):
+                xs.append(x)
+                ys.append(y)
+                zs.append(z)
+    if not xs:
+        return None
+    return (
+        (min(xs) + max(xs)) * 0.5,
+        (min(ys) + max(ys)) * 0.5,
+        max(zs),
+    )
+
+
 def align_main_rotor_visual_to_body(
     body: dict[str, core.Patch],
     main_rotor: dict[str, core.Patch],
 ) -> None:
-    mast_base = patch_map_highest_point_in_box(
+    mast_height_anchor = patch_map_highest_point_in_box(
         body,
         x_range=MAIN_ROTOR_MAST_HOLE_X_RANGE,
         y_range=MAIN_ROTOR_MAST_HOLE_Y_RANGE,
         z_range=MAIN_ROTOR_MAST_HOLE_Z_RANGE,
     )
-    if mast_base is None:
+    if mast_height_anchor is None:
         print("Dev main rotor visual alignment: skipped; could not find roof mast hole.")
         return
+    mast_socket = patch_map_material_top_center_in_box(
+        body,
+        material_names=MAIN_ROTOR_MAST_SOCKET_MATERIALS,
+        x_range=MAIN_ROTOR_MAST_SOCKET_X_RANGE,
+        y_range=MAIN_ROTOR_MAST_SOCKET_Y_RANGE,
+        z_range=MAIN_ROTOR_MAST_SOCKET_Z_RANGE,
+    )
+    mast_base = mast_socket or mast_height_anchor
 
     rotor_center = patch_map_bounds_center(
         main_rotor,
         fallback=(
             (MAIN_ROTOR_MAST_HOLE_X_RANGE[0] + MAIN_ROTOR_MAST_HOLE_X_RANGE[1]) * 0.5,
             0.0,
-            mast_base[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
+            mast_height_anchor[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
         ),
     )
     target_center = (
         mast_base[0],
         mast_base[1],
-        mast_base[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
+        mast_height_anchor[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
     )
     rotor_delta = vector_sub(target_center, rotor_center)
     core.translate_patch_map(main_rotor, rotor_delta[0], rotor_delta[1], rotor_delta[2])
