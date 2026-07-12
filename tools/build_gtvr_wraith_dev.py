@@ -54,7 +54,8 @@ TAIL_ROTOR_BLUR_MATERIAL = "gtvr_tail_rotor_blur"
 TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
 TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
 TAIL_ROTOR_X_FROM_TAIL_END = 0.42
-TAIL_ROTOR_SIDE_CLEARANCE = 0.24
+TAIL_ROTOR_SIDE_CLEARANCE = 0.08
+TAIL_ROTOR_MOUNT_TILT = math.radians(-18.0)
 TAIL_ROTOR_PROCEDURAL_RADIUS = 1.05
 TAIL_ROTOR_PROCEDURAL_ROOT_RADIUS = 0.16
 TAIL_ROTOR_PROCEDURAL_ROOT_WIDTH = 0.20
@@ -924,8 +925,9 @@ def append_tail_rotor_blade(
     *,
     angle: float,
 ) -> None:
-    radial = (math.cos(angle), 0.0, math.sin(angle))
-    tangent = (-math.sin(angle), 0.0, math.cos(angle))
+    tilted_angle = angle + TAIL_ROTOR_MOUNT_TILT
+    radial = (math.cos(tilted_angle), 0.0, math.sin(tilted_angle))
+    tangent = (-math.sin(tilted_angle), 0.0, math.cos(tilted_angle))
     thickness_axis = (0.0, 1.0, 0.0)
     pivot = _current_tail_rotor_pivot
 
@@ -1044,6 +1046,7 @@ def append_tail_rotor_blur_streak(
 ) -> None:
     pivot = _current_tail_rotor_pivot
     y = pivot[1] + TAIL_ROTOR_PROCEDURAL_TIP_THICKNESS * 1.4
+    tilted_angle = angle + TAIL_ROTOR_MOUNT_TILT
 
     def point(radius: float, theta: float) -> tuple[float, float, float]:
         return (
@@ -1054,8 +1057,8 @@ def append_tail_rotor_blur_streak(
 
     inner = TAIL_ROTOR_BLUR_INNER_RADIUS
     outer = TAIL_ROTOR_BLUR_OUTER_RADIUS
-    a0 = angle - TAIL_ROTOR_BLUR_SWEEP * 0.5
-    a1 = angle + TAIL_ROTOR_BLUR_SWEEP * 0.5
+    a0 = tilted_angle - TAIL_ROTOR_BLUR_SWEEP * 0.5
+    a1 = tilted_angle + TAIL_ROTOR_BLUR_SWEEP * 0.5
     # Slightly skew the outer edge to mimic a moving blade smear instead of a rigid spoke.
     append_double_sided_auto_quad(
         rotor,
@@ -2591,7 +2594,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "tail_rotor=generated side-mounted four-blade tapered physical tail rotor with red blade tips and grey motion-blur streaks is placed outside the tail side and baked into the Fuselage mesh",
+                "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, tail-matching tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2694,7 +2697,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "A generated side-mounted four-blade tapered physical tail rotor with red blade tips and grey motion-blur streaks is placed outside the tail side and baked into the Fuselage mesh.",
+                "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, tail-matching tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
