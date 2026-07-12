@@ -70,10 +70,6 @@ TAIL_ROTOR_BLUR_INNER_RADIUS = 0.28
 TAIL_ROTOR_BLUR_OUTER_RADIUS = 0.98
 TAIL_ROTOR_BLUR_STREAKS = 12
 TAIL_ROTOR_BLUR_SWEEP = math.radians(8.0)
-GTVR_MAIN_ROTOR_GEOMETRY = "GTVRMainRotorVisual"
-GTVR_TAIL_ROTOR_GEOMETRY = "GTVRTailRotorVisual"
-MAIN_ROTOR_VISUAL_SPIN_RATE = 41.36
-TAIL_ROTOR_VISUAL_SPIN_RATE = 220.0
 MAIN_ROTOR_MAST_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
 MAIN_ROTOR_MAST_HOLE_X_RANGE = (0.0, 0.9)
 MAIN_ROTOR_MAST_HOLE_Y_RANGE = (-0.16, 0.16)
@@ -261,9 +257,6 @@ _current_live_display_pivots: dict[str, tuple[float, float, float]] = {}
 _current_stock_display_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_center_map_pivot: tuple[float, float, float] | None = None
 _current_tail_rotor_pivot: tuple[float, float, float] = TAIL_ROTOR_BASE_PIVOT
-_current_main_rotor_pivot: tuple[float, float, float] | None = None
-_current_generated_main_rotor_geometry: dict[str, core.Patch] = {}
-_current_generated_tail_rotor_geometry: dict[str, core.Patch] = {}
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -767,21 +760,6 @@ def merge_patch_map_into(target: dict[str, core.Patch], source: dict[str, core.P
         target_patch.vertices.extend(source_patch.vertices)
         target_patch.indices.extend(index + vertex_offset for index in source_patch.indices)
         target_patch.face_attributes.extend(source_patch.face_attributes)
-
-
-def merge_selected_patch_materials_into(
-    target: dict[str, core.Patch],
-    source: dict[str, core.Patch],
-    material_names: set[str],
-) -> None:
-    merge_patch_map_into(
-        target,
-        {
-            material_name: patch
-            for material_name, patch in source.items()
-            if material_name in material_names and patch.indices
-        },
-    )
 
 
 def vector_sub(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -2012,66 +1990,16 @@ def fmt_vector(values: tuple[float, float, float]) -> str:
 
 
 def tail_rotor_graphics_objects() -> str:
-    graphic_blocks: list[str] = []
-    if patch_map_has_faces(_current_generated_main_rotor_geometry):
-        graphic_blocks.append(
-            f"""
-            <[rotatingbodygraphics][{GTVR_MAIN_ROTOR_GEOMETRY}][]
-                <[string8][GeometryList][ {GTVR_MAIN_ROTOR_GEOMETRY} ]>
-                <[uint32][PositionID][Fuselage.R]>
-                <[uint32][OrientationID][Fuselage.Q]>
-                <[uint32][AngleID][GTVRMainRotorAngleOutput.Output]>
-                <[tmvector3d][Axis][0.0 0.0 1.0]>
-                <[tmvector3d][Pivot][{fmt_vector(_current_main_rotor_pivot or (0.0, 0.0, 0.0))}]>
-            >"""
-        )
-    if patch_map_has_faces(_current_generated_tail_rotor_geometry):
-        graphic_blocks.append(
-            f"""
-            <[rotatingbodygraphics][{GTVR_TAIL_ROTOR_GEOMETRY}][]
-                <[string8][GeometryList][ {GTVR_TAIL_ROTOR_GEOMETRY} ]>
-                <[uint32][PositionID][Fuselage.R]>
-                <[uint32][OrientationID][Fuselage.Q]>
-                <[uint32][AngleID][GTVRTailRotorAngleOutput.Output]>
-                <[tmvector3d][Axis][{fmt_vector(tail_rotor_axis_vector())}]>
-                <[tmvector3d][Pivot][{fmt_vector(_current_tail_rotor_pivot)}]>
-            >"""
-        )
-    return "\n".join(graphic_blocks)
+    # Keep the tail rotor blade mesh in the single fuselage draw list for now.
+    # The Aerofly converter rejects a geometry name when it appears in both the
+    # static rigidbodygraphics list and a second rotatingbodygraphics object.
+    # Physical visible blades come first; animation can be reintroduced later
+    # only with a separate non-duplicated geometry path.
+    return ""
 
 
 def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
     return any(patch.indices for patch in patches.values())
-
-
-def visual_rotor_dynamic_objects() -> str:
-    if _current_main_rotor_pivot is None or not patch_map_has_faces(_current_generated_main_rotor_geometry):
-        return ""
-    tail_spin = f"""
-            <[integral][GTVRTailRotorAngle][]
-                <[string8][Input][GTVRVisualRotorSpinEnable.Output]>
-                <[float64][Value][{TAIL_ROTOR_VISUAL_SPIN_RATE:.6g}]>
-            >
-            <[output_free][GTVRTailRotorAngleOutput][]
-                <[string8][Input][GTVRTailRotorAngle.Output]>
-            >""" if patch_map_has_faces(_current_generated_tail_rotor_geometry) else ""
-    return f"""
-            // GTVR fixed-speed visual rotor spin; graphics only, no handling/input link.
-            <[input_binary][GTVRVisualRotorSpinEnable][]
-                <[string8][Message][GTVR.VisualRotorSpinEnable]>
-                <[float64][Value][1.0]>
-            >
-            <[integral][GTVRMainRotorAngle][]
-                <[string8][Input][GTVRVisualRotorSpinEnable.Output]>
-                <[float64][Value][{MAIN_ROTOR_VISUAL_SPIN_RATE:.6g}]>
-            >
-            <[output_free][GTVRMainRotorAngleOutput][]
-                <[string8][Input][GTVRMainRotorAngle.Output]>
-            >{tail_spin}"""
-
-
-def visual_rotor_transform_objects() -> str:
-    return ""
 
 
 def patch_map_bounds_center(
@@ -2361,7 +2289,6 @@ def build_procedural_main_rotor_geometry(
 def add_generated_main_rotor_visual_to_body(
     body: dict[str, core.Patch],
 ) -> None:
-    global _current_main_rotor_pivot, _current_generated_main_rotor_geometry
     mast_height_anchor = patch_map_highest_point_in_box(
         body,
         x_range=MAIN_ROTOR_MAST_HOLE_X_RANGE,
@@ -2419,13 +2346,11 @@ def add_generated_main_rotor_visual_to_body(
         MAIN_ROTOR_MAST_COLLAR_RADIUS,
         segments=32,
     )
-    _current_main_rotor_pivot = rotor_center
-    _current_generated_main_rotor_geometry = build_procedural_main_rotor_geometry(rotor_center)
+    merge_patch_map_into(body, build_procedural_main_rotor_geometry(rotor_center))
     print(
         "Dev main rotor visual replacement: "
-        f"generated separate shaft-top four-blade main prop at ({rotor_center[0]:.3f}, "
-        f"{rotor_center[1]:.3f}, {rotor_center[2]:.3f}) for fixed-speed visual spin; "
-        "inherited RotorBlade0-3 geometry remains hidden."
+        f"generated shaft-top four-blade main prop at ({rotor_center[0]:.3f}, "
+        f"{rotor_center[1]:.3f}, {rotor_center[2]:.3f}) and hid inherited RotorBlade0-3 geometry."
     )
 
 
@@ -2732,18 +2657,15 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     animated_names = (
         set(_current_animated_control_geometries)
         | set(_current_live_display_geometries)
-        | {GTVR_MAIN_ROTOR_GEOMETRY, GTVR_TAIL_ROTOR_GEOMETRY}
     )
     static_geometry_names = [
         name for name in sorted(geometry_names)
         if name not in animated_names and not is_dev_static_visual_hidden(name)
     ]
     telemetry_objects = live_telemetry_dynamic_objects()
-    rotor_dynamic = visual_rotor_dynamic_objects()
     center_map_dynamic = center_map_dynamic_objects()
     display_graphics = live_display_graphics_objects()
     center_map_graphics = center_map_graphics_objects()
-    rotor_transforms = visual_rotor_transform_objects()
     tail_rotor_graphics = tail_rotor_graphics_objects()
     control_transforms = visual_control_dynamic_objects()
     graphic_objects = visual_control_graphics_objects()
@@ -2757,7 +2679,6 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
                 <[tmmatrix3d][B0][1.0 0.0 0.0  0.0 1.0 0.0  0.0 0.0 1.0]>
             >
 {telemetry_objects}
-{rotor_dynamic}
 {center_map_dynamic}
         >
         <[pointer_list_tmgraphics][GraphicObjects][]
@@ -2768,7 +2689,6 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
             >
 {display_graphics}
 {center_map_graphics}
-{rotor_transforms}
 {tail_rotor_graphics}
 {control_transforms}
 {graphic_objects}
@@ -2910,13 +2830,6 @@ def prepare_dev_map_panel_source(args: argparse.Namespace) -> Path:
 
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
     global _current_tail_rotor_pivot
-    global _current_main_rotor_pivot
-    global _current_generated_main_rotor_geometry
-    global _current_generated_tail_rotor_geometry
-    _current_tail_rotor_pivot = TAIL_ROTOR_BASE_PIVOT
-    _current_main_rotor_pivot = None
-    _current_generated_main_rotor_geometry = {}
-    _current_generated_tail_rotor_geometry = {}
     if core.SOURCE_DIR.exists():
         shutil.rmtree(core.SOURCE_DIR)
     core.SOURCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -2947,17 +2860,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         else TAIL_ROTOR_BASE_PIVOT[1],
         TAIL_ROTOR_BASE_PIVOT[2],
     )
-    _current_generated_tail_rotor_geometry = build_procedural_tail_rotor_geometry()
-    merge_selected_patch_materials_into(
-        body,
-        _current_generated_main_rotor_geometry,
-        {TAIL_ROTOR_BLUR_MATERIAL},
-    )
-    merge_selected_patch_materials_into(
-        body,
-        _current_generated_tail_rotor_geometry,
-        {TAIL_ROTOR_BLUR_MATERIAL},
-    )
+    merge_patch_map_into(body, build_procedural_tail_rotor_geometry())
 
     animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
     geometries: dict[str, dict[str, core.Patch]] = {}
@@ -2989,10 +2892,6 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         geometries.setdefault(geometry_name, core.copy_patch_map(patches))
     for geometry_name, patches in _current_stock_display_geometries.items():
         geometries.setdefault(geometry_name, core.copy_patch_map(patches))
-    if patch_map_has_faces(_current_generated_main_rotor_geometry):
-        geometries[GTVR_MAIN_ROTOR_GEOMETRY] = core.copy_patch_map(_current_generated_main_rotor_geometry)
-    if patch_map_has_faces(_current_generated_tail_rotor_geometry):
-        geometries[GTVR_TAIL_ROTOR_GEOMETRY] = core.copy_patch_map(_current_generated_tail_rotor_geometry)
 
     core.write_aircraft_source_tmc(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmc")
     write_dev_visual_tmd(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmd", sorted(geometries))
@@ -3041,8 +2940,8 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop is emitted as GTVRMainRotorVisual and driven by native fixed-speed rotatingbodygraphics, with blur streaks also baked into Fuselage as a visibility fallback",
-                "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips and corrected positive blade-angle tilt is emitted as GTVRTailRotorVisual and driven by native fixed-speed rotatingbodygraphics, with grey motion-blur streaks also baked into Fuselage as a visibility fallback",
+                "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
+                "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
