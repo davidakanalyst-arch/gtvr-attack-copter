@@ -2462,6 +2462,13 @@ def dev_map_panel_system_tmd() -> str:
                 // group is labelled, while keeping the terrain and overlays aligned.
                 <[float64][Offset][-0.4150375]>
             >
+            // The generic navigation overlay uses the inverse zoom convention documented by
+            // the working DR400 chain: overlay zoom = 5 - terrain-map zoom.
+            <[graphics_mapping_linear][GTVRMapPanelAirportZoom][]
+                <[string8][Input][GTVRMapPanelZoomInput.Output]>
+                <[float64][Scaling][-1.0]>
+                <[float64][Offset][5.0]>
+            >
             <[texture_animation_map_display][GTVRMapPanelMovingMap][]
                 <[uint32][PositionID][Fuselage.R]>
                 <[uint32][OrientationID][Fuselage.Q]>
@@ -2495,7 +2502,7 @@ def dev_map_panel_system_tmd() -> str:
             >
             // Separate airport-only pass: nearby airport symbols and ICAO labels remain
             // correctly georeferenced without restoring the dense VOR/NDB/waypoint clutter.
-            <[display_c172][GTVRMapPanelAirports][]
+            <[display_navigation_overlay][GTVRMapPanelAirports][]
                 <[tmvector2d][TargetPosition][ 0 0 ]>
                 <[tmvector2d][TargetSize][ {size} {size} ]>
                 <[tmvector2d][TargetScale][ {size} {size} ]>
@@ -2509,7 +2516,7 @@ def dev_map_panel_system_tmd() -> str:
                 <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 0.0 ]>
                 <[tmvector4f][ColorRouteWaypoint][ 0.373 0.992 0.000 0.0 ]>
                 <[string8][InputHeading][GTVRMapPanelHeadingInput.Output]>
-                <[string8][InputZoom][GTVRMapPanelZoomInput.Output]>
+                <[string8][InputZoom][GTVRMapPanelAirportZoom.Output]>
             >
         >
     >
