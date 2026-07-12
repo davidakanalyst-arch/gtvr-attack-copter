@@ -2484,7 +2484,9 @@ def dev_map_panel_system_tmd() -> str:
                 // navaid and airport label layer on the much smaller Wraith centre screen.
                 <[tmvector4f][ColorVOR][ 0.200 1.000 1.000 0.0 ]>
                 <[tmvector4f][ColorNDB][ 1.000 0.500 0.500 0.0 ]>
-                <[tmvector4f][ColorAirport][ 1.000 1.000 1.000 0.0 ]>
+                // Airports share this proven AN2 overlay transform with the aircraft marker
+                // and route, keeping their labels on the same geographic map footprint.
+                <[tmvector4f][ColorAirport][ 1.000 1.000 1.000 1.0 ]>
                 <[tmvector4f][ColorRoute][ 0.373 0.992 0.000 1.0 ]>
                 <[tmvector4f][ColorWaypoint][ 1.000 1.000 1.000 0.0 ]>
                 <[tmvector4f][ColorNextWaypoint][ 1.000 0.314 0.141 0.0 ]>
