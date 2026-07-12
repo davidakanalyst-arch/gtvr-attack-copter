@@ -83,6 +83,7 @@ MAIN_ROTOR_SOURCE_MAST_TOP_Z = 2.42
 MAIN_ROTOR_SOURCE_CENTER_Z = 2.55
 MAIN_ROTOR_BASE_TO_CENTER_Z = MAIN_ROTOR_SOURCE_CENTER_Z - MAIN_ROTOR_SOURCE_MAST_BASE_Z
 MAIN_ROTOR_CENTER_TO_MAST_TOP_Z = MAIN_ROTOR_SOURCE_CENTER_Z - MAIN_ROTOR_SOURCE_MAST_TOP_Z
+MAIN_ROTOR_VISUAL_X_OFFSET_FROM_MAST = -0.30
 MAIN_ROTOR_MAST_RADIUS = 0.095
 MAIN_ROTOR_MAST_COLLAR_RADIUS = 0.155
 MAIN_ROTOR_MAST_COLLAR_HALF_HEIGHT = 0.035
@@ -2128,7 +2129,7 @@ def align_main_rotor_visual_to_body(
         ),
     )
     target_center = (
-        mast_base[0],
+        mast_base[0] + MAIN_ROTOR_VISUAL_X_OFFSET_FROM_MAST,
         mast_base[1],
         mast_height_anchor[2] + MAIN_ROTOR_BASE_TO_CENTER_Z,
     )
@@ -2141,8 +2142,8 @@ def align_main_rotor_visual_to_body(
         mast_base[2] - MAIN_ROTOR_MAST_COLLAR_HALF_HEIGHT,
     )
     mast_top = (
-        target_center[0],
-        target_center[1],
+        mast_base[0],
+        mast_base[1],
         target_center[2] - MAIN_ROTOR_CENTER_TO_MAST_TOP_Z,
     )
     append_cylinder_between(
