@@ -50,6 +50,10 @@ MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
 TIRE_BLACK_MATERIAL = "gtvr_tire_black"
 TIRE_BLACK_COLOR = (1, 1, 1)
 REAR_STRUT_LENGTH_SCALE = 0.65
+PROTRUDING_MAIN_GEAR_SUPPORT_TOP_DROP = 0.30
+TAIL_ROTOR_GEOMETRY = "TailBlade0"
+TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
+TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
 LEATHER_SPECULAR_TEXTURE = "gtvr_leather_specular"
 LEATHER_REFLECTION_TEXTURE = "gtvr_leather_reflection"
 SEAT_Z_LIFT = 0.16
@@ -72,6 +76,10 @@ HIDDEN_DEV_STATIC_VISUAL_RE = re.compile(
 )
 TIRE_NODE_RE = re.compile(r"^(?:Tire_new\.(?:001|002)|REAR_WHEEL_STILL)$", re.IGNORECASE)
 REAR_STRUT_NODE_RE = re.compile(r"^Rear_gear$", re.IGNORECASE)
+PROTRUDING_MAIN_GEAR_SUPPORT_NODE_RE = re.compile(
+    r"^(?:Strut\.(?:001|002)|Assy\.(?:002|003))$",
+    re.IGNORECASE,
+)
 UNWANTED_GREEN_MATERIAL_RE = re.compile(r"^(?:bool|bool_002|slime_lgt)$", re.IGNORECASE)
 
 COCKPIT_FLAT_MATERIALS = {
@@ -402,11 +410,16 @@ def build_selected_nodes_for_dev(
     node_regex: str,
 ) -> dict[str, core.Patch]:
     selected = re.compile(node_regex, re.IGNORECASE)
-    rear_strut_nodes = [
+    shortened_support_nodes = [
         entry
         for entry in mesh_nodes
         if selected.search(gltf["nodes"][entry[0]].get("name", ""))
-        and REAR_STRUT_NODE_RE.fullmatch(gltf["nodes"][entry[0]].get("name", ""))
+        and (
+            REAR_STRUT_NODE_RE.fullmatch(gltf["nodes"][entry[0]].get("name", ""))
+            or PROTRUDING_MAIN_GEAR_SUPPORT_NODE_RE.fullmatch(
+                gltf["nodes"][entry[0]].get("name", "")
+            )
+        )
     ]
     tire_nodes = [
         entry
@@ -414,7 +427,7 @@ def build_selected_nodes_for_dev(
         if selected.search(gltf["nodes"][entry[0]].get("name", ""))
         and TIRE_NODE_RE.fullmatch(gltf["nodes"][entry[0]].get("name", ""))
     ]
-    if not rear_strut_nodes and not tire_nodes:
+    if not shortened_support_nodes and not tire_nodes:
         return _ORIGINAL_BUILD_SELECTED_NODES(
             gltf=gltf,
             buffers=buffers,
@@ -426,7 +439,7 @@ def build_selected_nodes_for_dev(
             node_regex=node_regex,
         )
 
-    isolated_node_indices = {entry[0] for entry in rear_strut_nodes + tire_nodes}
+    isolated_node_indices = {entry[0] for entry in shortened_support_nodes + tire_nodes}
     remaining_nodes = [entry for entry in mesh_nodes if entry[0] not in isolated_node_indices]
     patches = _ORIGINAL_BUILD_SELECTED_NODES(
         gltf=gltf,
@@ -438,27 +451,52 @@ def build_selected_nodes_for_dev(
         z_offset=z_offset,
         node_regex=node_regex,
     )
-    if rear_strut_nodes:
-        rear_strut_patches = _ORIGINAL_BUILD_SELECTED_NODES(
-            gltf=gltf,
-            buffers=buffers,
-            mesh_nodes=rear_strut_nodes,
-            materials=materials,
-            center_x=center_x,
-            center_y=center_y,
-            z_offset=z_offset,
-            node_regex=node_regex,
-        )
-        for material_name, rear_strut_patch in rear_strut_patches.items():
-            shorten_patch_along_xz_axis(rear_strut_patch, REAR_STRUT_LENGTH_SCALE)
-            append_patch_geometry(
-                patches.setdefault(material_name, core.Patch(material_name)),
-                rear_strut_patch,
+    if shortened_support_nodes:
+        shortened_names: list[str] = []
+        lowered_side_support_names: list[str] = []
+        # Shorten each support separately. Combining the center tail-wheel support
+        # with the paired side supports would produce a false PCA axis spanning the
+        # length of the aircraft and deform otherwise unrelated landing gear.
+        for support_node in shortened_support_nodes:
+            support_name = gltf["nodes"][support_node[0]].get("name", "")
+            support_patches = _ORIGINAL_BUILD_SELECTED_NODES(
+                gltf=gltf,
+                buffers=buffers,
+                mesh_nodes=[support_node],
+                materials=materials,
+                center_x=center_x,
+                center_y=center_y,
+                z_offset=z_offset,
+                node_regex=node_regex,
             )
+            for material_name, support_patch in support_patches.items():
+                shorten_patch_along_xz_axis(support_patch, REAR_STRUT_LENGTH_SCALE)
+                if PROTRUDING_MAIN_GEAR_SUPPORT_NODE_RE.fullmatch(support_name):
+                    # The core gear pipeline subsequently stretches every gear patch
+                    # back to the runway plane while preserving its current top. Drop
+                    # these side-support tops first so that ground stretch cannot
+                    # restore the cabin-intruding height.
+                    for offset in range(0, len(support_patch.vertices), 8):
+                        support_patch.vertices[offset + 2] -= (
+                            PROTRUDING_MAIN_GEAR_SUPPORT_TOP_DROP
+                        )
+                    lowered_side_support_names.append(support_name)
+                append_patch_geometry(
+                    patches.setdefault(material_name, core.Patch(material_name)),
+                    support_patch,
+                )
+            shortened_names.append(support_name)
         print(
-            f"Dev rear strut: shortened {REAR_STRUT_NODE_RE.pattern} visual support to "
-            f"{REAR_STRUT_LENGTH_SCALE:.0%} length from its wheel-side anchor."
+            "Dev gear cleanup: shortened visual supports "
+            f"{', '.join(shortened_names)} to {REAR_STRUT_LENGTH_SCALE:.0%} length "
+            "from their wheel-side anchors."
         )
+        if lowered_side_support_names:
+            print(
+                "Dev gear cleanup: lowered side-support tops "
+                f"{', '.join(lowered_side_support_names)} by "
+                f"{PROTRUDING_MAIN_GEAR_SUPPORT_TOP_DROP:.2f}m before runway-plane stretch."
+            )
 
     if not tire_nodes:
         return patches
@@ -1705,6 +1743,24 @@ def fmt_vector(values: tuple[float, float, float]) -> str:
     return " ".join(f"{value:.6g}" for value in values)
 
 
+def tail_rotor_graphics_objects() -> str:
+    pivot = (
+        TAIL_ROTOR_BASE_PIVOT[0] + _current_pilot_alignment_x_delta,
+        TAIL_ROTOR_BASE_PIVOT[1],
+        TAIL_ROTOR_BASE_PIVOT[2],
+    )
+    return f"""
+            // GTVR animated rear rotor; use the inherited EC135 shaft angle only.
+            <[rotatingbodygraphics][GTVRTailRotorGraphics][]
+                <[string8][GeometryList][ {TAIL_ROTOR_GEOMETRY} ]>
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[uint32][AngleID][TailRotorShaft.Output]>
+                <[tmvector3d][Axis][ {fmt_vector(TAIL_ROTOR_AXIS)} ]>
+                <[tmvector3d][Pivot][ {fmt_vector(pivot)} ]>
+            >"""
+
+
 def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
     return any(patch.indices for patch in patches.values())
 
@@ -2009,7 +2065,11 @@ def is_dev_static_visual_hidden(geometry_name: str) -> bool:
 
 
 def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
-    animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
+    animated_names = (
+        set(_current_animated_control_geometries)
+        | set(_current_live_display_geometries)
+        | {TAIL_ROTOR_GEOMETRY}
+    )
     static_geometry_names = [
         name for name in sorted(geometry_names)
         if name not in animated_names and not is_dev_static_visual_hidden(name)
@@ -2018,6 +2078,7 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     center_map_dynamic = center_map_dynamic_objects()
     display_graphics = live_display_graphics_objects()
     center_map_graphics = center_map_graphics_objects()
+    tail_rotor_graphics = tail_rotor_graphics_objects()
     control_transforms = visual_control_dynamic_objects()
     graphic_objects = visual_control_graphics_objects()
     text = f"""<[file][][]
@@ -2040,6 +2101,7 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
             >
 {display_graphics}
 {center_map_graphics}
+{tail_rotor_graphics}
 {control_transforms}
 {graphic_objects}
         >
@@ -2268,7 +2330,8 @@ def write_source_stamp() -> None:
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
-                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; rear visual gear support shortened from its wheel-side anchor",
+                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel and paired side gear supports shortened independently from their wheel-side anchors, with side-support tops lowered 0.30m before runway-plane stretch",
+                "tail_rotor=TailBlade0 is removed from the static fuselage list and rotated about its imported hub by the inherited TailRotorShaft angle",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2370,7 +2433,8 @@ def write_dev_package_marker() -> None:
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
-                "Opaque UH-60 boolean-helper and slime-light geometry is removed, and only the protruding rear visual gear support is shortened from its wheel-side anchor.",
+                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support and both layers of each protruding side gear strut are shortened independently from their wheel-side anchors, with the side-support tops lowered 0.30m before runway-plane stretch.",
+                "The imported rear rotor is removed from the static fuselage list and rendered by a dedicated rotating graphics object driven by the inherited EC135 tail-rotor shaft angle.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
