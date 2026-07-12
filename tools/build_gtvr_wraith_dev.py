@@ -2457,6 +2457,9 @@ def dev_map_panel_system_tmd() -> str:
             >
             <[graphics_input][GTVRMapPanelZoomInput][]
                 <[uint32][InputID][GTVRMapPanelZoom.Output]>
+                // Aerofly map zoom is base-2 logarithmic.  -log2(1.5) gives 50% more
+                // magnification while preserving the AN2 zoom control and overlay alignment.
+                <[float64][Offset][-0.5849625]>
             >
             <[texture_animation_map_display][GTVRMapPanelMovingMap][]
                 <[uint32][PositionID][Fuselage.R]>
