@@ -77,7 +77,7 @@ GTVR_TAIL_ROTOR_LOCKED_PIVOT = (-10.8051, 0.418839, 2.27417)
 GTVR_TAIL_ROTOR_LOCKED_AXIS = (0.0, 0.901077, 0.433659)
 MAIN_ROTOR_VISUAL_SPIN_RATE = 41.36
 TAIL_ROTOR_VISUAL_SPIN_RATE = 220.0
-ROTOR_ANIMATION_PROBE_ONLY = True
+ROTOR_ANIMATION_PROBE_ONLY = False
 ROTOR_ANIMATION_MAIN_PROBE_RATE = 1.5
 ROTOR_ANIMATION_TAIL_PROBE_RATE = 2.5
 ROTOR_ANIMATION_PROBE_MATERIAL = "gtvr_rotor_probe_red"
@@ -3564,9 +3564,17 @@ def write_dev_rotor_animation_option() -> Path:
     if not option_tmb.exists():
         raise FileNotFoundError(f"Missing converted rotor animation option TMB: {option_tmb}")
     shutil.copy2(option_tmb, option_dir / option_tmb.name)
-    for texture in option_tmb.parent.glob("*.ttx"):
-        if not texture.stem.startswith("preview"):
-            shutil.copy2(texture, option_dir / texture.name)
+    expected_texture_names = {
+        texture.stem
+        for texture in ROTOR_ANIMATION_SOURCE_DIR.glob("*.png")
+    }
+    for texture_name in sorted(expected_texture_names):
+        texture = option_tmb.parent / f"{texture_name}.ttx"
+        if not texture.exists():
+            raise FileNotFoundError(
+                f"Missing converted rotor animation option texture: {texture}"
+            )
+        shutil.copy2(texture, option_dir / texture.name)
     return option_dir
 
 
