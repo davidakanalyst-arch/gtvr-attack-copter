@@ -42,14 +42,19 @@ DEFAULT_COCKPIT_X_DELTA = 0.0
 DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
-COCKPIT_FLOOR_SUNROOF_CENTER_X = 2.34
+COCKPIT_FLOOR_SUNROOF_CENTER_X = 2.94
 COCKPIT_FLOOR_SUNROOF_HALF_LENGTH = 0.24
 COCKPIT_FLOOR_SUNROOF_HALF_WIDTH = 0.22
 COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS = 0.06
-COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z = -0.97
-COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z = -0.90
+COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z = -0.93
+COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z = -0.78
 COCKPIT_FLOOR_SUNROOF_MIN_ABS_NORMAL_Z = 0.90
+COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT = 26
 COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT = 24
+COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS = {
+    "body_parts": 4,
+    "mesh": 4,
+}
 DEV_PREVIEW_FILENAMES = ("preview.ttx", "preview_small.ttx")
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
@@ -507,6 +512,48 @@ def matching_face_signatures(
     return signatures
 
 
+def connected_face_signature_components(
+    signatures: set[FacePositionSignature],
+) -> list[set[FacePositionSignature]]:
+    edge_faces: dict[
+        tuple[tuple[float, float, float], tuple[float, float, float]],
+        list[FacePositionSignature],
+    ] = {}
+    for signature in signatures:
+        for vertex_index in range(3):
+            edge = tuple(
+                sorted(
+                    (
+                        signature[vertex_index],
+                        signature[(vertex_index + 1) % 3],
+                    )
+                )
+            )
+            edge_faces.setdefault(edge, []).append(signature)
+
+    neighbours = {signature: set() for signature in signatures}
+    for connected_faces in edge_faces.values():
+        for signature in connected_faces:
+            neighbours[signature].update(
+                other for other in connected_faces if other != signature
+            )
+
+    components: list[set[FacePositionSignature]] = []
+    remaining = set(signatures)
+    while remaining:
+        root = min(remaining)
+        component = {root}
+        pending = [root]
+        while pending:
+            current = pending.pop()
+            for neighbour in neighbours[current] - component:
+                component.add(neighbour)
+                pending.append(neighbour)
+        remaining -= component
+        components.append(component)
+    return sorted(components, key=lambda component: (-len(component), min(component)))
+
+
 def remove_patch_faces_where(
     patch: core.Patch,
     predicate: Callable[
@@ -550,7 +597,9 @@ def remove_patch_faces_where(
     return removed_faces
 
 
-def carve_cockpit_floor_sunroof(body: dict[str, core.Patch]) -> int:
+def carve_cockpit_floor_sunroof(
+    body: dict[str, core.Patch],
+) -> tuple[int, set[FacePositionSignature]]:
     skin_primary = body.get("body_1")
     skin_duplicate = body.get("body_2")
     if skin_primary is None or skin_duplicate is None:
@@ -566,24 +615,77 @@ def carve_cockpit_floor_sunroof(body: dict[str, core.Patch]) -> int:
         skin_duplicate,
         cockpit_floor_sunroof_contains_face,
     )
-    shared_signatures = primary_signatures & duplicate_signatures
-    if len(shared_signatures) != COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT:
+    shared_candidates = primary_signatures & duplicate_signatures
+    if primary_signatures != duplicate_signatures:
         raise RuntimeError(
-            "Refusing unexpected flat-floor sunroof match: "
-            f"found {len(shared_signatures)} shared faces, expected "
-            f"{COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT}."
+            "Refusing mismatched forward floor sunroof skins: "
+            f"primary has {len(primary_signatures)} faces and duplicate has "
+            f"{len(duplicate_signatures)}."
+        )
+    if len(shared_candidates) != COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT:
+        raise RuntimeError(
+            "Refusing unexpected forward floor sunroof match: "
+            f"found {len(shared_candidates)} shared candidate faces, expected "
+            f"{COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT}."
+        )
+
+    shared_components = connected_face_signature_components(shared_candidates)
+    shared_signatures = shared_components[0] if shared_components else set()
+    component_sizes = [len(component) for component in shared_components]
+    if component_sizes != [COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT, 1, 1]:
+        raise RuntimeError(
+            "Refusing disconnected forward floor sunroof match: "
+            f"largest component has {len(shared_signatures)} faces, expected "
+            f"{COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT}; components={component_sizes}."
+        )
+
+    auxiliary_signatures: dict[str, set[FacePositionSignature]] = {}
+    for material_name, expected_face_count in COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS.items():
+        patch = body.get(material_name)
+        if patch is None:
+            raise RuntimeError(
+                f"Cannot find forward floor layer {material_name!r} for the sunroof cutout."
+            )
+        signatures = matching_face_signatures(
+            patch,
+            cockpit_floor_sunroof_contains_face,
+        )
+        if len(signatures) != expected_face_count:
+            raise RuntimeError(
+                "Refusing unexpected forward floor layer match: "
+                f"{material_name} has {len(signatures)} faces, expected "
+                f"{expected_face_count}."
+            )
+        auxiliary_component_sizes = [
+            len(component) for component in connected_face_signature_components(signatures)
+        ]
+        if auxiliary_component_sizes != [expected_face_count]:
+            raise RuntimeError(
+                "Refusing disconnected forward floor layer match: "
+                f"{material_name} components={auxiliary_component_sizes}."
+            )
+        auxiliary_signatures[material_name] = signatures
+
+    if len(set(map(frozenset, auxiliary_signatures.values()))) != 1:
+        raise RuntimeError(
+            "Refusing mismatched duplicate forward floor layers: "
+            "body_parts and mesh signatures differ."
         )
 
     unexpected_matches = 0
     for material_name, patch in body.items():
-        if material_name in {"body_1", "body_2"}:
+        if material_name in {
+            "body_1",
+            "body_2",
+            *COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS,
+        }:
             continue
         unexpected_matches += len(
             matching_face_signatures(patch, cockpit_floor_sunroof_contains_face)
         )
     if unexpected_matches:
         raise RuntimeError(
-            "Refusing to cut through non-floor cockpit geometry: "
+            "Refusing to cut through unrelated cockpit geometry: "
             f"found {unexpected_matches} unexpected matching faces."
         )
 
@@ -595,13 +697,23 @@ def carve_cockpit_floor_sunroof(body: dict[str, core.Patch]) -> int:
         skin_duplicate,
         lambda _centroid, signature: signature in shared_signatures,
     )
-    expected_removed_faces = COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT * 2
+    removed_signatures = set(shared_signatures)
+    for material_name, signatures in auxiliary_signatures.items():
+        removed_faces += remove_patch_faces_where(
+            body[material_name],
+            lambda _centroid, signature, selected=signatures: signature in selected,
+        )
+        removed_signatures.update(signatures)
+
+    expected_removed_faces = COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT * 2 + sum(
+        COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS.values()
+    )
     if removed_faces != expected_removed_faces:
         raise RuntimeError(
-            "Refusing unexpected flat-floor sunroof removal: "
+            "Refusing unexpected forward floor sunroof removal: "
             f"removed {removed_faces} faces, expected {expected_removed_faces}."
         )
-    return removed_faces
+    return removed_faces, removed_signatures
 
 
 def ensure_inner_shell_material(materials: dict[int, Material]) -> None:
@@ -2188,10 +2300,10 @@ def build_body_for_dev(args: argparse.Namespace):
     if removed_green_faces:
         print(f"Dev exterior cleanup: removed {removed_green_faces} green helper/slime-light faces.")
     shift_visual_shell_for_pilot_alignment(args, body, tail_rotor, visual_gear)
-    removed_floor_faces = carve_cockpit_floor_sunroof(body)
+    removed_floor_faces, removed_floor_signatures = carve_cockpit_floor_sunroof(body)
     print(
         "Dev cockpit floor sunroof: "
-        f"removed {removed_floor_faces} paired skin faces from the compact flat-floor aperture."
+        f"removed {removed_floor_faces} lower-shell faces from the compact forward aperture."
     )
     if args.inner_shell:
         ensure_inner_shell_material(materials)
@@ -2202,10 +2314,10 @@ def build_body_for_dev(args: argparse.Namespace):
         inward_blockers = matching_face_signatures(
             body[INNER_SHELL_MATERIAL_NAME],
             cockpit_floor_sunroof_contains_face,
-        )
+        ) & removed_floor_signatures
         if inward_blockers:
             raise RuntimeError(
-                "Refusing blocked flat-floor sunroof: "
+                "Refusing blocked forward floor sunroof: "
                 f"found {len(inward_blockers)} inward faces after shell duplication."
             )
         print(
@@ -3363,7 +3475,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "floor_sunroof=compact rounded opening removes only the paired flat floor skins between the pilots and stops before the forward nose curvature",
+                "floor_sunroof=compact rounded lower-cockpit opening between the pilots, shifted exactly 0.60m forward from its initial placement",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
@@ -3504,7 +3616,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "A compact rounded opening is cut only through the paired flat floor skins between the pilots and stops before the forward nose curvature.",
+                "A compact rounded lower-cockpit opening between the pilots is shifted exactly 0.60m forward from its initial placement.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
