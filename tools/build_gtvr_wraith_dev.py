@@ -44,23 +44,25 @@ DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
 COCKPIT_FLOOR_SUNROOF_CENTER_X = 3.24
 COCKPIT_FLOOR_SUNROOF_HALF_LENGTH = 0.24
-COCKPIT_FLOOR_SUNROOF_HALF_WIDTH = 0.22
+COCKPIT_FLOOR_SUNROOF_HALF_WIDTH = 0.62
 COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS = 0.06
 COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z = -0.87
 COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z = -0.70
 COCKPIT_FLOOR_SUNROOF_MIN_ABS_NORMAL_Z = 0.90
-COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT = 38
-COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT = 38
-COCKPIT_FLOOR_SUNROOF_SHARED_COMPONENT_SIZES = [38]
+COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT = 78
+COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT = 78
+COCKPIT_FLOOR_SUNROOF_SHARED_COMPONENT_SIZES = [78]
 COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS = {
-    "body_parts": 86,
-    "mesh": 16,
+    "body_parts": 169,
+    "mesh": 56,
+    "whiteplastic": 134,
 }
 COCKPIT_FLOOR_SUNROOF_AUXILIARY_COMPONENT_SIZES = {
-    "body_parts": [70, 14, 2],
-    "mesh": [14, 2],
+    "body_parts": [112, 46, 4, 4, 2, 1],
+    "mesh": [46, 4, 4, 2],
+    "whiteplastic": [67, 67],
 }
-COCKPIT_FLOOR_SUNROOF_BODY_PARTS_EXTRA_FACE_COUNT = 70
+COCKPIT_FLOOR_SUNROOF_BODY_PARTS_EXTRA_FACE_COUNT = 113
 DEV_PREVIEW_FILENAMES = ("preview.ttx", "preview_small.ttx")
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
@@ -3491,7 +3493,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "floor_sunroof=compact rounded lower-cockpit opening between the pilots, shifted exactly 0.90m forward from its initial placement",
+                "floor_sunroof=rounded lower-cockpit opening shifted exactly 0.90m forward and widened exactly 0.40m on each side",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
@@ -3632,7 +3634,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "A compact rounded lower-cockpit opening between the pilots is shifted exactly 0.90m forward from its initial placement.",
+                "The rounded lower-cockpit opening is shifted exactly 0.90m forward from its initial placement and widened exactly 0.40m on each side.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
