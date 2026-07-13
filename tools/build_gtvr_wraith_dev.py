@@ -70,6 +70,18 @@ TAIL_ROTOR_BLUR_INNER_RADIUS = 0.28
 TAIL_ROTOR_BLUR_OUTER_RADIUS = 0.98
 TAIL_ROTOR_BLUR_STREAKS = 12
 TAIL_ROTOR_BLUR_SWEEP = math.radians(8.0)
+GTVR_MAIN_ROTOR_SPIN_GEOMETRY = "GTVRMainRotorSpin"
+GTVR_TAIL_ROTOR_SPIN_GEOMETRY = "GTVRTailRotorSpin"
+GTVR_MAIN_ROTOR_LOCKED_PIVOT = (-0.556228, -0.0000018, 2.53272)
+GTVR_TAIL_ROTOR_LOCKED_PIVOT = (-10.8051, 0.418839, 2.27417)
+GTVR_TAIL_ROTOR_LOCKED_AXIS = (0.0, 0.901077, 0.433659)
+MAIN_ROTOR_VISUAL_SPIN_RATE = 41.36
+TAIL_ROTOR_VISUAL_SPIN_RATE = 220.0
+ROTOR_ANIMATION_PROBE_ONLY = True
+ROTOR_ANIMATION_MAIN_PROBE_RATE = 1.5
+ROTOR_ANIMATION_TAIL_PROBE_RATE = 2.5
+ROTOR_ANIMATION_PROBE_MATERIAL = "gtvr_rotor_probe_red"
+ROTOR_ANIMATION_PROBE_COLOR = (255, 8, 8)
 MAIN_ROTOR_MAST_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
 MAIN_ROTOR_MAST_HOLE_X_RANGE = (0.0, 0.9)
 MAIN_ROTOR_MAST_HOLE_Y_RANGE = (-0.16, 0.16)
@@ -242,6 +254,12 @@ MAP_PANEL_LAUNCH_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_map_panel_launc
 MAP_PANEL_SOURCE_STAMP = MAP_PANEL_SOURCE_DIR / "_GTVR_WRAITH_MAP_PANEL_SOURCE_STAMP.txt"
 MAP_PANEL_TEXTURE = "gtvr_map_panel_light"
 MAP_PANEL_MATERIAL = "gtvr_map_panel_light"
+ROTOR_ANIMATION_DIR_NAME = "gtvr_rotor_animation"
+ROTOR_ANIMATION_SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_rotor_animation_source" / "aircraft"
+ROTOR_ANIMATION_SOURCE_DIR = ROTOR_ANIMATION_SOURCE_ROOT / ROTOR_ANIMATION_DIR_NAME
+ROTOR_ANIMATION_BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_rotor_animation_build_user"
+ROTOR_ANIMATION_LAUNCH_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_rotor_animation_launch"
+ROTOR_ANIMATION_SOURCE_STAMP = ROTOR_ANIMATION_SOURCE_DIR / "_GTVR_WRAITH_ROTOR_ANIMATION_SOURCE_STAMP.txt"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -257,6 +275,9 @@ _current_live_display_pivots: dict[str, tuple[float, float, float]] = {}
 _current_stock_display_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_center_map_pivot: tuple[float, float, float] | None = None
 _current_tail_rotor_pivot: tuple[float, float, float] = TAIL_ROTOR_BASE_PIVOT
+_current_main_rotor_pivot: tuple[float, float, float] | None = None
+_current_main_rotor_spin_geometry: dict[str, core.Patch] = {}
+_current_tail_rotor_spin_geometry: dict[str, core.Patch] = {}
 
 
 def patch_dev_tmc(path: Path) -> None:
@@ -293,6 +314,10 @@ def assert_dev_paths() -> None:
         MAP_PANEL_SOURCE_DIR,
         MAP_PANEL_BUILD_USER,
         MAP_PANEL_LAUNCH_USER,
+        ROTOR_ANIMATION_SOURCE_ROOT,
+        ROTOR_ANIMATION_SOURCE_DIR,
+        ROTOR_ANIMATION_BUILD_USER,
+        ROTOR_ANIMATION_LAUNCH_USER,
     ]
     for path in checked_paths:
         if STABLE_AIRCRAFT_NAME in path.parts:
@@ -309,6 +334,15 @@ def converted_tmb() -> Path:
 
 def converted_map_panel_tmb() -> Path:
     return MAP_PANEL_BUILD_USER / "aircraft" / MAP_PANEL_DIR_NAME / f"{MAP_PANEL_DIR_NAME}.tmb"
+
+
+def converted_rotor_animation_tmb() -> Path:
+    return (
+        ROTOR_ANIMATION_BUILD_USER
+        / "aircraft"
+        / ROTOR_ANIMATION_DIR_NAME
+        / f"{ROTOR_ANIMATION_DIR_NAME}.tmb"
+    )
 
 
 def legacy_rotor_patch_maps_for_dev() -> tuple[dict[str, core.Patch], dict[str, core.Patch]]:
@@ -1989,17 +2023,40 @@ def fmt_vector(values: tuple[float, float, float]) -> str:
     return " ".join(f"{value:.6g}" for value in values)
 
 
-def tail_rotor_graphics_objects() -> str:
-    # Keep the tail rotor blade mesh in the single fuselage draw list for now.
-    # The Aerofly converter rejects a geometry name when it appears in both the
-    # static rigidbodygraphics list and a second rotatingbodygraphics object.
-    # Physical visible blades come first; animation can be reintroduced later
-    # only with a separate non-duplicated geometry path.
-    return ""
-
-
 def patch_map_has_faces(patches: dict[str, core.Patch]) -> bool:
     return any(patch.indices for patch in patches.values())
+
+
+def build_rotor_spin_probe_geometry(
+    *,
+    pivot: tuple[float, float, float],
+    axis: tuple[float, float, float],
+    radial: tuple[float, float, float],
+    inner_radius: float,
+    outer_radius: float,
+) -> dict[str, core.Patch]:
+    """Build one obvious asymmetric arm without replacing the accepted static rotor."""
+    probe: dict[str, core.Patch] = {}
+    axis_unit = vector_normalize(axis)
+    radial_unit = vector_normalize(radial)
+    plane_offset = vector_mul(axis_unit, 0.09)
+    start = vector_add(
+        vector_add(pivot, plane_offset),
+        vector_mul(radial_unit, inner_radius),
+    )
+    end = vector_add(
+        vector_add(pivot, plane_offset),
+        vector_mul(radial_unit, outer_radius),
+    )
+    append_cylinder_between(
+        probe,
+        ROTOR_ANIMATION_PROBE_MATERIAL,
+        start,
+        end,
+        0.055,
+        segments=12,
+    )
+    return probe
 
 
 def patch_map_bounds_center(
@@ -2289,6 +2346,7 @@ def build_procedural_main_rotor_geometry(
 def add_generated_main_rotor_visual_to_body(
     body: dict[str, core.Patch],
 ) -> None:
+    global _current_main_rotor_pivot, _current_main_rotor_spin_geometry
     mast_height_anchor = patch_map_highest_point_in_box(
         body,
         x_range=MAIN_ROTOR_MAST_HOLE_X_RANGE,
@@ -2346,7 +2404,19 @@ def add_generated_main_rotor_visual_to_body(
         MAIN_ROTOR_MAST_COLLAR_RADIUS,
         segments=32,
     )
-    merge_patch_map_into(body, build_procedural_main_rotor_geometry(rotor_center))
+    main_rotor = build_procedural_main_rotor_geometry(rotor_center)
+    _current_main_rotor_pivot = rotor_center
+    if ROTOR_ANIMATION_PROBE_ONLY:
+        merge_patch_map_into(body, main_rotor)
+        _current_main_rotor_spin_geometry = build_rotor_spin_probe_geometry(
+            pivot=rotor_center,
+            axis=(0.0, 0.0, 1.0),
+            radial=(1.0, 0.0, 0.0),
+            inner_radius=0.28,
+            outer_radius=1.15,
+        )
+    else:
+        _current_main_rotor_spin_geometry = core.copy_patch_map(main_rotor)
     print(
         "Dev main rotor visual replacement: "
         f"generated shaft-top four-blade main prop at ({rotor_center[0]:.3f}, "
@@ -2654,10 +2724,7 @@ def is_dev_static_visual_hidden(geometry_name: str) -> bool:
 
 
 def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
-    animated_names = (
-        set(_current_animated_control_geometries)
-        | set(_current_live_display_geometries)
-    )
+    animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
     static_geometry_names = [
         name for name in sorted(geometry_names)
         if name not in animated_names and not is_dev_static_visual_hidden(name)
@@ -2666,7 +2733,6 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
     center_map_dynamic = center_map_dynamic_objects()
     display_graphics = live_display_graphics_objects()
     center_map_graphics = center_map_graphics_objects()
-    tail_rotor_graphics = tail_rotor_graphics_objects()
     control_transforms = visual_control_dynamic_objects()
     graphic_objects = visual_control_graphics_objects()
     text = f"""<[file][][]
@@ -2689,7 +2755,6 @@ def write_dev_visual_tmd(path: Path, geometry_names: list[str]) -> None:
             >
 {display_graphics}
 {center_map_graphics}
-{tail_rotor_graphics}
 {control_transforms}
 {graphic_objects}
         >
@@ -2828,8 +2893,138 @@ def prepare_dev_map_panel_source(args: argparse.Namespace) -> Path:
     return MAP_PANEL_SOURCE_DIR
 
 
+def write_rotor_animation_source_tmc(path: Path) -> None:
+    path.write_text(
+        """<[file][][]
+    <[modelinformation][][]
+        <[int32][Version][230]>
+        <[list_vector4_float64][ContactSpheres][ (0.0 0.0 0.0 0.05) ]>
+        <[stringt8c][ICAO][GTRA]>
+        <[string8][DisplayName][Wraith Rotor Animation]>
+        <[string8][DisplayNameFull][Wraith Rotor Animation]>
+        <[float64][MaximumTakeoffMass][1.0]>
+        <[uint32][MaximumPersonsOnBoard][0]>
+        <[float64][WingSpan][9.8]>
+        <[float64][Length][0.01]>
+        <[float64][Height][2.2]>
+        <[uint32][Year][2026]>
+        <[uint32][EngineCount][0]>
+        <[float64][EnginePower][0.0]>
+        <[string8][Tags][ rotor animation experimental ]>
+    >
+>
+""",
+        encoding="utf-8",
+    )
+
+
+def rotor_animation_rates() -> tuple[float, float]:
+    if ROTOR_ANIMATION_PROBE_ONLY:
+        return ROTOR_ANIMATION_MAIN_PROBE_RATE, ROTOR_ANIMATION_TAIL_PROBE_RATE
+    return MAIN_ROTOR_VISUAL_SPIN_RATE, TAIL_ROTOR_VISUAL_SPIN_RATE
+
+
+def prepare_dev_rotor_animation_source(
+    args: argparse.Namespace,
+    materials: dict[int, Material],
+) -> Path:
+    if _current_main_rotor_pivot is None:
+        raise RuntimeError("Cannot prepare rotor animation option without the main rotor pivot.")
+    if not patch_map_has_faces(_current_main_rotor_spin_geometry):
+        raise RuntimeError("Cannot prepare rotor animation option without main rotor geometry.")
+    if not patch_map_has_faces(_current_tail_rotor_spin_geometry):
+        raise RuntimeError("Cannot prepare rotor animation option without tail rotor geometry.")
+    for label, actual, locked in (
+        ("main", _current_main_rotor_pivot, GTVR_MAIN_ROTOR_LOCKED_PIVOT),
+        ("tail", _current_tail_rotor_pivot, GTVR_TAIL_ROTOR_LOCKED_PIVOT),
+    ):
+        if max(abs(value - expected) for value, expected in zip(actual, locked)) > 5e-5:
+            raise RuntimeError(
+                f"Refusing to move the accepted {label} rotor pivot: "
+                f"computed {fmt_vector(actual)} vs locked {fmt_vector(locked)}"
+            )
+
+    if ROTOR_ANIMATION_SOURCE_DIR.exists():
+        shutil.rmtree(ROTOR_ANIMATION_SOURCE_DIR)
+    ROTOR_ANIMATION_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+    core.ensure_runtime_resources(ROTOR_ANIMATION_SOURCE_ROOT)
+
+    geometries = {
+        GTVR_MAIN_ROTOR_SPIN_GEOMETRY: core.copy_patch_map(_current_main_rotor_spin_geometry),
+        GTVR_TAIL_ROTOR_SPIN_GEOMETRY: core.copy_patch_map(_current_tail_rotor_spin_geometry),
+    }
+    used_material_names = {
+        material_name
+        for patches in geometries.values()
+        for material_name in patches
+    }
+    source_materials = {
+        index: material
+        for index, material in materials.items()
+        if material.name in used_material_names
+    }
+    missing_materials = used_material_names - {material.name for material in source_materials.values()}
+    if missing_materials:
+        raise RuntimeError(
+            "Missing rotor option materials: " + ", ".join(sorted(missing_materials))
+        )
+    for material in source_materials.values():
+        source_texture = core.SOURCE_DIR / f"{material.texture_name}.png"
+        if not source_texture.exists():
+            raise FileNotFoundError(f"Missing rotor option source texture: {source_texture}")
+        shutil.copy2(source_texture, ROTOR_ANIMATION_SOURCE_DIR / source_texture.name)
+
+    write_rotor_animation_source_tmc(
+        ROTOR_ANIMATION_SOURCE_DIR / f"{ROTOR_ANIMATION_DIR_NAME}.tmc"
+    )
+    core.write_minimal_tmd(
+        ROTOR_ANIMATION_SOURCE_DIR / f"{ROTOR_ANIMATION_DIR_NAME}.tmd",
+        sorted(geometries),
+    )
+    core.write_tgi(
+        ROTOR_ANIMATION_SOURCE_DIR / f"{ROTOR_ANIMATION_DIR_NAME}.tgi",
+        source_materials,
+        geometries,
+    )
+    core.write_model_tmc(
+        ROTOR_ANIMATION_SOURCE_DIR / "model.tmc",
+        source_materials,
+        geometries,
+        args.max_texture_size,
+    )
+    core.write_root_converter_config(
+        ROTOR_ANIMATION_SOURCE_ROOT / "config.tmc",
+        ROTOR_ANIMATION_SOURCE_ROOT,
+        ROTOR_ANIMATION_BUILD_USER,
+    )
+    main_rate, tail_rate = rotor_animation_rates()
+    ROTOR_ANIMATION_SOURCE_STAMP.write_text(
+        "\n".join(
+            [
+                "GTVR Wraith independent rotor animation source prepared.",
+                f"probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
+                f"main_pivot={fmt_vector(_current_main_rotor_pivot)}",
+                f"tail_pivot={fmt_vector(_current_tail_rotor_pivot)}",
+                f"tail_axis={fmt_vector(tail_rotor_axis_vector())}",
+                f"main_rate={main_rate:.6g}",
+                f"tail_rate={tail_rate:.6g}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(f"Wrote dev rotor animation option source: {ROTOR_ANIMATION_SOURCE_DIR}")
+    return ROTOR_ANIMATION_SOURCE_DIR
+
+
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
     global _current_tail_rotor_pivot
+    global _current_main_rotor_pivot
+    global _current_main_rotor_spin_geometry
+    global _current_tail_rotor_spin_geometry
+    _current_main_rotor_pivot = None
+    _current_main_rotor_spin_geometry = {}
+    _current_tail_rotor_spin_geometry = {}
     if core.SOURCE_DIR.exists():
         shutil.rmtree(core.SOURCE_DIR)
     core.SOURCE_DIR.mkdir(parents=True, exist_ok=True)
@@ -2837,6 +3032,17 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
 
     materials, body, tail_rotor, visual_gear, source_faces, imported_faces = core.build_body(args)
     core.add_flat_materials(materials, core.SOURCE_DIR)
+    if not any(material.name == ROTOR_ANIMATION_PROBE_MATERIAL for material in materials.values()):
+        write_png(
+            core.SOURCE_DIR / f"{ROTOR_ANIMATION_PROBE_MATERIAL}.png",
+            ROTOR_ANIMATION_PROBE_COLOR,
+        )
+        materials[next_material_index(materials)] = Material(
+            name=ROTOR_ANIMATION_PROBE_MATERIAL,
+            texture_name=ROTOR_ANIMATION_PROBE_MATERIAL,
+            source_uri="generated-gtvr-dev-rotor-animation-probe",
+            color=(*ROTOR_ANIMATION_PROBE_COLOR, 255),
+        )
     _legacy_main_rotor, fallback_tail_rotor = core.legacy_rotor_patch_maps()
     core.translate_patch_map(fallback_tail_rotor, 0.0, 0.0, args.visual_body_lift)
     add_generated_main_rotor_visual_to_body(body)
@@ -2860,7 +3066,18 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         else TAIL_ROTOR_BASE_PIVOT[1],
         TAIL_ROTOR_BASE_PIVOT[2],
     )
-    merge_patch_map_into(body, build_procedural_tail_rotor_geometry())
+    generated_tail_rotor = build_procedural_tail_rotor_geometry()
+    if ROTOR_ANIMATION_PROBE_ONLY:
+        merge_patch_map_into(body, generated_tail_rotor)
+        _current_tail_rotor_spin_geometry = build_rotor_spin_probe_geometry(
+            pivot=_current_tail_rotor_pivot,
+            axis=tail_rotor_axis_vector(),
+            radial=tail_rotor_roll_vector((0.0, 0.0, 1.0)),
+            inner_radius=0.18,
+            outer_radius=0.72,
+        )
+    else:
+        _current_tail_rotor_spin_geometry = core.copy_patch_map(generated_tail_rotor)
 
     animated_names = set(_current_animated_control_geometries) | set(_current_live_display_geometries)
     geometries: dict[str, dict[str, core.Patch]] = {}
@@ -2892,7 +3109,6 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         geometries.setdefault(geometry_name, core.copy_patch_map(patches))
     for geometry_name, patches in _current_stock_display_geometries.items():
         geometries.setdefault(geometry_name, core.copy_patch_map(patches))
-
     core.write_aircraft_source_tmc(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmc")
     write_dev_visual_tmd(core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tmd", sorted(geometries))
     tgi_path = core.SOURCE_DIR / f"{core.AIRCRAFT_NAME}.tgi"
@@ -2928,6 +3144,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         print(f"Dev cockpit materials: added {surface_slots} explicit specular/reflection slots.")
     print(f"Imported body faces: {imported_faces}")
     prepare_dev_map_panel_source(args)
+    prepare_dev_rotor_animation_source(args, materials)
 
 
 def write_source_stamp() -> None:
@@ -2942,6 +3159,7 @@ def write_source_stamp() -> None:
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
+                f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, anchored matte dark-grey floor cyclics with shaped grips, lowered left-side collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
                 "animated_controls=cyclic lower shafts are static from floor to the exact EC135 pivot and opaque shaped upper grips occupy stock LeftCyclicCont/RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
@@ -2992,6 +3210,23 @@ def assert_fresh_converted_tmb(allow_stale_tmb: bool) -> None:
             "Run the full converter with --convert, or pass --allow-stale-tmb intentionally."
         )
 
+    rotor_tmb_path = converted_rotor_animation_tmb()
+    if not rotor_tmb_path.exists():
+        raise FileNotFoundError(
+            f"Missing rotor animation option converter output: {rotor_tmb_path}. "
+            "Run the full converter with --convert, or pass --allow-stale-tmb intentionally."
+        )
+    if not ROTOR_ANIMATION_SOURCE_STAMP.exists():
+        raise FileNotFoundError(
+            f"Missing rotor animation source stamp: {ROTOR_ANIMATION_SOURCE_STAMP}. "
+            "Run --prepare-source before assembling."
+        )
+    if rotor_tmb_path.stat().st_mtime < ROTOR_ANIMATION_SOURCE_STAMP.stat().st_mtime:
+        raise RuntimeError(
+            f"Refusing to assemble stale rotor animation option TMB: {rotor_tmb_path} "
+            f"is older than {ROTOR_ANIMATION_SOURCE_STAMP}. Run the full converter with --convert."
+        )
+
 
 def run_converter(timeout: float) -> int:
     command = [
@@ -3024,7 +3259,25 @@ def run_converter(timeout: float) -> int:
         print("Running full Aerofly converter for Wraith independent centre map panel:")
         print(" ".join(panel_command))
         panel_completed = subprocess.run(panel_command, cwd=ROOT, check=False)
-        return panel_completed.returncode
+        if panel_completed.returncode != 0:
+            return panel_completed.returncode
+
+    if ROTOR_ANIMATION_SOURCE_DIR.exists():
+        rotor_command = [
+            sys.executable,
+            str(ROOT / "tools" / "run_aerofly_converter.py"),
+            ROTOR_ANIMATION_DIR_NAME,
+            str(ROTOR_ANIMATION_SOURCE_ROOT),
+            "--userfolder",
+            str(ROTOR_ANIMATION_LAUNCH_USER),
+            "--timeout",
+            str(timeout),
+        ]
+        print("Running full Aerofly converter for Wraith independent rotor animation option:")
+        print(" ".join(rotor_command))
+        rotor_completed = subprocess.run(rotor_command, cwd=ROOT, check=False)
+        if rotor_completed.returncode != 0:
+            return rotor_completed.returncode
 
     return 0
 
@@ -3045,6 +3298,7 @@ def write_dev_package_marker() -> None:
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
+                f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
                 "Cyclic lower shafts remain fixed from the floor to the exact EC135 pivots, while opaque shaped upper grips occupy the stock LeftCyclicCont and RightCyclicCont fixed-control slots; collectives and unchanged-travel pedals retain their dev visual groups.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
@@ -3175,6 +3429,62 @@ def dev_map_panel_system_tmd() -> str:
 """
 
 
+def rotor_animation_system_tmd() -> str:
+    main_rate, tail_rate = rotor_animation_rates()
+    return f"""<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmuniverse][DynamicObjects][]
+            // Stock LJ45 fan pattern: an aircraft-side integral exposed to graphics by name.
+            <[integral][GTVRMainRotorAnimationAngle][]
+                <[string8][Input][{main_rate:.6g}]>
+                <[float64][Value][0.0]>
+            >
+            <[output_free][GTVRMainRotorAnimationAngleOutput][]
+                <[string8][Input][GTVRMainRotorAnimationAngle.Output]>
+            >
+            <[integral][GTVRTailRotorAnimationAngle][]
+                <[string8][Input][{tail_rate:.6g}]>
+                <[float64][Value][0.0]>
+            >
+            <[output_free][GTVRTailRotorAnimationAngleOutput][]
+                <[string8][Input][GTVRTailRotorAnimationAngle.Output]>
+            >
+        >
+        <[pointer_list_tmgraphics][GraphicObjects][]
+            <[graphics_input][GTVRMainRotorAnimationAngleInput][]
+                <[uint32][InputID][GTVRMainRotorAnimationAngle.Output]>
+            >
+            <[graphics_rotation][GTVRMainRotorAnimationTransform][]
+                <[string8][Input][GTVRMainRotorAnimationAngleInput.Output]>
+                <[tmvector3d][Axis][ 0.0 0.0 1.0 ]>
+                <[tmvector3d][Pivot][ {fmt_vector(GTVR_MAIN_ROTOR_LOCKED_PIVOT)} ]>
+            >
+            <[rigidbodygraphics][GTVRMainRotorAnimationGraphics][]
+                <[string8][GeometryList][ {GTVR_MAIN_ROTOR_SPIN_GEOMETRY} ]>
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[string8][InputTransform][GTVRMainRotorAnimationTransform.Output]>
+            >
+            <[graphics_input][GTVRTailRotorAnimationAngleInput][]
+                <[uint32][InputID][GTVRTailRotorAnimationAngle.Output]>
+            >
+            <[graphics_rotation][GTVRTailRotorAnimationTransform][]
+                <[string8][Input][GTVRTailRotorAnimationAngleInput.Output]>
+                <[tmvector3d][Axis][ {fmt_vector(GTVR_TAIL_ROTOR_LOCKED_AXIS)} ]>
+                <[tmvector3d][Pivot][ {fmt_vector(GTVR_TAIL_ROTOR_LOCKED_PIVOT)} ]>
+            >
+            <[rigidbodygraphics][GTVRTailRotorAnimationGraphics][]
+                <[string8][GeometryList][ {GTVR_TAIL_ROTOR_SPIN_GEOMETRY} ]>
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[string8][InputTransform][GTVRTailRotorAnimationTransform.Output]>
+            >
+        >
+    >
+>
+"""
+
+
 def write_dev_map_panel_option() -> Path:
     panel_dir = DEV_PACKAGE_DIR / MAP_PANEL_DIR_NAME
     if panel_dir.exists():
@@ -3217,6 +3527,47 @@ def write_dev_map_panel_option() -> Path:
     shutil.copy2(panel_texture, panel_dir / panel_texture.name)
 
     return panel_dir
+
+
+def write_dev_rotor_animation_option() -> Path:
+    option_dir = DEV_PACKAGE_DIR / ROTOR_ANIMATION_DIR_NAME
+    if option_dir.exists():
+        shutil.rmtree(option_dir)
+    option_dir.mkdir(parents=True)
+
+    (option_dir / "option.tmc").write_text(
+        """<[file][][]
+  <[object][][]
+    <[string8][Description][Wraith Rotor Animation]>
+    <[string8][Type][default]>
+    <[string8][Tags][rotor]>
+  >
+>
+""",
+        encoding="utf-8",
+    )
+    (option_dir / "system.tmd").write_text(rotor_animation_system_tmd(), encoding="utf-8")
+    (option_dir / "controls.tmd").write_text(
+        """<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmcontrol][ControlObjects][]
+        >
+    >
+>
+""",
+        encoding="utf-8",
+    )
+    (option_dir / "system_cold.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
+    (option_dir / "system_start.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
+
+    option_tmb = converted_rotor_animation_tmb()
+    if not option_tmb.exists():
+        raise FileNotFoundError(f"Missing converted rotor animation option TMB: {option_tmb}")
+    shutil.copy2(option_tmb, option_dir / option_tmb.name)
+    for texture in option_tmb.parent.glob("*.ttx"):
+        if not texture.stem.startswith("preview"):
+            shutil.copy2(texture, option_dir / texture.name)
+    return option_dir
 
 
 def patch_dev_controls_tmd(path: Path) -> int:
@@ -3434,6 +3785,12 @@ def main() -> int:
             core.assemble_package(args)
             map_panel_dir = write_dev_map_panel_option()
             print(f"Dev centre map: packaged independent panel {map_panel_dir.name} using {MAP_PANEL_TEXTURE}.ttx.")
+            rotor_option_dir = write_dev_rotor_animation_option()
+            mode = "probe" if ROTOR_ANIMATION_PROBE_ONLY else "complete assemblies"
+            print(
+                f"Dev rotors: packaged independent runtime animation option "
+                f"{rotor_option_dir.name} using {mode}."
+            )
             copied_surface_textures = copy_dev_auxiliary_textures()
             print(f"Dev cockpit materials: packaged {copied_surface_textures} auxiliary surface textures.")
             hidden_clickspots = patch_dev_controls_tmd(DEV_PACKAGE_DIR / "controls.tmd")
