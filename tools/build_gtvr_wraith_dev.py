@@ -42,19 +42,25 @@ DEFAULT_COCKPIT_X_DELTA = 0.0
 DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
-COCKPIT_FLOOR_SUNROOF_CENTER_X = 2.94
+COCKPIT_FLOOR_SUNROOF_CENTER_X = 3.24
 COCKPIT_FLOOR_SUNROOF_HALF_LENGTH = 0.24
 COCKPIT_FLOOR_SUNROOF_HALF_WIDTH = 0.22
 COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS = 0.06
-COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z = -0.93
-COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z = -0.78
+COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z = -0.87
+COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z = -0.70
 COCKPIT_FLOOR_SUNROOF_MIN_ABS_NORMAL_Z = 0.90
-COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT = 26
-COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT = 24
+COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT = 38
+COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT = 38
+COCKPIT_FLOOR_SUNROOF_SHARED_COMPONENT_SIZES = [38]
 COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS = {
-    "body_parts": 4,
-    "mesh": 4,
+    "body_parts": 86,
+    "mesh": 16,
 }
+COCKPIT_FLOOR_SUNROOF_AUXILIARY_COMPONENT_SIZES = {
+    "body_parts": [70, 14, 2],
+    "mesh": [14, 2],
+}
+COCKPIT_FLOOR_SUNROOF_BODY_PARTS_EXTRA_FACE_COUNT = 70
 DEV_PREVIEW_FILENAMES = ("preview.ttx", "preview_small.ttx")
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
@@ -632,7 +638,7 @@ def carve_cockpit_floor_sunroof(
     shared_components = connected_face_signature_components(shared_candidates)
     shared_signatures = shared_components[0] if shared_components else set()
     component_sizes = [len(component) for component in shared_components]
-    if component_sizes != [COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT, 1, 1]:
+    if component_sizes != COCKPIT_FLOOR_SUNROOF_SHARED_COMPONENT_SIZES:
         raise RuntimeError(
             "Refusing disconnected forward floor sunroof match: "
             f"largest component has {len(shared_signatures)} faces, expected "
@@ -659,17 +665,27 @@ def carve_cockpit_floor_sunroof(
         auxiliary_component_sizes = [
             len(component) for component in connected_face_signature_components(signatures)
         ]
-        if auxiliary_component_sizes != [expected_face_count]:
+        expected_component_sizes = COCKPIT_FLOOR_SUNROOF_AUXILIARY_COMPONENT_SIZES[
+            material_name
+        ]
+        if auxiliary_component_sizes != expected_component_sizes:
             raise RuntimeError(
                 "Refusing disconnected forward floor layer match: "
-                f"{material_name} components={auxiliary_component_sizes}."
+                f"{material_name} components={auxiliary_component_sizes}, expected "
+                f"{expected_component_sizes}."
             )
         auxiliary_signatures[material_name] = signatures
 
-    if len(set(map(frozenset, auxiliary_signatures.values()))) != 1:
+    body_parts_signatures = auxiliary_signatures["body_parts"]
+    mesh_signatures = auxiliary_signatures["mesh"]
+    if (
+        not mesh_signatures <= body_parts_signatures
+        or len(body_parts_signatures - mesh_signatures)
+        != COCKPIT_FLOOR_SUNROOF_BODY_PARTS_EXTRA_FACE_COUNT
+    ):
         raise RuntimeError(
-            "Refusing mismatched duplicate forward floor layers: "
-            "body_parts and mesh signatures differ."
+            "Refusing mismatched forward floor layers: expected mesh to be the "
+            "duplicated subset of body_parts."
         )
 
     unexpected_matches = 0
@@ -3475,7 +3491,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "floor_sunroof=compact rounded lower-cockpit opening between the pilots, shifted exactly 0.60m forward from its initial placement",
+                "floor_sunroof=compact rounded lower-cockpit opening between the pilots, shifted exactly 0.90m forward from its initial placement",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
@@ -3616,7 +3632,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "A compact rounded lower-cockpit opening between the pilots is shifted exactly 0.60m forward from its initial placement.",
+                "A compact rounded lower-cockpit opening between the pilots is shifted exactly 0.90m forward from its initial placement.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
