@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 import math
 import re
 import shutil
@@ -41,6 +42,15 @@ DEFAULT_COCKPIT_X_DELTA = 0.0
 DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
+COCKPIT_FLOOR_SUNROOF_CENTER_X = 2.34
+COCKPIT_FLOOR_SUNROOF_HALF_LENGTH = 0.24
+COCKPIT_FLOOR_SUNROOF_HALF_WIDTH = 0.22
+COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS = 0.06
+COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z = -0.97
+COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z = -0.90
+COCKPIT_FLOOR_SUNROOF_MIN_ABS_NORMAL_Z = 0.90
+COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT = 24
+DEV_PREVIEW_FILENAMES = ("preview.ttx", "preview_small.ttx")
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
 CYCLIC_OPAQUE_MATERIAL = "gtvr_cyclic_opaque_dark_grey"
@@ -411,6 +421,187 @@ def make_patch_visible_from_inside(source_patch: core.Patch, target_patch: core.
             face_attribute = 0
         append_reversed_face(source_patch, target_patch, face_indices, face_attribute)
     return original_face_count
+
+
+FacePositionSignature = tuple[tuple[float, float, float], ...]
+
+
+def face_position_signature(
+    patch: core.Patch,
+    face_indices: list[int],
+) -> FacePositionSignature:
+    return tuple(
+        sorted(
+            tuple(round(patch.vertices[index * 8 + axis], 6) for axis in range(3))
+            for index in face_indices
+        )
+    )
+
+
+def face_geometric_abs_normal_z(
+    vertices: tuple[tuple[float, float, float], ...],
+) -> float:
+    edge_a = tuple(vertices[1][axis] - vertices[0][axis] for axis in range(3))
+    edge_b = tuple(vertices[2][axis] - vertices[0][axis] for axis in range(3))
+    normal = (
+        edge_a[1] * edge_b[2] - edge_a[2] * edge_b[1],
+        edge_a[2] * edge_b[0] - edge_a[0] * edge_b[2],
+        edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0],
+    )
+    length = math.sqrt(sum(component * component for component in normal))
+    return abs(normal[2]) / length if length > 1e-12 else 0.0
+
+
+def cockpit_floor_sunroof_contains_face(
+    centroid: tuple[float, float, float],
+    vertices: tuple[tuple[float, float, float], ...],
+) -> bool:
+    x_distance = abs(centroid[0] - COCKPIT_FLOOR_SUNROOF_CENTER_X)
+    y_distance = abs(centroid[1])
+    if x_distance > COCKPIT_FLOOR_SUNROOF_HALF_LENGTH:
+        return False
+    if y_distance > COCKPIT_FLOOR_SUNROOF_HALF_WIDTH:
+        return False
+
+    straight_half_length = (
+        COCKPIT_FLOOR_SUNROOF_HALF_LENGTH - COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS
+    )
+    straight_half_width = (
+        COCKPIT_FLOOR_SUNROOF_HALF_WIDTH - COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS
+    )
+    if x_distance > straight_half_length and y_distance > straight_half_width:
+        corner_x = x_distance - straight_half_length
+        corner_y = y_distance - straight_half_width
+        if corner_x * corner_x + corner_y * corner_y > COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS**2:
+            return False
+
+    vertex_zs = [vertex[2] for vertex in vertices]
+    if min(vertex_zs) < COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z:
+        return False
+    if max(vertex_zs) > COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z:
+        return False
+    return face_geometric_abs_normal_z(vertices) >= COCKPIT_FLOOR_SUNROOF_MIN_ABS_NORMAL_Z
+
+
+def matching_face_signatures(
+    patch: core.Patch,
+    predicate: Callable[
+        [tuple[float, float, float], tuple[tuple[float, float, float], ...]],
+        bool,
+    ],
+) -> set[FacePositionSignature]:
+    signatures: set[FacePositionSignature] = set()
+    for face_offset in range(0, len(patch.indices), 3):
+        face_indices = patch.indices[face_offset : face_offset + 3]
+        if len(face_indices) != 3:
+            continue
+        vertices = tuple(
+            tuple(patch.vertices[index * 8 + axis] for axis in range(3))
+            for index in face_indices
+        )
+        centroid = tuple(
+            sum(vertex[axis] for vertex in vertices) / 3.0 for axis in range(3)
+        )
+        if predicate(centroid, vertices):
+            signatures.add(face_position_signature(patch, face_indices))
+    return signatures
+
+
+def remove_patch_faces_where(
+    patch: core.Patch,
+    predicate: Callable[
+        [tuple[float, float, float], FacePositionSignature],
+        bool,
+    ],
+) -> int:
+    source_vertices = patch.vertices
+    source_indices = patch.indices
+    source_attributes = patch.face_attributes
+    filtered = core.Patch(patch.material_name)
+    vertex_map: dict[int, int] = {}
+    removed_faces = 0
+
+    for face_offset in range(0, len(source_indices), 3):
+        face_indices = source_indices[face_offset : face_offset + 3]
+        if len(face_indices) != 3:
+            continue
+        centroid = tuple(
+            sum(source_vertices[index * 8 + axis] for index in face_indices) / 3.0
+            for axis in range(3)
+        )
+        signature = face_position_signature(patch, face_indices)
+        if predicate(centroid, signature):
+            removed_faces += 1
+            continue
+        for source_index in face_indices:
+            target_index = vertex_map.get(source_index)
+            if target_index is None:
+                target_index = len(filtered.vertices) // 8
+                vertex_map[source_index] = target_index
+                source_offset = source_index * 8
+                filtered.vertices.extend(source_vertices[source_offset : source_offset + 8])
+            filtered.indices.append(target_index)
+        if source_attributes:
+            filtered.face_attributes.append(source_attributes[face_offset // 3])
+
+    patch.vertices = filtered.vertices
+    patch.indices = filtered.indices
+    patch.face_attributes = filtered.face_attributes
+    return removed_faces
+
+
+def carve_cockpit_floor_sunroof(body: dict[str, core.Patch]) -> int:
+    skin_primary = body.get("body_1")
+    skin_duplicate = body.get("body_2")
+    if skin_primary is None or skin_duplicate is None:
+        raise RuntimeError(
+            "Cannot find both paired cockpit floor skin layers for the sunroof cutout."
+        )
+
+    primary_signatures = matching_face_signatures(
+        skin_primary,
+        cockpit_floor_sunroof_contains_face,
+    )
+    duplicate_signatures = matching_face_signatures(
+        skin_duplicate,
+        cockpit_floor_sunroof_contains_face,
+    )
+    shared_signatures = primary_signatures & duplicate_signatures
+    if len(shared_signatures) != COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT:
+        raise RuntimeError(
+            "Refusing unexpected flat-floor sunroof match: "
+            f"found {len(shared_signatures)} shared faces, expected "
+            f"{COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT}."
+        )
+
+    unexpected_matches = 0
+    for material_name, patch in body.items():
+        if material_name in {"body_1", "body_2"}:
+            continue
+        unexpected_matches += len(
+            matching_face_signatures(patch, cockpit_floor_sunroof_contains_face)
+        )
+    if unexpected_matches:
+        raise RuntimeError(
+            "Refusing to cut through non-floor cockpit geometry: "
+            f"found {unexpected_matches} unexpected matching faces."
+        )
+
+    removed_faces = remove_patch_faces_where(
+        skin_primary,
+        lambda _centroid, signature: signature in shared_signatures,
+    )
+    removed_faces += remove_patch_faces_where(
+        skin_duplicate,
+        lambda _centroid, signature: signature in shared_signatures,
+    )
+    expected_removed_faces = COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT * 2
+    if removed_faces != expected_removed_faces:
+        raise RuntimeError(
+            "Refusing unexpected flat-floor sunroof removal: "
+            f"removed {removed_faces} faces, expected {expected_removed_faces}."
+        )
+    return removed_faces
 
 
 def ensure_inner_shell_material(materials: dict[int, Material]) -> None:
@@ -1997,16 +2188,31 @@ def build_body_for_dev(args: argparse.Namespace):
     if removed_green_faces:
         print(f"Dev exterior cleanup: removed {removed_green_faces} green helper/slime-light faces.")
     shift_visual_shell_for_pilot_alignment(args, body, tail_rotor, visual_gear)
+    removed_floor_faces = carve_cockpit_floor_sunroof(body)
+    print(
+        "Dev cockpit floor sunroof: "
+        f"removed {removed_floor_faces} paired skin faces from the compact flat-floor aperture."
+    )
     if args.inner_shell:
         ensure_inner_shell_material(materials)
         duplicated_faces, skipped_materials = make_inner_shell_opaque(
             body,
             args.inner_shell_skip_material_regex,
         )
+        inward_blockers = matching_face_signatures(
+            body[INNER_SHELL_MATERIAL_NAME],
+            cockpit_floor_sunroof_contains_face,
+        )
+        if inward_blockers:
+            raise RuntimeError(
+                "Refusing blocked flat-floor sunroof: "
+                f"found {len(inward_blockers)} inward faces after shell duplication."
+            )
         print(
             "Dev inner shell: "
             f"duplicated {duplicated_faces} solid faces into {INNER_SHELL_MATERIAL_NAME}."
         )
+        print("Dev cockpit floor sunroof: verified clear through the inward shell.")
         if skipped_materials:
             skipped_preview = ", ".join(sorted(skipped_materials)[:12])
             suffix = "..." if len(skipped_materials) > 12 else ""
@@ -3157,6 +3363,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
+                "floor_sunroof=compact rounded opening removes only the paired flat floor skins between the pilots and stops before the forward nose curvature",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
@@ -3297,6 +3504,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
+                "A compact rounded opening is cut only through the paired flat floor skins between the pilots and stops before the forward nose curvature.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
@@ -3656,6 +3864,25 @@ def force_dev_stock_display_state(path: Path) -> int:
     return changed
 
 
+def preserve_installed_dev_previews(user_root: Path) -> int:
+    installed_dev = user_root / "aircraft" / DEV_AIRCRAFT_NAME
+    if installed_dev.name != DEV_AIRCRAFT_NAME:
+        raise RuntimeError(f"Refusing unexpected installed Dev preview source: {installed_dev}")
+    if not installed_dev.exists():
+        return 0
+
+    preserved = 0
+    for filename in DEV_PREVIEW_FILENAMES:
+        source = installed_dev / filename
+        if not source.exists():
+            continue
+        if source.stat().st_size <= 0:
+            raise RuntimeError(f"Refusing empty installed Dev preview: {source}")
+        shutil.copy2(source, DEV_PACKAGE_DIR / filename)
+        preserved += 1
+    return preserved
+
+
 def install_dev_package(user_root: Path, force_install: bool) -> Path:
     source_dir = DEV_PACKAGE_DIR
     target_dir = user_root / "aircraft" / DEV_AIRCRAFT_NAME
@@ -3791,6 +4018,12 @@ def main() -> int:
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
+            preserved_previews = preserve_installed_dev_previews(args.user_root)
+            if preserved_previews:
+                print(
+                    "Dev previews: "
+                    f"preserved {preserved_previews} accepted installed preview textures."
+                )
             map_panel_dir = write_dev_map_panel_option()
             print(f"Dev centre map: packaged independent panel {map_panel_dir.name} using {MAP_PANEL_TEXTURE}.ttx.")
             rotor_option_dir = write_dev_rotor_animation_option()
