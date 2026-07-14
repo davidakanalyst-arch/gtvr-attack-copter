@@ -82,6 +82,15 @@ MATTE_BLACK_SURFACE_TEXTURE = "gtvr_matte_black_surface"
 TIRE_BLACK_MATERIAL = "gtvr_tire_black"
 TIRE_BLACK_COLOR = (1, 1, 1)
 REAR_STRUT_LENGTH_SCALE = 0.65
+REAR_WHEEL_STRUT_SHAVE_BASE_X_RANGE = (-3.70, -3.20)
+REAR_WHEEL_STRUT_SHAVE_HALF_WIDTH_Y = 0.09
+REAR_WHEEL_STRUT_SHAVE_SHELL_CLEARANCE = 0.0005
+REAR_WHEEL_STRUT_SHAVE_EXPECTED_SOURCE_FACES = 26993
+REAR_WHEEL_STRUT_SHAVE_EXPECTED_MODIFIED_FACES = 426
+REAR_WHEEL_STRUT_SHAVE_EXPECTED_REMOVED_FACES = 350
+REAR_WHEEL_STRUT_SHAVE_EXPECTED_GENERATED_FACES = 420
+REAR_WHEEL_STRUT_SHAVE_EXPECTED_RESULT_FACES = 26987
+REAR_WHEEL_STRUT_SHAVE_SHELL_INDEX_CELL_SIZE = 0.25
 TAIL_ROTOR_BLUR_MATERIAL = "gtvr_tail_rotor_blur"
 TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
 TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
@@ -1068,6 +1077,264 @@ def shorten_patch_along_xz_axis(patch: core.Patch, scale: float) -> None:
         shift = (scale - 1.0) * longitudinal_distance
         patch.vertices[offset] += axis_x * shift
         patch.vertices[offset + 2] += axis_z * shift
+
+
+def clip_vertex_polygon_below_lower_shell(
+    vertices: VertexPolygon,
+    shell_index: tuple[float, dict[tuple[int, int], list[VertexPolygon]]],
+) -> VertexPolygon:
+    if not vertices:
+        return []
+
+    def shell_distance(vertex: MeshVertex) -> float:
+        shell_z, _normal = sample_indexed_lower_shell_at_xy(
+            shell_index,
+            (vertex[0], vertex[1]),
+        )
+        return vertex[2] - (shell_z - REAR_WHEEL_STRUT_SHAVE_SHELL_CLEARANCE)
+
+    clipped: VertexPolygon = []
+    previous = vertices[-1]
+    previous_distance = shell_distance(previous)
+    previous_kept = previous_distance <= 1e-9
+    for current in vertices:
+        current_distance = shell_distance(current)
+        current_kept = current_distance <= 1e-9
+        if current_kept != previous_kept:
+            denominator = previous_distance - current_distance
+            if abs(denominator) > 1e-15:
+                intersection = list(
+                    interpolate_mesh_vertex(
+                        previous,
+                        current,
+                        previous_distance / denominator,
+                    )
+                )
+                shell_z, _normal = sample_indexed_lower_shell_at_xy(
+                    shell_index,
+                    (intersection[0], intersection[1]),
+                )
+                intersection[2] = shell_z - REAR_WHEEL_STRUT_SHAVE_SHELL_CLEARANCE
+                clipped.append(tuple(intersection))  # type: ignore[arg-type]
+        if current_kept:
+            clipped.append(current)
+        previous = current
+        previous_distance = current_distance
+        previous_kept = current_kept
+    return clean_vertex_polygon(clipped)
+
+
+def build_lower_shell_spatial_index(
+    triangles: list[VertexPolygon],
+) -> tuple[float, dict[tuple[int, int], list[VertexPolygon]]]:
+    cell_size = REAR_WHEEL_STRUT_SHAVE_SHELL_INDEX_CELL_SIZE
+    cells: dict[tuple[int, int], list[VertexPolygon]] = {}
+    for triangle in triangles:
+        min_cell_x = math.floor(min(vertex[0] for vertex in triangle) / cell_size)
+        max_cell_x = math.floor(max(vertex[0] for vertex in triangle) / cell_size)
+        min_cell_y = math.floor(min(vertex[1] for vertex in triangle) / cell_size)
+        max_cell_y = math.floor(max(vertex[1] for vertex in triangle) / cell_size)
+        for cell_x in range(min_cell_x, max_cell_x + 1):
+            for cell_y in range(min_cell_y, max_cell_y + 1):
+                cells.setdefault((cell_x, cell_y), []).append(triangle)
+    return cell_size, cells
+
+
+def sample_indexed_lower_shell_at_xy(
+    shell_index: tuple[float, dict[tuple[int, int], list[VertexPolygon]]],
+    point: Point2D,
+) -> tuple[float, tuple[float, float, float]]:
+    cell_size, cells = shell_index
+    cell = (
+        math.floor(point[0] / cell_size),
+        math.floor(point[1] / cell_size),
+    )
+    candidates = cells.get(cell)
+    if not candidates:
+        raise RuntimeError(
+            "Cannot find indexed lower-shell geometry at "
+            f"({point[0]:.6f}, {point[1]:.6f})."
+        )
+    return sample_lower_shell_at_xy(candidates, point)
+
+
+def vertex_polygon_area_3d(vertices: VertexPolygon) -> float:
+    if len(vertices) < 3:
+        return 0.0
+    origin = vertices[0]
+    area = 0.0
+    for vertex_index in range(1, len(vertices) - 1):
+        edge_a = tuple(
+            vertices[vertex_index][axis] - origin[axis] for axis in range(3)
+        )
+        edge_b = tuple(
+            vertices[vertex_index + 1][axis] - origin[axis] for axis in range(3)
+        )
+        cross = (
+            edge_a[1] * edge_b[2] - edge_a[2] * edge_b[1],
+            edge_a[2] * edge_b[0] - edge_a[0] * edge_b[2],
+            edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0],
+        )
+        area += 0.5 * math.sqrt(sum(component * component for component in cross))
+    return area
+
+
+def append_vertex_polygon_3d(
+    patch: core.Patch,
+    vertices: VertexPolygon,
+    face_attribute: int,
+) -> int:
+    if len(vertices) < 3 or vertex_polygon_area_3d(vertices) <= 1e-11:
+        return 0
+    base_index = len(patch.vertices) // 8
+    for vertex in vertices:
+        patch.vertices.extend(vertex)
+    generated_faces = 0
+    for vertex_index in range(1, len(vertices) - 1):
+        patch.indices.extend(
+            [base_index, base_index + vertex_index, base_index + vertex_index + 1]
+        )
+        patch.face_attributes.append(face_attribute)
+        generated_faces += 1
+    return generated_faces
+
+
+def shave_rear_wheel_strut_at_lower_shell(
+    body: dict[str, core.Patch],
+    visual_gear: dict[str, core.Patch],
+) -> dict[str, int]:
+    shell_patch = body.get("body_1")
+    gear_patch = visual_gear.get("static_parts")
+    if shell_patch is None or gear_patch is None:
+        raise RuntimeError(
+            "Cannot find body_1 and static_parts geometry for rear-wheel strut shaving."
+        )
+    shell_triangles = lower_shell_surface_triangles(shell_patch)
+    shell_index = build_lower_shell_spatial_index(shell_triangles)
+    target_min_x = (
+        REAR_WHEEL_STRUT_SHAVE_BASE_X_RANGE[0] + _current_pilot_alignment_x_delta
+    )
+    target_max_x = (
+        REAR_WHEEL_STRUT_SHAVE_BASE_X_RANGE[1] + _current_pilot_alignment_x_delta
+    )
+    source_face_count = len(gear_patch.indices) // 3
+    shaved = core.Patch(gear_patch.material_name)
+    vertex_map: dict[int, int] = {}
+    modified_faces = 0
+    fully_removed_faces = 0
+    generated_faces = 0
+
+    for face_offset in range(0, len(gear_patch.indices), 3):
+        face_indices = gear_patch.indices[face_offset : face_offset + 3]
+        if len(face_indices) != 3:
+            continue
+        face_attribute = (
+            gear_patch.face_attributes[face_offset // 3]
+            if gear_patch.face_attributes
+            else 0
+        )
+        face_vertices: VertexPolygon = [
+            tuple(gear_patch.vertices[index * 8 : index * 8 + 8])  # type: ignore[misc]
+            for index in face_indices
+        ]
+        if (
+            max(vertex[0] for vertex in face_vertices) < target_min_x
+            or min(vertex[0] for vertex in face_vertices) > target_max_x
+            or max(vertex[1] for vertex in face_vertices)
+            < -REAR_WHEEL_STRUT_SHAVE_HALF_WIDTH_Y
+            or min(vertex[1] for vertex in face_vertices)
+            > REAR_WHEEL_STRUT_SHAVE_HALF_WIDTH_Y
+            or max(vertex[2] for vertex in face_vertices)
+            < COCKPIT_FLOOR_APERTURE_SURFACE_MIN_Z
+            - REAR_WHEEL_STRUT_SHAVE_SHELL_CLEARANCE
+        ):
+            copy_source_face(
+                gear_patch,
+                shaved,
+                face_indices,
+                face_attribute,
+                vertex_map,
+            )
+            continue
+
+        edge_ab = interpolate_mesh_vertex(face_vertices[0], face_vertices[1], 0.5)
+        edge_bc = interpolate_mesh_vertex(face_vertices[1], face_vertices[2], 0.5)
+        edge_ca = interpolate_mesh_vertex(face_vertices[2], face_vertices[0], 0.5)
+        centroid = interpolate_mesh_vertex(edge_ab, face_vertices[2], 1.0 / 3.0)
+        sampled_vertices = [*face_vertices, edge_ab, edge_bc, edge_ca, centroid]
+        sampled_distances = []
+        for vertex in sampled_vertices:
+            shell_z, _normal = sample_indexed_lower_shell_at_xy(
+                shell_index,
+                (vertex[0], vertex[1]),
+            )
+            sampled_distances.append(
+                vertex[2]
+                - (shell_z - REAR_WHEEL_STRUT_SHAVE_SHELL_CLEARANCE)
+            )
+        if max(sampled_distances) <= 1e-9:
+            copy_source_face(
+                gear_patch,
+                shaved,
+                face_indices,
+                face_attribute,
+                vertex_map,
+            )
+            continue
+
+        modified_faces += 1
+        subdivided_faces = (
+            [face_vertices[0], edge_ab, centroid],
+            [edge_ab, face_vertices[1], centroid],
+            [face_vertices[1], edge_bc, centroid],
+            [edge_bc, face_vertices[2], centroid],
+            [face_vertices[2], edge_ca, centroid],
+            [edge_ca, face_vertices[0], centroid],
+        )
+        generated_for_source_face = 0
+        for subdivided_face in subdivided_faces:
+            retained = clip_vertex_polygon_below_lower_shell(
+                subdivided_face,
+                shell_index,
+            )
+            generated_for_source_face += append_vertex_polygon_3d(
+                shaved,
+                retained,
+                face_attribute,
+            )
+        if generated_for_source_face == 0:
+            fully_removed_faces += 1
+        generated_faces += generated_for_source_face
+
+    gear_patch.vertices = shaved.vertices
+    gear_patch.indices = shaved.indices
+    gear_patch.face_attributes = shaved.face_attributes
+    stats = {
+        "source_faces": source_face_count,
+        "modified_faces": modified_faces,
+        "fully_removed_faces": fully_removed_faces,
+        "generated_faces": generated_faces,
+        "result_faces": len(gear_patch.indices) // 3,
+    }
+    expected_stats = {
+        "source_faces": REAR_WHEEL_STRUT_SHAVE_EXPECTED_SOURCE_FACES,
+        "modified_faces": REAR_WHEEL_STRUT_SHAVE_EXPECTED_MODIFIED_FACES,
+        "fully_removed_faces": REAR_WHEEL_STRUT_SHAVE_EXPECTED_REMOVED_FACES,
+        "generated_faces": REAR_WHEEL_STRUT_SHAVE_EXPECTED_GENERATED_FACES,
+        "result_faces": REAR_WHEEL_STRUT_SHAVE_EXPECTED_RESULT_FACES,
+    }
+    mismatches = [
+        f"{name}={stats[name]} (expected {expected})"
+        for name, expected in expected_stats.items()
+        if stats[name] != expected
+    ]
+    if mismatches:
+        raise RuntimeError(
+            "Refusing unexpected rear-wheel strut shave topology: "
+            + ", ".join(mismatches)
+            + "."
+        )
+    return stats
 
 
 def build_selected_nodes_for_dev(
@@ -2585,6 +2852,13 @@ def build_body_for_dev(args: argparse.Namespace):
     if removed_green_faces:
         print(f"Dev exterior cleanup: removed {removed_green_faces} green helper/slime-light faces.")
     shift_visual_shell_for_pilot_alignment(args, body, tail_rotor, visual_gear)
+    rear_strut_shave = shave_rear_wheel_strut_at_lower_shell(body, visual_gear)
+    print(
+        "Dev rear-wheel strut cleanup: "
+        f"shaved {rear_strut_shave['modified_faces']} source faces against the lower fuselage skin "
+        f"with {REAR_WHEEL_STRUT_SHAVE_SHELL_CLEARANCE * 1000:.1f} mm clearance; "
+        f"removed {rear_strut_shave['fully_removed_faces']} fully internal faces."
+    )
     floor_clip_stats, floor_aperture_frame, floor_aperture_throat = (
         carve_cockpit_floor_aperture(body)
     )
@@ -3777,7 +4051,7 @@ def write_source_stamp() -> None:
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
-                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
+                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, paired protruding side/rear gear-support meshes are hidden, and the remaining central rear-wheel mount is shaved to the lower fuselage skin",
                 "floor_aperture=exactly clipped body-following tapered oval with a matte-black beveled trim collar",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
@@ -3918,7 +4192,7 @@ def write_dev_package_marker() -> None:
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
-                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
+                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened, both layers of each protruding side/rear gear-support mesh are hidden, and the remaining central rear-wheel mount is shaved to the lower fuselage skin.",
                 "The lower-cockpit opening follows the tapered belly contour, uses exact triangle clipping for a coherent edge, and has a body-following matte-black beveled trim collar.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
