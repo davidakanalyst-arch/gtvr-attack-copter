@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
 import math
 import re
 import shutil
@@ -42,27 +41,37 @@ DEFAULT_COCKPIT_X_DELTA = 0.0
 DEFAULT_INTERIOR_FORWARD_X_DELTA = 0.32
 DEFAULT_DASH_FORWARD_X_DELTA = 0.55
 DISPLAY_FALLBACK_X_OFFSET = 0.006
-COCKPIT_FLOOR_SUNROOF_CENTER_X = 3.24
-COCKPIT_FLOOR_SUNROOF_HALF_LENGTH = 0.24
-COCKPIT_FLOOR_SUNROOF_HALF_WIDTH = 0.62
-COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS = 0.06
-COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z = -0.87
-COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z = -0.70
-COCKPIT_FLOOR_SUNROOF_MIN_ABS_NORMAL_Z = 0.90
-COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT = 78
-COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT = 78
-COCKPIT_FLOOR_SUNROOF_SHARED_COMPONENT_SIZES = [78]
-COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS = {
-    "body_parts": 169,
-    "mesh": 56,
-    "whiteplastic": 134,
+COCKPIT_FLOOR_APERTURE_CENTER_X = 3.22
+COCKPIT_FLOOR_APERTURE_SEGMENTS = 64
+COCKPIT_FLOOR_APERTURE_TAPER = 0.35
+COCKPIT_FLOOR_APERTURE_THROAT_HALF_LENGTH = 0.26
+COCKPIT_FLOOR_APERTURE_THROAT_HALF_WIDTH = 0.57
+COCKPIT_FLOOR_APERTURE_CLEARANCE_HALF_LENGTH = 0.275
+COCKPIT_FLOOR_APERTURE_CLEARANCE_HALF_WIDTH = 0.585
+COCKPIT_FLOOR_APERTURE_OUTER_HALF_LENGTH = 0.325
+COCKPIT_FLOOR_APERTURE_OUTER_HALF_WIDTH = 0.645
+COCKPIT_FLOOR_APERTURE_MIN_CLIPPED_Z = -0.93
+COCKPIT_FLOOR_APERTURE_MAX_CLIPPED_Z = -0.67
+COCKPIT_FLOOR_APERTURE_SURFACE_MIN_Z = -1.00
+COCKPIT_FLOOR_APERTURE_SURFACE_MAX_Z = -0.45
+COCKPIT_FLOOR_APERTURE_MATERIALS = (
+    "body_1",
+    "body_2",
+    "body_parts",
+    "mesh",
+    "whiteplastic",
+)
+COCKPIT_FLOOR_APERTURE_EXPECTED_CLIP_STATS = {
+    "body_1": (142, 74, 812),
+    "body_2": (142, 74, 812),
+    "body_parts": (371, 230, 1350),
+    "mesh": (152, 98, 490),
+    "whiteplastic": (232, 180, 358),
 }
-COCKPIT_FLOOR_SUNROOF_AUXILIARY_COMPONENT_SIZES = {
-    "body_parts": [112, 46, 4, 4, 2, 1],
-    "mesh": [46, 4, 4, 2],
-    "whiteplastic": [67, 67],
-}
-COCKPIT_FLOOR_SUNROOF_BODY_PARTS_EXTRA_FACE_COUNT = 113
+COCKPIT_FLOOR_APERTURE_TOP_OVERLAP = 0.006
+COCKPIT_FLOOR_APERTURE_CHAMFER_DROP = 0.020
+COCKPIT_FLOOR_APERTURE_WALL_DEPTH = 0.030
+COCKPIT_FLOOR_APERTURE_BOTTOM_OVERLAP = 0.006
 DEV_PREVIEW_FILENAMES = ("preview.ttx", "preview_small.ttx")
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
@@ -436,302 +445,560 @@ def make_patch_visible_from_inside(source_patch: core.Patch, target_patch: core.
     return original_face_count
 
 
-FacePositionSignature = tuple[tuple[float, float, float], ...]
+MeshVertex = tuple[float, float, float, float, float, float, float, float]
+VertexPolygon = list[MeshVertex]
+Point2D = tuple[float, float]
 
 
-def face_position_signature(
-    patch: core.Patch,
-    face_indices: list[int],
-) -> FacePositionSignature:
-    return tuple(
-        sorted(
-            tuple(round(patch.vertices[index * 8 + axis], 6) for axis in range(3))
-            for index in face_indices
+def tapered_floor_aperture_points(
+    half_length: float,
+    half_width: float,
+) -> list[Point2D]:
+    points: list[Point2D] = []
+    for index in range(COCKPIT_FLOOR_APERTURE_SEGMENTS):
+        angle = index / COCKPIT_FLOOR_APERTURE_SEGMENTS * math.tau
+        x = COCKPIT_FLOOR_APERTURE_CENTER_X + half_length * math.cos(angle)
+        local_half_width = half_width - COCKPIT_FLOOR_APERTURE_TAPER * (
+            x - COCKPIT_FLOOR_APERTURE_CENTER_X
         )
+        points.append((x, local_half_width * math.sin(angle)))
+    return points
+
+
+def projected_polygon_signed_area(points: list[Point2D]) -> float:
+    return 0.5 * sum(
+        points[index][0] * points[(index + 1) % len(points)][1]
+        - points[(index + 1) % len(points)][0] * points[index][1]
+        for index in range(len(points))
     )
 
 
-def face_geometric_abs_normal_z(
-    vertices: tuple[tuple[float, float, float], ...],
-) -> float:
-    edge_a = tuple(vertices[1][axis] - vertices[0][axis] for axis in range(3))
-    edge_b = tuple(vertices[2][axis] - vertices[0][axis] for axis in range(3))
-    normal = (
-        edge_a[1] * edge_b[2] - edge_a[2] * edge_b[1],
-        edge_a[2] * edge_b[0] - edge_a[0] * edge_b[2],
-        edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0],
-    )
-    length = math.sqrt(sum(component * component for component in normal))
-    return abs(normal[2]) / length if length > 1e-12 else 0.0
+def projected_vertex_polygon_area(vertices: VertexPolygon) -> float:
+    if len(vertices) < 3:
+        return 0.0
+    return abs(projected_polygon_signed_area([(vertex[0], vertex[1]) for vertex in vertices]))
 
 
-def cockpit_floor_sunroof_contains_face(
-    centroid: tuple[float, float, float],
-    vertices: tuple[tuple[float, float, float], ...],
-) -> bool:
-    x_distance = abs(centroid[0] - COCKPIT_FLOOR_SUNROOF_CENTER_X)
-    y_distance = abs(centroid[1])
-    if x_distance > COCKPIT_FLOOR_SUNROOF_HALF_LENGTH:
-        return False
-    if y_distance > COCKPIT_FLOOR_SUNROOF_HALF_WIDTH:
-        return False
-
-    straight_half_length = (
-        COCKPIT_FLOOR_SUNROOF_HALF_LENGTH - COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS
-    )
-    straight_half_width = (
-        COCKPIT_FLOOR_SUNROOF_HALF_WIDTH - COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS
-    )
-    if x_distance > straight_half_length and y_distance > straight_half_width:
-        corner_x = x_distance - straight_half_length
-        corner_y = y_distance - straight_half_width
-        if corner_x * corner_x + corner_y * corner_y > COCKPIT_FLOOR_SUNROOF_CORNER_RADIUS**2:
-            return False
-
-    vertex_zs = [vertex[2] for vertex in vertices]
-    if min(vertex_zs) < COCKPIT_FLOOR_SUNROOF_MIN_VERTEX_Z:
-        return False
-    if max(vertex_zs) > COCKPIT_FLOOR_SUNROOF_MAX_VERTEX_Z:
-        return False
-    return face_geometric_abs_normal_z(vertices) >= COCKPIT_FLOOR_SUNROOF_MIN_ABS_NORMAL_Z
+def validate_convex_aperture(points: list[Point2D]) -> None:
+    if len(points) < 3 or projected_polygon_signed_area(points) <= 0.0:
+        raise RuntimeError("Cockpit floor aperture must be a counter-clockwise polygon.")
+    cross_signs: list[float] = []
+    for index in range(len(points)):
+        point_a = points[index]
+        point_b = points[(index + 1) % len(points)]
+        point_c = points[(index + 2) % len(points)]
+        cross_signs.append(
+            (point_b[0] - point_a[0]) * (point_c[1] - point_b[1])
+            - (point_b[1] - point_a[1]) * (point_c[0] - point_b[0])
+        )
+    if min(cross_signs) <= 1e-9:
+        raise RuntimeError("Cockpit floor aperture profile is not strictly convex.")
 
 
-def matching_face_signatures(
+def interpolate_mesh_vertex(start: MeshVertex, end: MeshVertex, amount: float) -> MeshVertex:
+    values = [start[index] + (end[index] - start[index]) * amount for index in range(8)]
+    normal_length = math.sqrt(sum(values[index] * values[index] for index in range(3, 6)))
+    if normal_length > 1e-12:
+        for index in range(3, 6):
+            values[index] /= normal_length
+    return tuple(values)  # type: ignore[return-value]
+
+
+def clean_vertex_polygon(vertices: VertexPolygon) -> VertexPolygon:
+    cleaned: VertexPolygon = []
+    for vertex in vertices:
+        if cleaned and sum((vertex[axis] - cleaned[-1][axis]) ** 2 for axis in range(3)) < 1e-18:
+            continue
+        cleaned.append(vertex)
+    if len(cleaned) > 1 and sum(
+        (cleaned[0][axis] - cleaned[-1][axis]) ** 2 for axis in range(3)
+    ) < 1e-18:
+        cleaned.pop()
+    return cleaned
+
+
+def clip_vertex_polygon_to_xy_half_plane(
+    vertices: VertexPolygon,
+    edge_start: Point2D,
+    edge_end: Point2D,
+    *,
+    keep_inside: bool,
+) -> VertexPolygon:
+    if not vertices:
+        return []
+
+    def distance(vertex: MeshVertex) -> float:
+        return (
+            (edge_end[0] - edge_start[0]) * (vertex[1] - edge_start[1])
+            - (edge_end[1] - edge_start[1]) * (vertex[0] - edge_start[0])
+        )
+
+    def kept(value: float) -> bool:
+        return value >= -1e-10 if keep_inside else value <= 1e-10
+
+    result: VertexPolygon = []
+    previous = vertices[-1]
+    previous_distance = distance(previous)
+    previous_kept = kept(previous_distance)
+    for current in vertices:
+        current_distance = distance(current)
+        current_kept = kept(current_distance)
+        if current_kept != previous_kept:
+            denominator = previous_distance - current_distance
+            if abs(denominator) > 1e-15:
+                result.append(
+                    interpolate_mesh_vertex(previous, current, previous_distance / denominator)
+                )
+        if current_kept:
+            result.append(current)
+        previous = current
+        previous_distance = current_distance
+        previous_kept = current_kept
+    return clean_vertex_polygon(result)
+
+
+def subtract_convex_xy_aperture(
+    face_vertices: VertexPolygon,
+    aperture: list[Point2D],
+) -> tuple[list[VertexPolygon], VertexPolygon]:
+    inside_candidate = face_vertices
+    outside_fragments: list[VertexPolygon] = []
+    for edge_index, edge_start in enumerate(aperture):
+        if len(inside_candidate) < 3:
+            break
+        edge_end = aperture[(edge_index + 1) % len(aperture)]
+        outside = clip_vertex_polygon_to_xy_half_plane(
+            inside_candidate,
+            edge_start,
+            edge_end,
+            keep_inside=False,
+        )
+        if len(outside) >= 3 and projected_vertex_polygon_area(outside) > 1e-11:
+            outside_fragments.append(outside)
+        inside_candidate = clip_vertex_polygon_to_xy_half_plane(
+            inside_candidate,
+            edge_start,
+            edge_end,
+            keep_inside=True,
+        )
+    if len(inside_candidate) < 3 or projected_vertex_polygon_area(inside_candidate) <= 1e-11:
+        inside_candidate = []
+    return outside_fragments, inside_candidate
+
+
+def append_vertex_polygon(
     patch: core.Patch,
-    predicate: Callable[
-        [tuple[float, float, float], tuple[tuple[float, float, float], ...]],
-        bool,
-    ],
-) -> set[FacePositionSignature]:
-    signatures: set[FacePositionSignature] = set()
+    vertices: VertexPolygon,
+    face_attribute: int,
+) -> int:
+    if len(vertices) < 3 or projected_vertex_polygon_area(vertices) <= 1e-11:
+        return 0
+    base_index = len(patch.vertices) // 8
+    for vertex in vertices:
+        patch.vertices.extend(vertex)
+    generated_faces = 0
+    for vertex_index in range(1, len(vertices) - 1):
+        patch.indices.extend(
+            [base_index, base_index + vertex_index, base_index + vertex_index + 1]
+        )
+        patch.face_attributes.append(face_attribute)
+        generated_faces += 1
+    return generated_faces
+
+
+def clipped_polygon_is_floor_layer(vertices: VertexPolygon) -> bool:
+    if not vertices:
+        return False
+    vertex_zs = [vertex[2] for vertex in vertices]
+    return (
+        max(vertex_zs) >= COCKPIT_FLOOR_APERTURE_MIN_CLIPPED_Z - 1e-6
+        and min(vertex_zs) <= COCKPIT_FLOOR_APERTURE_MAX_CLIPPED_Z + 1e-6
+    )
+
+
+def face_may_intersect_floor_aperture(
+    vertices: VertexPolygon,
+    aperture_bounds: tuple[float, float, float, float],
+) -> bool:
+    min_x, max_x, min_y, max_y = aperture_bounds
+    if max(vertex[0] for vertex in vertices) < min_x - 1e-9:
+        return False
+    if min(vertex[0] for vertex in vertices) > max_x + 1e-9:
+        return False
+    if max(vertex[1] for vertex in vertices) < min_y - 1e-9:
+        return False
+    if min(vertex[1] for vertex in vertices) > max_y + 1e-9:
+        return False
+    if max(vertex[2] for vertex in vertices) < COCKPIT_FLOOR_APERTURE_MIN_CLIPPED_Z - 1e-6:
+        return False
+    if min(vertex[2] for vertex in vertices) > COCKPIT_FLOOR_APERTURE_MAX_CLIPPED_Z + 1e-6:
+        return False
+    return True
+
+
+def count_patch_floor_aperture_faces(
+    patch: core.Patch,
+    aperture: list[Point2D],
+) -> int:
+    matches = 0
+    aperture_bounds = (
+        min(point[0] for point in aperture),
+        max(point[0] for point in aperture),
+        min(point[1] for point in aperture),
+        max(point[1] for point in aperture),
+    )
     for face_offset in range(0, len(patch.indices), 3):
         face_indices = patch.indices[face_offset : face_offset + 3]
         if len(face_indices) != 3:
             continue
-        vertices = tuple(
-            tuple(patch.vertices[index * 8 + axis] for axis in range(3))
+        face_vertices: VertexPolygon = [
+            tuple(patch.vertices[index * 8 : index * 8 + 8])  # type: ignore[misc]
             for index in face_indices
-        )
-        centroid = tuple(
-            sum(vertex[axis] for vertex in vertices) / 3.0 for axis in range(3)
-        )
-        if predicate(centroid, vertices):
-            signatures.add(face_position_signature(patch, face_indices))
-    return signatures
+        ]
+        if not face_may_intersect_floor_aperture(face_vertices, aperture_bounds):
+            continue
+        _outside, inside = subtract_convex_xy_aperture(face_vertices, aperture)
+        if inside and clipped_polygon_is_floor_layer(inside):
+            matches += 1
+    return matches
 
 
-def connected_face_signature_components(
-    signatures: set[FacePositionSignature],
-) -> list[set[FacePositionSignature]]:
-    edge_faces: dict[
-        tuple[tuple[float, float, float], tuple[float, float, float]],
-        list[FacePositionSignature],
-    ] = {}
-    for signature in signatures:
-        for vertex_index in range(3):
-            edge = tuple(
-                sorted(
-                    (
-                        signature[vertex_index],
-                        signature[(vertex_index + 1) % 3],
-                    )
-                )
-            )
-            edge_faces.setdefault(edge, []).append(signature)
-
-    neighbours = {signature: set() for signature in signatures}
-    for connected_faces in edge_faces.values():
-        for signature in connected_faces:
-            neighbours[signature].update(
-                other for other in connected_faces if other != signature
-            )
-
-    components: list[set[FacePositionSignature]] = []
-    remaining = set(signatures)
-    while remaining:
-        root = min(remaining)
-        component = {root}
-        pending = [root]
-        while pending:
-            current = pending.pop()
-            for neighbour in neighbours[current] - component:
-                component.add(neighbour)
-                pending.append(neighbour)
-        remaining -= component
-        components.append(component)
-    return sorted(components, key=lambda component: (-len(component), min(component)))
+def copy_source_face(
+    source_patch: core.Patch,
+    target_patch: core.Patch,
+    face_indices: list[int],
+    face_attribute: int,
+    vertex_map: dict[int, int],
+) -> None:
+    for source_index in face_indices:
+        target_index = vertex_map.get(source_index)
+        if target_index is None:
+            target_index = len(target_patch.vertices) // 8
+            vertex_map[source_index] = target_index
+            source_offset = source_index * 8
+            target_patch.vertices.extend(source_patch.vertices[source_offset : source_offset + 8])
+        target_patch.indices.append(target_index)
+    target_patch.face_attributes.append(face_attribute)
 
 
-def remove_patch_faces_where(
+def clip_patch_to_floor_aperture(
     patch: core.Patch,
-    predicate: Callable[
-        [tuple[float, float, float], FacePositionSignature],
-        bool,
-    ],
-) -> int:
-    source_vertices = patch.vertices
-    source_indices = patch.indices
-    source_attributes = patch.face_attributes
-    filtered = core.Patch(patch.material_name)
+    aperture: list[Point2D],
+) -> dict[str, int]:
+    clipped = core.Patch(patch.material_name)
     vertex_map: dict[int, int] = {}
-    removed_faces = 0
+    modified_faces = 0
+    fully_removed_faces = 0
+    generated_faces = 0
+    source_face_count = len(patch.indices) // 3
+    aperture_bounds = (
+        min(point[0] for point in aperture),
+        max(point[0] for point in aperture),
+        min(point[1] for point in aperture),
+        max(point[1] for point in aperture),
+    )
 
-    for face_offset in range(0, len(source_indices), 3):
-        face_indices = source_indices[face_offset : face_offset + 3]
+    for face_offset in range(0, len(patch.indices), 3):
+        face_indices = patch.indices[face_offset : face_offset + 3]
         if len(face_indices) != 3:
             continue
-        centroid = tuple(
-            sum(source_vertices[index * 8 + axis] for index in face_indices) / 3.0
-            for axis in range(3)
+        face_attribute = (
+            patch.face_attributes[face_offset // 3] if patch.face_attributes else 0
         )
-        signature = face_position_signature(patch, face_indices)
-        if predicate(centroid, signature):
-            removed_faces += 1
+        face_vertices: VertexPolygon = [
+            tuple(patch.vertices[index * 8 : index * 8 + 8])  # type: ignore[misc]
+            for index in face_indices
+        ]
+        if not face_may_intersect_floor_aperture(face_vertices, aperture_bounds):
+            copy_source_face(
+                patch,
+                clipped,
+                face_indices,
+                face_attribute,
+                vertex_map,
+            )
             continue
-        for source_index in face_indices:
-            target_index = vertex_map.get(source_index)
-            if target_index is None:
-                target_index = len(filtered.vertices) // 8
-                vertex_map[source_index] = target_index
-                source_offset = source_index * 8
-                filtered.vertices.extend(source_vertices[source_offset : source_offset + 8])
-            filtered.indices.append(target_index)
-        if source_attributes:
-            filtered.face_attributes.append(source_attributes[face_offset // 3])
+        outside_fragments, inside = subtract_convex_xy_aperture(face_vertices, aperture)
+        if not inside or not clipped_polygon_is_floor_layer(inside):
+            copy_source_face(
+                patch,
+                clipped,
+                face_indices,
+                face_attribute,
+                vertex_map,
+            )
+            continue
 
-    patch.vertices = filtered.vertices
-    patch.indices = filtered.indices
-    patch.face_attributes = filtered.face_attributes
-    return removed_faces
+        modified_faces += 1
+        if not outside_fragments:
+            fully_removed_faces += 1
+        for fragment in outside_fragments:
+            generated_faces += append_vertex_polygon(clipped, fragment, face_attribute)
+
+    patch.vertices = clipped.vertices
+    patch.indices = clipped.indices
+    patch.face_attributes = clipped.face_attributes
+    return {
+        "source_faces": source_face_count,
+        "modified_faces": modified_faces,
+        "fully_removed_faces": fully_removed_faces,
+        "generated_faces": generated_faces,
+        "result_faces": len(patch.indices) // 3,
+    }
 
 
-def carve_cockpit_floor_sunroof(
+def lower_shell_surface_triangles(patch: core.Patch) -> list[VertexPolygon]:
+    triangles: list[VertexPolygon] = []
+    for face_offset in range(0, len(patch.indices), 3):
+        face_indices = patch.indices[face_offset : face_offset + 3]
+        if len(face_indices) != 3:
+            continue
+        vertices: VertexPolygon = [
+            tuple(patch.vertices[index * 8 : index * 8 + 8])  # type: ignore[misc]
+            for index in face_indices
+        ]
+        if max(vertex[2] for vertex in vertices) < COCKPIT_FLOOR_APERTURE_SURFACE_MIN_Z:
+            continue
+        if min(vertex[2] for vertex in vertices) > COCKPIT_FLOOR_APERTURE_SURFACE_MAX_Z:
+            continue
+        if projected_vertex_polygon_area(vertices) <= 1e-11:
+            continue
+        triangles.append(vertices)
+    return triangles
+
+
+def sample_lower_shell_at_xy(
+    triangles: list[VertexPolygon],
+    point: Point2D,
+) -> tuple[float, tuple[float, float, float]]:
+    best: tuple[float, tuple[float, float, float]] | None = None
+    px, py = point
+    for vertices in triangles:
+        ax, ay = vertices[0][0], vertices[0][1]
+        bx, by = vertices[1][0], vertices[1][1]
+        cx, cy = vertices[2][0], vertices[2][1]
+        denominator = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        if abs(denominator) <= 1e-12:
+            continue
+        weight_a = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / denominator
+        weight_b = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / denominator
+        weight_c = 1.0 - weight_a - weight_b
+        if min(weight_a, weight_b, weight_c) < -1e-7:
+            continue
+        z = sum(
+            weight * vertex[2]
+            for weight, vertex in zip((weight_a, weight_b, weight_c), vertices)
+        )
+        if not (
+            COCKPIT_FLOOR_APERTURE_SURFACE_MIN_Z
+            <= z
+            <= COCKPIT_FLOOR_APERTURE_SURFACE_MAX_Z
+        ):
+            continue
+        normal = tuple(
+            sum(
+                weight * vertex[axis]
+                for weight, vertex in zip((weight_a, weight_b, weight_c), vertices)
+            )
+            for axis in range(3, 6)
+        )
+        normal_length = math.sqrt(sum(component * component for component in normal))
+        if normal_length <= 1e-12:
+            normal = (0.0, 0.0, -1.0)
+        else:
+            normal = tuple(component / normal_length for component in normal)
+        if best is None or z < best[0]:
+            best = (z, normal)  # type: ignore[arg-type]
+    if best is None:
+        raise RuntimeError(
+            f"Cannot project cockpit floor aperture frame onto lower shell at ({px:.6f}, {py:.6f})."
+        )
+    return best
+
+
+def sample_floor_aperture_ring(
+    primary_triangles: list[VertexPolygon],
+    duplicate_triangles: list[VertexPolygon],
+    points: list[Point2D],
+) -> list[tuple[float, float, float]]:
+    sampled: list[tuple[float, float, float]] = []
+    for point in points:
+        primary_z, _primary_normal = sample_lower_shell_at_xy(primary_triangles, point)
+        duplicate_z, _duplicate_normal = sample_lower_shell_at_xy(duplicate_triangles, point)
+        if abs(primary_z - duplicate_z) > 1e-4:
+            raise RuntimeError(
+                "Refusing mismatched paired lower-shell surfaces at cockpit floor aperture: "
+                f"body_1 z={primary_z:.6f}, body_2 z={duplicate_z:.6f}."
+            )
+        sampled.append((point[0], point[1], primary_z))
+    return sampled
+
+
+def build_cockpit_floor_aperture_frame(
+    skin_primary: core.Patch,
+    skin_duplicate: core.Patch,
+    throat_points: list[Point2D],
+    clearance_points: list[Point2D],
+    outer_points: list[Point2D],
+) -> tuple[dict[str, core.Patch], tuple[float, float]]:
+    primary_triangles = lower_shell_surface_triangles(skin_primary)
+    duplicate_triangles = lower_shell_surface_triangles(skin_duplicate)
+    throat_surface = sample_floor_aperture_ring(
+        primary_triangles,
+        duplicate_triangles,
+        throat_points,
+    )
+    clearance_surface = sample_floor_aperture_ring(
+        primary_triangles,
+        duplicate_triangles,
+        clearance_points,
+    )
+    outer_surface = sample_floor_aperture_ring(
+        primary_triangles,
+        duplicate_triangles,
+        outer_points,
+    )
+
+    def shifted(
+        ring: list[tuple[float, float, float]],
+        z_offset: float,
+    ) -> list[tuple[float, float, float]]:
+        return [(x, y, z + z_offset) for x, y, z in ring]
+
+    outer_top = shifted(outer_surface, COCKPIT_FLOOR_APERTURE_TOP_OVERLAP)
+    clearance_top = shifted(clearance_surface, COCKPIT_FLOOR_APERTURE_TOP_OVERLAP)
+    throat_top = shifted(
+        throat_surface,
+        -COCKPIT_FLOOR_APERTURE_CHAMFER_DROP,
+    )
+    throat_bottom = shifted(
+        throat_surface,
+        -COCKPIT_FLOOR_APERTURE_CHAMFER_DROP
+        - COCKPIT_FLOOR_APERTURE_WALL_DEPTH,
+    )
+    clearance_bottom = shifted(
+        clearance_surface,
+        -COCKPIT_FLOOR_APERTURE_BOTTOM_OVERLAP,
+    )
+    outer_bottom = shifted(
+        outer_surface,
+        -COCKPIT_FLOOR_APERTURE_BOTTOM_OVERLAP,
+    )
+
+    frame: dict[str, core.Patch] = {}
+
+    def add_strip(
+        ring_a: list[tuple[float, float, float]],
+        ring_b: list[tuple[float, float, float]],
+    ) -> None:
+        for index in range(len(ring_a)):
+            next_index = (index + 1) % len(ring_a)
+            append_double_sided_auto_quad(
+                frame,
+                INNER_SHELL_MATERIAL_NAME,
+                [
+                    ring_a[index],
+                    ring_a[next_index],
+                    ring_b[next_index],
+                    ring_b[index],
+                ],
+            )
+
+    add_strip(outer_top, clearance_top)
+    add_strip(clearance_top, throat_top)
+    add_strip(throat_top, throat_bottom)
+    add_strip(throat_bottom, clearance_bottom)
+    add_strip(clearance_bottom, outer_bottom)
+    add_strip(outer_bottom, outer_top)
+    all_surface_zs = [point[2] for ring in (throat_surface, clearance_surface, outer_surface) for point in ring]
+    return frame, (min(all_surface_zs), max(all_surface_zs))
+
+
+def carve_cockpit_floor_aperture(
     body: dict[str, core.Patch],
-) -> tuple[int, set[FacePositionSignature]]:
+) -> tuple[dict[str, dict[str, int]], dict[str, core.Patch], list[Point2D]]:
+    throat_points = tapered_floor_aperture_points(
+        COCKPIT_FLOOR_APERTURE_THROAT_HALF_LENGTH,
+        COCKPIT_FLOOR_APERTURE_THROAT_HALF_WIDTH,
+    )
+    clearance_points = tapered_floor_aperture_points(
+        COCKPIT_FLOOR_APERTURE_CLEARANCE_HALF_LENGTH,
+        COCKPIT_FLOOR_APERTURE_CLEARANCE_HALF_WIDTH,
+    )
+    outer_points = tapered_floor_aperture_points(
+        COCKPIT_FLOOR_APERTURE_OUTER_HALF_LENGTH,
+        COCKPIT_FLOOR_APERTURE_OUTER_HALF_WIDTH,
+    )
+    for points in (throat_points, clearance_points, outer_points):
+        validate_convex_aperture(points)
+
     skin_primary = body.get("body_1")
     skin_duplicate = body.get("body_2")
     if skin_primary is None or skin_duplicate is None:
         raise RuntimeError(
-            "Cannot find both paired cockpit floor skin layers for the sunroof cutout."
+            "Cannot find both paired cockpit floor skin layers for the aperture."
         )
-
-    primary_signatures = matching_face_signatures(
-        skin_primary,
-        cockpit_floor_sunroof_contains_face,
-    )
-    duplicate_signatures = matching_face_signatures(
-        skin_duplicate,
-        cockpit_floor_sunroof_contains_face,
-    )
-    shared_candidates = primary_signatures & duplicate_signatures
-    if primary_signatures != duplicate_signatures:
-        raise RuntimeError(
-            "Refusing mismatched forward floor sunroof skins: "
-            f"primary has {len(primary_signatures)} faces and duplicate has "
-            f"{len(duplicate_signatures)}."
-        )
-    if len(shared_candidates) != COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT:
-        raise RuntimeError(
-            "Refusing unexpected forward floor sunroof match: "
-            f"found {len(shared_candidates)} shared candidate faces, expected "
-            f"{COCKPIT_FLOOR_SUNROOF_SHARED_CANDIDATE_FACE_COUNT}."
-        )
-
-    shared_components = connected_face_signature_components(shared_candidates)
-    shared_signatures = shared_components[0] if shared_components else set()
-    component_sizes = [len(component) for component in shared_components]
-    if component_sizes != COCKPIT_FLOOR_SUNROOF_SHARED_COMPONENT_SIZES:
-        raise RuntimeError(
-            "Refusing disconnected forward floor sunroof match: "
-            f"largest component has {len(shared_signatures)} faces, expected "
-            f"{COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT}; components={component_sizes}."
-        )
-
-    auxiliary_signatures: dict[str, set[FacePositionSignature]] = {}
-    for material_name, expected_face_count in COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS.items():
-        patch = body.get(material_name)
-        if patch is None:
+    for material_name in COCKPIT_FLOOR_APERTURE_MATERIALS:
+        if material_name not in body:
             raise RuntimeError(
-                f"Cannot find forward floor layer {material_name!r} for the sunroof cutout."
+                f"Cannot find cockpit floor layer {material_name!r} for the aperture."
             )
-        signatures = matching_face_signatures(
-            patch,
-            cockpit_floor_sunroof_contains_face,
-        )
-        if len(signatures) != expected_face_count:
-            raise RuntimeError(
-                "Refusing unexpected forward floor layer match: "
-                f"{material_name} has {len(signatures)} faces, expected "
-                f"{expected_face_count}."
-            )
-        auxiliary_component_sizes = [
-            len(component) for component in connected_face_signature_components(signatures)
-        ]
-        expected_component_sizes = COCKPIT_FLOOR_SUNROOF_AUXILIARY_COMPONENT_SIZES[
-            material_name
-        ]
-        if auxiliary_component_sizes != expected_component_sizes:
-            raise RuntimeError(
-                "Refusing disconnected forward floor layer match: "
-                f"{material_name} components={auxiliary_component_sizes}, expected "
-                f"{expected_component_sizes}."
-            )
-        auxiliary_signatures[material_name] = signatures
 
-    body_parts_signatures = auxiliary_signatures["body_parts"]
-    mesh_signatures = auxiliary_signatures["mesh"]
-    if (
-        not mesh_signatures <= body_parts_signatures
-        or len(body_parts_signatures - mesh_signatures)
-        != COCKPIT_FLOOR_SUNROOF_BODY_PARTS_EXTRA_FACE_COUNT
-    ):
-        raise RuntimeError(
-            "Refusing mismatched forward floor layers: expected mesh to be the "
-            "duplicated subset of body_parts."
-        )
-
-    unexpected_matches = 0
+    unexpected_matches: dict[str, int] = {}
     for material_name, patch in body.items():
-        if material_name in {
-            "body_1",
-            "body_2",
-            *COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS,
-        }:
+        if material_name in COCKPIT_FLOOR_APERTURE_MATERIALS:
             continue
-        unexpected_matches += len(
-            matching_face_signatures(patch, cockpit_floor_sunroof_contains_face)
-        )
+        match_count = count_patch_floor_aperture_faces(patch, clearance_points)
+        if match_count:
+            unexpected_matches[material_name] = match_count
     if unexpected_matches:
         raise RuntimeError(
-            "Refusing to cut through unrelated cockpit geometry: "
-            f"found {unexpected_matches} unexpected matching faces."
+            "Refusing to cut through unrelated cockpit floor geometry: "
+            f"matches={unexpected_matches}."
         )
 
-    removed_faces = remove_patch_faces_where(
+    frame, frame_surface_z_range = build_cockpit_floor_aperture_frame(
         skin_primary,
-        lambda _centroid, signature: signature in shared_signatures,
-    )
-    removed_faces += remove_patch_faces_where(
         skin_duplicate,
-        lambda _centroid, signature: signature in shared_signatures,
+        throat_points,
+        clearance_points,
+        outer_points,
     )
-    removed_signatures = set(shared_signatures)
-    for material_name, signatures in auxiliary_signatures.items():
-        removed_faces += remove_patch_faces_where(
-            body[material_name],
-            lambda _centroid, signature, selected=signatures: signature in selected,
-        )
-        removed_signatures.update(signatures)
-
-    expected_removed_faces = COCKPIT_FLOOR_SUNROOF_SHARED_FACE_COUNT * 2 + sum(
-        COCKPIT_FLOOR_SUNROOF_AUXILIARY_FACE_COUNTS.values()
-    )
-    if removed_faces != expected_removed_faces:
+    clip_stats = {
+        material_name: clip_patch_to_floor_aperture(body[material_name], clearance_points)
+        for material_name in COCKPIT_FLOOR_APERTURE_MATERIALS
+    }
+    paired_clip_fields = ("modified_faces", "fully_removed_faces", "generated_faces")
+    if any(
+        clip_stats["body_1"][field] != clip_stats["body_2"][field]
+        for field in paired_clip_fields
+    ):
         raise RuntimeError(
-            "Refusing unexpected forward floor sunroof removal: "
-            f"removed {removed_faces} faces, expected {expected_removed_faces}."
+            "Refusing mismatched paired cockpit floor skin clipping: "
+            f"body_1={clip_stats['body_1']}, body_2={clip_stats['body_2']}."
         )
-    return removed_faces, removed_signatures
+    if any(stats["modified_faces"] == 0 for stats in clip_stats.values()):
+        raise RuntimeError(
+            f"Refusing incomplete cockpit floor aperture clipping: {clip_stats}."
+        )
+    for material_name, expected in COCKPIT_FLOOR_APERTURE_EXPECTED_CLIP_STATS.items():
+        stats = clip_stats[material_name]
+        actual = (
+            stats["modified_faces"],
+            stats["fully_removed_faces"],
+            stats["generated_faces"],
+        )
+        if actual != expected:
+            raise RuntimeError(
+                "Refusing unexpected cockpit floor aperture topology: "
+                f"{material_name}={actual}, expected {expected}."
+            )
+    print(
+        "Dev cockpit floor aperture frame: "
+        f"sampled body-following surface z {frame_surface_z_range[0]:.3f}.."
+        f"{frame_surface_z_range[1]:.3f}."
+    )
+    return clip_stats, frame, throat_points
 
 
 def ensure_inner_shell_material(materials: dict[int, Material]) -> None:
@@ -2318,10 +2585,21 @@ def build_body_for_dev(args: argparse.Namespace):
     if removed_green_faces:
         print(f"Dev exterior cleanup: removed {removed_green_faces} green helper/slime-light faces.")
     shift_visual_shell_for_pilot_alignment(args, body, tail_rotor, visual_gear)
-    removed_floor_faces, removed_floor_signatures = carve_cockpit_floor_sunroof(body)
+    floor_clip_stats, floor_aperture_frame, floor_aperture_throat = (
+        carve_cockpit_floor_aperture(body)
+    )
+    modified_floor_faces = sum(
+        stats["modified_faces"] for stats in floor_clip_stats.values()
+    )
+    floor_clip_summary = ", ".join(
+        f"{name}={stats['modified_faces']}"
+        for name, stats in floor_clip_stats.items()
+    )
     print(
-        "Dev cockpit floor sunroof: "
-        f"removed {removed_floor_faces} lower-shell faces from the compact forward aperture."
+        "Dev cockpit floor aperture: "
+        f"exactly clipped {modified_floor_faces} lower-shell faces across "
+        f"{len(floor_clip_stats)} paired/auxiliary layers "
+        f"({floor_clip_summary})."
     )
     if args.inner_shell:
         ensure_inner_shell_material(materials)
@@ -2329,24 +2607,31 @@ def build_body_for_dev(args: argparse.Namespace):
             body,
             args.inner_shell_skip_material_regex,
         )
-        inward_blockers = matching_face_signatures(
+        inward_blockers = count_patch_floor_aperture_faces(
             body[INNER_SHELL_MATERIAL_NAME],
-            cockpit_floor_sunroof_contains_face,
-        ) & removed_floor_signatures
+            floor_aperture_throat,
+        )
         if inward_blockers:
             raise RuntimeError(
-                "Refusing blocked forward floor sunroof: "
-                f"found {len(inward_blockers)} inward faces after shell duplication."
+                "Refusing blocked cockpit floor aperture: "
+                f"found {inward_blockers} inward faces after shell duplication."
             )
         print(
             "Dev inner shell: "
             f"duplicated {duplicated_faces} solid faces into {INNER_SHELL_MATERIAL_NAME}."
         )
-        print("Dev cockpit floor sunroof: verified clear through the inward shell.")
+        print("Dev cockpit floor aperture: verified clear through the inward shell.")
         if skipped_materials:
             skipped_preview = ", ".join(sorted(skipped_materials)[:12])
             suffix = "..." if len(skipped_materials) > 12 else ""
             print(f"Dev inner shell: skipped transparent/non-solid materials: {skipped_preview}{suffix}")
+    ensure_inner_shell_material(materials)
+    merge_patch_map_into(body, floor_aperture_frame)
+    frame_faces = sum(len(patch.indices) // 3 for patch in floor_aperture_frame.values())
+    print(
+        "Dev cockpit floor aperture: "
+        f"added {frame_faces} double-sided body-following matte-black trim faces."
+    )
     add_cockpit_kit(args, materials, body)
     return materials, body, tail_rotor, visual_gear, source_faces, imported_faces
 
@@ -3493,7 +3778,7 @@ def write_source_stamp() -> None:
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, and paired protruding side/rear gear-support meshes are hidden from the dev visual build",
-                "floor_sunroof=rounded lower-cockpit opening shifted exactly 0.90m forward and widened exactly 0.40m on each side",
+                "floor_aperture=exactly clipped body-following tapered oval with a matte-black beveled trim collar",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
@@ -3634,7 +3919,7 @@ def write_dev_package_marker() -> None:
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened and both layers of each protruding side/rear gear-support mesh are hidden from the dev visual build.",
-                "The rounded lower-cockpit opening is shifted exactly 0.90m forward from its initial placement and widened exactly 0.40m on each side.",
+                "The lower-cockpit opening follows the tapered belly contour, uses exact triangle clipping for a coherent edge, and has a body-following matte-black beveled trim collar.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab or cyclic boot cylinders, anchored matte dark-grey floor cyclics with shaped grips, lowered left-shifted collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
