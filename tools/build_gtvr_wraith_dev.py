@@ -4,10 +4,14 @@ import argparse
 import math
 import re
 import shutil
+import struct
 import subprocess
 import sys
 from pathlib import Path
 
+from PIL import Image, ImageEnhance, ImageOps
+
+import build_msfs_shell_source as msfs_shell
 import build_gtvr_wraith_ec135_core as core
 from build_gtvr_source_project import write_png
 from build_msfs_shell_source import Material
@@ -27,6 +31,14 @@ DEV_BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_dev_build_user"
 DEV_LAUNCH_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_dev_launch"
 DEV_PACKAGE_DIR = ROOT / "local-aircraft-packages" / DEV_AIRCRAFT_NAME
 DEV_SOURCE_STAMP = DEV_SOURCE_DIR / "_GTVR_WRAITH_DEV_SOURCE_STAMP.txt"
+
+WRAITH_LIVERY_ASSET_DIR = ROOT / "assets" / "wraith_livery"
+WRAITH_LIVERY_PATTERN = WRAITH_LIVERY_ASSET_DIR / "wraith_stealth_camo_v1.png"
+WRAITH_LIVERY_SIZE = (1024, 1024)
+WRAITH_LIVERY_MATERIALS = {
+    "body_1": ("msfs_78_body_1", "gtvr_wraith_livery_body_1", "camo"),
+    "body_2": ("msfs_33_body_2", "gtvr_wraith_livery_body_2", "camo"),
+}
 
 DEFAULT_FS4_USER = Path.home() / "Documents" / "Aerofly FS 4"
 DEFAULT_INNER_SHELL_SKIP_MATERIAL_REGEX = (
@@ -73,6 +85,12 @@ COCKPIT_FLOOR_APERTURE_CHAMFER_DROP = 0.020
 COCKPIT_FLOOR_APERTURE_WALL_DEPTH = 0.030
 COCKPIT_FLOOR_APERTURE_BOTTOM_OVERLAP = 0.006
 DEV_PREVIEW_FILENAMES = ("preview.ttx", "preview_small.ttx")
+PREVIEW_RENDER_DIR_NAME = "gtvr_wraith_preview"
+PREVIEW_RENDER_SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_preview_source" / "aircraft"
+PREVIEW_RENDER_SOURCE_DIR = PREVIEW_RENDER_SOURCE_ROOT / PREVIEW_RENDER_DIR_NAME
+PREVIEW_RENDER_BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_preview_build_user"
+PREVIEW_RENDER_LAUNCH_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_preview_launch"
+PREVIEW_RENDER_SOURCE_STAMP = PREVIEW_RENDER_SOURCE_DIR / "_GTVR_WRAITH_PREVIEW_SOURCE_STAMP.txt"
 CONTROL_MATTE_BLACK_MATERIAL = "gtvr_control_black"
 PEDAL_BLACK_MATERIAL = CONTROL_MATTE_BLACK_MATERIAL
 CYCLIC_OPAQUE_MATERIAL = "gtvr_cyclic_opaque_dark_grey"
@@ -314,6 +332,7 @@ _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
 _ORIGINAL_BUILD_SELECTED_NODES = core.build_selected_nodes
 _ORIGINAL_LEGACY_ROTOR_PATCH_MAPS = core.legacy_rotor_patch_maps
+_ORIGINAL_MSFS_READ_ACCESSOR = msfs_shell.read_accessor
 _current_pilot_alignment_x_delta = 0.0
 _current_cockpit_x_delta = DEFAULT_COCKPIT_X_DELTA
 _current_interior_forward_x_delta = DEFAULT_INTERIOR_FORWARD_X_DELTA
@@ -367,6 +386,10 @@ def assert_dev_paths() -> None:
         ROTOR_ANIMATION_SOURCE_DIR,
         ROTOR_ANIMATION_BUILD_USER,
         ROTOR_ANIMATION_LAUNCH_USER,
+        PREVIEW_RENDER_SOURCE_ROOT,
+        PREVIEW_RENDER_SOURCE_DIR,
+        PREVIEW_RENDER_BUILD_USER,
+        PREVIEW_RENDER_LAUNCH_USER,
     ]
     for path in checked_paths:
         if STABLE_AIRCRAFT_NAME in path.parts:
@@ -487,6 +510,15 @@ def projected_polygon_signed_area(points: list[Point2D]) -> float:
         points[index][0] * points[(index + 1) % len(points)][1]
         - points[(index + 1) % len(points)][0] * points[index][1]
         for index in range(len(points))
+    )
+
+
+def converted_preview_render_tmb() -> Path:
+    return (
+        PREVIEW_RENDER_BUILD_USER
+        / "aircraft"
+        / PREVIEW_RENDER_DIR_NAME
+        / f"{PREVIEW_RENDER_DIR_NAME}.tmb"
     )
 
 
@@ -2905,8 +2937,112 @@ def make_inner_shell_opaque(body: dict[str, core.Patch], skip_regex: str | None)
     return duplicated_faces, skipped_materials
 
 
+def read_accessor_for_dev(gltf: dict, buffers: list[bytes], accessor_index: int) -> list[tuple]:
+    """Decode MSFS optimized VEC2 texture coordinates without changing the shared importer."""
+    accessor = gltf["accessors"][accessor_index]
+    if (
+        accessor.get("componentType") == 5122
+        and accessor.get("type") == "VEC2"
+        and not accessor.get("normalized", False)
+    ):
+        buffer_view = gltf["bufferViews"][accessor["bufferView"]]
+        offset = buffer_view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+        stride = buffer_view.get("byteStride", 4)
+        data = buffers[buffer_view["buffer"]]
+        decoded = [
+            struct.unpack_from("<ee", data, offset + index * stride)
+            for index in range(accessor["count"])
+        ]
+        if not all(math.isfinite(value) for row in decoded for value in row):
+            raise RuntimeError(f"Non-finite optimized UV values in accessor {accessor_index}.")
+        return decoded
+    return _ORIGINAL_MSFS_READ_ACCESSOR(gltf, buffers, accessor_index)
+
+
+def apply_wraith_livery_overrides(materials: dict[int, Material]) -> int:
+    if not WRAITH_LIVERY_PATTERN.exists():
+        raise FileNotFoundError(f"Missing Wraith livery artwork: {WRAITH_LIVERY_PATTERN}")
+
+    with Image.open(WRAITH_LIVERY_PATTERN) as source_pattern:
+        pattern = source_pattern.convert("RGB").resize(
+            WRAITH_LIVERY_SIZE,
+            Image.Resampling.LANCZOS,
+        )
+    pattern = ImageEnhance.Brightness(pattern).enhance(1.32)
+    pattern = ImageEnhance.Contrast(pattern).enhance(1.08)
+
+    materials_by_name = {material.name: material for material in materials.values()}
+    updated = 0
+    for material_name, (expected_stem, target_stem, treatment) in WRAITH_LIVERY_MATERIALS.items():
+        material = materials_by_name.get(material_name)
+        if material is None:
+            raise RuntimeError(f"Missing required Wraith livery material: {material_name}")
+        if material.texture_name != expected_stem:
+            raise RuntimeError(
+                f"Refusing unexpected {material_name} texture: "
+                f"{material.texture_name!r} (expected {expected_stem!r})"
+            )
+
+        source_path = core.SOURCE_DIR / f"{expected_stem}.png"
+        target_path = core.SOURCE_DIR / f"{target_stem}.png"
+        if not source_path.exists():
+            raise FileNotFoundError(f"Missing Wraith source atlas: {source_path}")
+        with Image.open(source_path) as source_image:
+            source_rgba = source_image.convert("RGBA")
+        if source_rgba.size != WRAITH_LIVERY_SIZE:
+            raise RuntimeError(
+                f"Refusing unexpected {material_name} atlas size: "
+                f"{source_rgba.size} (expected {WRAITH_LIVERY_SIZE})"
+            )
+
+        source_rgb = source_rgba.convert("RGB")
+        if treatment == "camo":
+            preserved_detail = ImageEnhance.Color(source_rgb).enhance(0.28)
+            preserved_detail = ImageEnhance.Brightness(preserved_detail).enhance(0.48)
+            painted_rgb = Image.blend(pattern, preserved_detail, 0.30)
+            painted_rgb = ImageEnhance.Contrast(painted_rgb).enhance(1.06)
+        else:
+            raise RuntimeError(f"Unknown Wraith livery treatment: {treatment}")
+
+        # Preserve genuinely dark vents, cavities, soot and panel gaps instead of painting over them.
+        paint_mask = ImageOps.grayscale(source_rgb).point(
+            lambda value: 0 if value <= 30 else 255 if value >= 62 else round((value - 30) * 255 / 32)
+        )
+        painted_rgb = Image.composite(painted_rgb, source_rgb, paint_mask)
+
+        source_alpha = source_rgba.getchannel("A")
+        painted_rgba = painted_rgb.convert("RGBA")
+        painted_rgba.putalpha(source_alpha)
+        painted_rgba.save(target_path, format="PNG", optimize=True)
+        with Image.open(target_path) as check_image:
+            if check_image.mode != "RGBA" or check_image.size != WRAITH_LIVERY_SIZE:
+                raise RuntimeError(f"Invalid generated Wraith atlas: {target_path}")
+            if check_image.getchannel("A").tobytes() != source_alpha.tobytes():
+                raise RuntimeError(f"Wraith atlas alpha changed unexpectedly: {target_path}")
+
+        material.texture_name = target_stem
+        material.source_uri = f"generated-wraith-stealth-livery-{material_name}"
+        updated += 1
+
+    print(
+        "Dev Wraith livery: generated "
+        f"{updated} low-visibility charcoal/gunmetal exterior atlases from {WRAITH_LIVERY_PATTERN.name}."
+    )
+    return updated
+
+
 def build_body_for_dev(args: argparse.Namespace):
-    materials, body, tail_rotor, visual_gear, source_faces, imported_faces = _ORIGINAL_BUILD_BODY(args)
+    original_core_read_accessor = core.read_accessor
+    original_msfs_read_accessor = msfs_shell.read_accessor
+    core.read_accessor = read_accessor_for_dev
+    msfs_shell.read_accessor = read_accessor_for_dev
+    try:
+        materials, body, tail_rotor, visual_gear, source_faces, imported_faces = _ORIGINAL_BUILD_BODY(args)
+    finally:
+        core.read_accessor = original_core_read_accessor
+        msfs_shell.read_accessor = original_msfs_read_accessor
+    print("Dev MSFS import: decoded optimized half-float exterior UVs.")
+    apply_wraith_livery_overrides(materials)
     removed_green_faces = 0
     for material_name in list(body):
         if UNWANTED_GREEN_MATERIAL_RE.fullmatch(material_name):
@@ -3986,6 +4122,107 @@ def prepare_dev_rotor_animation_source(
     return ROTOR_ANIMATION_SOURCE_DIR
 
 
+def write_preview_render_source_tmc(path: Path) -> None:
+    path.write_text(
+        f"""<[file][][]
+    <[modelinformation][][]
+        <[int32][Version][230]>
+        <[list_vector4_float64][ContactSpheres][ (0.0 0.0 0.0 0.05) ]>
+        <[stringt8c][ICAO][GTWP]>
+        <[string8][DisplayName][Wraith Preview Render]>
+        <[string8][DisplayNameFull][Wraith Preview Render]>
+        <[float64][MaximumTakeoffMass][5000.0]>
+        <[uint32][MaximumPersonsOnBoard][0]>
+        <[float64][WingSpan][9.8]>
+        <[float64][Length][17.61]>
+        <[float64][Height][5.26]>
+        <[uint32][Year][2026]>
+        <[uint32][EngineCount][0]>
+        <[float64][EnginePower][0.0]>
+        <[string8][Tags][ preview render ]>
+    >
+>
+""",
+        encoding="utf-8",
+    )
+
+
+def prepare_dev_preview_render_source(
+    args: argparse.Namespace,
+    materials: dict[int, Material],
+    geometries: dict[str, dict[str, core.Patch]],
+) -> Path:
+    if not patch_map_has_faces(_current_main_rotor_spin_geometry):
+        raise RuntimeError("Cannot prepare the Wraith preview without the accepted main rotor assembly.")
+    if not patch_map_has_faces(_current_tail_rotor_spin_geometry):
+        raise RuntimeError("Cannot prepare the Wraith preview without the accepted tail rotor assembly.")
+
+    if PREVIEW_RENDER_SOURCE_DIR.exists():
+        shutil.rmtree(PREVIEW_RENDER_SOURCE_DIR)
+    PREVIEW_RENDER_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+    core.ensure_runtime_resources(PREVIEW_RENDER_SOURCE_ROOT)
+
+    preview_geometries = {
+        name: core.copy_patch_map(patches)
+        for name, patches in geometries.items()
+        if patch_map_has_faces(patches)
+    }
+    preview_geometries["GTVRPreviewMainRotorStatic"] = core.copy_patch_map(
+        _current_main_rotor_spin_geometry
+    )
+    preview_geometries["GTVRPreviewTailRotorStatic"] = core.copy_patch_map(
+        _current_tail_rotor_spin_geometry
+    )
+
+    copied_textures = 0
+    for source_texture in core.SOURCE_DIR.glob("*.png"):
+        shutil.copy2(source_texture, PREVIEW_RENDER_SOURCE_DIR / source_texture.name)
+        copied_textures += 1
+    if not copied_textures:
+        raise RuntimeError("Cannot prepare the Wraith preview without source textures.")
+
+    write_preview_render_source_tmc(
+        PREVIEW_RENDER_SOURCE_DIR / f"{PREVIEW_RENDER_DIR_NAME}.tmc"
+    )
+    core.write_minimal_tmd(
+        PREVIEW_RENDER_SOURCE_DIR / f"{PREVIEW_RENDER_DIR_NAME}.tmd",
+        sorted(preview_geometries),
+    )
+    preview_tgi = PREVIEW_RENDER_SOURCE_DIR / f"{PREVIEW_RENDER_DIR_NAME}.tgi"
+    core.write_tgi(preview_tgi, materials, preview_geometries)
+    patch_dev_tgi_material_shaders(preview_tgi)
+    core.write_model_tmc(
+        PREVIEW_RENDER_SOURCE_DIR / "model.tmc",
+        materials,
+        preview_geometries,
+        args.max_texture_size,
+    )
+    core.write_root_converter_config(
+        PREVIEW_RENDER_SOURCE_ROOT / "config.tmc",
+        PREVIEW_RENDER_SOURCE_ROOT,
+        PREVIEW_RENDER_BUILD_USER,
+    )
+    PREVIEW_RENDER_SOURCE_STAMP.write_text(
+        "\n".join(
+            [
+                "GTVR Wraith rotor-inclusive preview source prepared.",
+                f"aircraft={DEV_AIRCRAFT_NAME}",
+                f"main_pivot={fmt_vector(_current_main_rotor_pivot or GTVR_MAIN_ROTOR_LOCKED_PIVOT)}",
+                f"tail_pivot={fmt_vector(_current_tail_rotor_pivot or GTVR_TAIL_ROTOR_LOCKED_PIVOT)}",
+                f"livery={WRAITH_LIVERY_PATTERN.name}",
+                "runtime_install=false",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(
+        "Wrote rotor-inclusive dev preview source: "
+        f"{PREVIEW_RENDER_SOURCE_DIR} ({len(preview_geometries)} geometries, {copied_textures} textures)."
+    )
+    return PREVIEW_RENDER_SOURCE_DIR
+
+
 def prepare_source_for_dev(args: argparse.Namespace) -> None:
     global _current_tail_rotor_pivot
     global _current_main_rotor_pivot
@@ -4114,6 +4351,8 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     print(f"Imported body faces: {imported_faces}")
     prepare_dev_map_panel_source(args)
     prepare_dev_rotor_animation_source(args, materials)
+    if getattr(args, "use_converted_previews", False):
+        prepare_dev_preview_render_source(args, materials, geometries)
 
 
 def write_source_stamp() -> None:
@@ -4123,6 +4362,9 @@ def write_source_stamp() -> None:
                 "GTVR Wraith Dev source prepared.",
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
+                f"livery=low-visibility fractured charcoal/gunmetal Wraith scheme from {WRAITH_LIVERY_PATTERN.name}",
+                "msfs_import=optimized half-float exterior UVs decoded in the dev path",
+                f"preview=rotor-inclusive static render source {PREVIEW_RENDER_DIR_NAME}; runtime aircraft remains animation-option driven",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
                 "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, paired protruding side/rear gear-support meshes stay hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and colour-matched single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts",
@@ -4198,7 +4440,7 @@ def assert_fresh_converted_tmb(allow_stale_tmb: bool) -> None:
         )
 
 
-def run_converter(timeout: float) -> int:
+def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
     command = [
         sys.executable,
         str(ROOT / "tools" / "run_aerofly_converter.py"),
@@ -4249,6 +4491,27 @@ def run_converter(timeout: float) -> int:
         if rotor_completed.returncode != 0:
             return rotor_completed.returncode
 
+    if use_converted_previews:
+        if not PREVIEW_RENDER_SOURCE_DIR.exists():
+            raise FileNotFoundError(
+                f"Missing rotor-inclusive preview source: {PREVIEW_RENDER_SOURCE_DIR}"
+            )
+        preview_command = [
+            sys.executable,
+            str(ROOT / "tools" / "run_aerofly_converter.py"),
+            PREVIEW_RENDER_DIR_NAME,
+            str(PREVIEW_RENDER_SOURCE_ROOT),
+            "--userfolder",
+            str(PREVIEW_RENDER_LAUNCH_USER),
+            "--timeout",
+            str(timeout),
+        ]
+        print("Running full Aerofly converter for the rotor-inclusive Wraith preview:")
+        print(" ".join(preview_command))
+        preview_completed = subprocess.run(preview_command, cwd=ROOT, check=False)
+        if preview_completed.returncode != 0:
+            return preview_completed.returncode
+
     return 0
 
 
@@ -4264,6 +4527,9 @@ def write_dev_package_marker() -> None:
                 "Dev-only EC135-core Wraith iteration package.",
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
+                "Exterior paint uses a low-visibility fractured charcoal/gunmetal Wraith military scheme while weapons, sensors and auxiliary fixtures retain their accepted finish.",
+                "The dev import decodes the source aircraft's optimized half-float exterior UVs so the livery follows the intended atlas mapping.",
+                "Preview textures come from a separate static render source containing both accepted rotor assemblies; it is not installed and does not duplicate the runtime rotors.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
                 "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened, both layers of each protruding side/rear gear-support mesh remain hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and colour-matched single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts.",
@@ -4646,6 +4912,49 @@ def preserve_installed_dev_previews(user_root: Path) -> int:
     return preserved
 
 
+def install_converted_dev_previews() -> int:
+    if not PREVIEW_RENDER_SOURCE_STAMP.exists():
+        raise FileNotFoundError(
+            f"Missing rotor-inclusive preview source stamp: {PREVIEW_RENDER_SOURCE_STAMP}"
+        )
+    source_stamp_time = PREVIEW_RENDER_SOURCE_STAMP.stat().st_mtime
+    preview_tmb = converted_preview_render_tmb()
+    if not preview_tmb.exists() or preview_tmb.stat().st_size <= 0:
+        raise FileNotFoundError(f"Missing rotor-inclusive preview TMB: {preview_tmb}")
+    if preview_tmb.stat().st_mtime < source_stamp_time:
+        raise RuntimeError(f"Refusing stale rotor-inclusive preview TMB: {preview_tmb}")
+
+    master_preview = PREVIEW_RENDER_SOURCE_DIR / f"preview_{PREVIEW_RENDER_DIR_NAME}.tif"
+    if not master_preview.exists() or master_preview.stat().st_size <= 0:
+        raise FileNotFoundError(f"Missing converted dev preview master: {master_preview}")
+    if master_preview.stat().st_mtime < source_stamp_time:
+        raise RuntimeError(f"Refusing stale dev preview master: {master_preview}")
+
+    with Image.open(master_preview) as preview_image:
+        if preview_image.format != "TIFF":
+            raise RuntimeError(f"Unexpected dev preview format: {preview_image.format}")
+        if preview_image.mode != "RGBA" or preview_image.size != (4096, 4096):
+            raise RuntimeError(
+                f"Unexpected dev preview master layout: {preview_image.mode} {preview_image.size}"
+            )
+        if preview_image.getchannel("A").getbbox() is None:
+            raise RuntimeError(f"Refusing fully transparent dev preview master: {master_preview}")
+        if ImageOps.grayscale(preview_image.convert("RGB")).getbbox() is None:
+            raise RuntimeError(f"Refusing blank dev preview master: {master_preview}")
+
+    converted_dir = preview_tmb.parent
+    copied = 0
+    for filename in DEV_PREVIEW_FILENAMES:
+        source = converted_dir / filename
+        if not source.exists() or source.stat().st_size <= 0:
+            raise FileNotFoundError(f"Missing converted dev preview texture: {source}")
+        if source.stat().st_mtime < source_stamp_time:
+            raise RuntimeError(f"Refusing stale converted dev preview texture: {source}")
+        shutil.copy2(source, DEV_PACKAGE_DIR / filename)
+        copied += 1
+    return copied
+
+
 def install_dev_package(user_root: Path, force_install: bool) -> Path:
     source_dir = DEV_PACKAGE_DIR
     target_dir = user_root / "aircraft" / DEV_AIRCRAFT_NAME
@@ -4657,6 +4966,21 @@ def install_dev_package(user_root: Path, force_install: bool) -> Path:
         raise RuntimeError(f"Refusing to install dev package over stable aircraft: {stable_dir}")
     if not source_dir.exists():
         raise FileNotFoundError(f"Missing assembled dev package: {source_dir}")
+    required_package_paths = (
+        source_dir / "_GTVR_WRAITH_DEV.txt",
+        source_dir / f"{DEV_AIRCRAFT_NAME}.tmb",
+        source_dir / MAP_PANEL_DIR_NAME / f"{MAP_PANEL_DIR_NAME}.tmb",
+        source_dir / ROTOR_ANIMATION_DIR_NAME / f"{ROTOR_ANIMATION_DIR_NAME}.tmb",
+        *(source_dir / filename for filename in DEV_PREVIEW_FILENAMES),
+    )
+    missing_package_paths = [
+        path for path in required_package_paths if not path.exists() or path.stat().st_size <= 0
+    ]
+    if missing_package_paths:
+        missing = ", ".join(str(path.relative_to(source_dir)) for path in missing_package_paths)
+        raise RuntimeError(
+            f"Refusing to install incomplete dev package {source_dir}; missing or empty: {missing}"
+        )
     if target_dir.exists():
         if not force_install:
             raise FileExistsError(f"Dev install already exists, rerun with --force-install: {target_dir}")
@@ -4744,6 +5068,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--full", action="store_true", help="Prepare, convert, assemble and install the dev package.")
     parser.add_argument("--force-install", action="store_true", help="Replace the existing gtvr_wraith_dev install.")
     parser.add_argument("--allow-stale-tmb", action="store_true", help="Allow assembling without a fresh dev converter run.")
+    parser.add_argument(
+        "--use-converted-previews",
+        action="store_true",
+        help="Validate and package the fresh converter-rendered dev previews instead of preserving installed previews.",
+    )
     parser.add_argument("--user-root", type=Path, default=DEFAULT_FS4_USER)
     parser.add_argument("--converter-timeout", type=float, default=180.0)
     return parser
@@ -4774,15 +5103,24 @@ def main() -> int:
             write_source_stamp()
 
         if args.convert:
-            result = run_converter(args.converter_timeout)
+            result = run_converter(args.converter_timeout, args.use_converted_previews)
             if result != 0:
                 return result
 
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
-            preserved_previews = preserve_installed_dev_previews(args.user_root)
-            if preserved_previews:
+            if args.use_converted_previews:
+                if args.allow_stale_tmb:
+                    raise RuntimeError("Fresh converted previews cannot be used with --allow-stale-tmb.")
+                converted_previews = install_converted_dev_previews()
+                print(
+                    "Dev previews: "
+                    f"validated the 4096px rotor-inclusive converter render and packaged {converted_previews} fresh preview textures."
+                )
+            else:
+                preserved_previews = preserve_installed_dev_previews(args.user_root)
+            if not args.use_converted_previews and preserved_previews:
                 print(
                     "Dev previews: "
                     f"preserved {preserved_previews} accepted installed preview textures."
