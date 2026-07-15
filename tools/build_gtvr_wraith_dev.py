@@ -327,6 +327,14 @@ ROTOR_ANIMATION_SOURCE_DIR = ROTOR_ANIMATION_SOURCE_ROOT / ROTOR_ANIMATION_DIR_N
 ROTOR_ANIMATION_BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_rotor_animation_build_user"
 ROTOR_ANIMATION_LAUNCH_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_rotor_animation_launch"
 ROTOR_ANIMATION_SOURCE_STAMP = ROTOR_ANIMATION_SOURCE_DIR / "_GTVR_WRAITH_ROTOR_ANIMATION_SOURCE_STAMP.txt"
+CYCLIC_VISUAL_DIR_NAME = "gtvr_cyclic_visuals"
+CYCLIC_VISUAL_SOURCE_ROOT = ROOT / "tools" / "vendor" / "gtvr_wraith_cyclic_visuals_source" / "aircraft"
+CYCLIC_VISUAL_SOURCE_DIR = CYCLIC_VISUAL_SOURCE_ROOT / CYCLIC_VISUAL_DIR_NAME
+CYCLIC_VISUAL_BUILD_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_cyclic_visuals_build_user"
+CYCLIC_VISUAL_LAUNCH_USER = ROOT / "tools" / "vendor" / "gtvr_wraith_cyclic_visuals_launch"
+CYCLIC_VISUAL_SOURCE_STAMP = CYCLIC_VISUAL_SOURCE_DIR / "_GTVR_WRAITH_CYCLIC_VISUALS_SOURCE_STAMP.txt"
+LEFT_CYCLIC_VISUAL_GEOMETRY = "GTVRLeftCyclicVisual"
+RIGHT_CYCLIC_VISUAL_GEOMETRY = "GTVRRightCyclicVisual"
 
 _ORIGINAL_PATCH_TMC = core.patch_tmc
 _ORIGINAL_BUILD_BODY = core.build_body
@@ -338,6 +346,7 @@ _current_cockpit_x_delta = DEFAULT_COCKPIT_X_DELTA
 _current_interior_forward_x_delta = DEFAULT_INTERIOR_FORWARD_X_DELTA
 _current_dash_forward_x_delta = DEFAULT_DASH_FORWARD_X_DELTA
 _current_animated_control_geometries: dict[str, dict[str, core.Patch]] = {}
+_current_cyclic_visual_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_live_display_geometries: dict[str, dict[str, core.Patch]] = {}
 _current_live_display_pivots: dict[str, tuple[float, float, float]] = {}
 _current_stock_display_geometries: dict[str, dict[str, core.Patch]] = {}
@@ -386,6 +395,10 @@ def assert_dev_paths() -> None:
         ROTOR_ANIMATION_SOURCE_DIR,
         ROTOR_ANIMATION_BUILD_USER,
         ROTOR_ANIMATION_LAUNCH_USER,
+        CYCLIC_VISUAL_SOURCE_ROOT,
+        CYCLIC_VISUAL_SOURCE_DIR,
+        CYCLIC_VISUAL_BUILD_USER,
+        CYCLIC_VISUAL_LAUNCH_USER,
         PREVIEW_RENDER_SOURCE_ROOT,
         PREVIEW_RENDER_SOURCE_DIR,
         PREVIEW_RENDER_BUILD_USER,
@@ -510,6 +523,15 @@ def projected_polygon_signed_area(points: list[Point2D]) -> float:
         points[index][0] * points[(index + 1) % len(points)][1]
         - points[(index + 1) % len(points)][0] * points[index][1]
         for index in range(len(points))
+    )
+
+
+def converted_cyclic_visual_tmb() -> Path:
+    return (
+        CYCLIC_VISUAL_BUILD_USER
+        / "aircraft"
+        / CYCLIC_VISUAL_DIR_NAME
+        / f"{CYCLIC_VISUAL_DIR_NAME}.tmb"
     )
 
 
@@ -1672,6 +1694,10 @@ def patch_for(body: dict[str, core.Patch], material_name: str) -> core.Patch:
 
 def animated_control_geometry(name: str) -> dict[str, core.Patch]:
     return _current_animated_control_geometries.setdefault(name, {})
+
+
+def cyclic_visual_geometry(name: str) -> dict[str, core.Patch]:
+    return _current_cyclic_visual_geometries.setdefault(name, {})
 
 
 def live_display_geometry(name: str) -> dict[str, core.Patch]:
@@ -2879,14 +2905,13 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
 
 
 def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
-    # Retain the exact EC135 animation pivots and native stick slots so the
-    # existing StickTransform and StickTransformCopilot controls animate the
-    # cyclic independently of collective travel. Keep the short floor-side
-    # section fixed, then start the moving shaft at the actual native pivot so
-    # roll and pitch share a convincing universal joint.
+    # Retain the exact accepted geometry and EC135 animation pivots, but keep
+    # the moving meshes out of the stock StickL/StickR slots. The stock TMQ
+    # renders those two slots as one paired roll assembly; the independent
+    # default option gives each pilot-side cyclic its own roll pivot.
     cyclic_references = (
-        (-0.39, -0.379, "StickL"),
-        (0.39, 0.400, "StickR"),
+        (-0.39, -0.379, LEFT_CYCLIC_VISUAL_GEOMETRY),
+        (0.39, 0.400, RIGHT_CYCLIC_VISUAL_GEOMETRY),
     )
     for pivot_y, grip_y, geometry_name in cyclic_references:
         floor_pivot = (2.32, pivot_y, -0.785)
@@ -2909,7 +2934,8 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
 
         # The native EC135 transform pivot sits above and slightly aft of the
         # floor joint. This fixed dog-leg joins the collar to that pivot; only
-        # the shaft above animation_pivot belongs to StickL/StickR and moves.
+        # the shaft above animation_pivot belongs to the independent cyclic
+        # visual option and moves around its own pilot-side pivot.
         append_smooth_tube(
             body,
             CYCLIC_OPAQUE_MATERIAL,
@@ -2923,7 +2949,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             radial_segments=28,
         )
 
-        control = animated_control_geometry(geometry_name)
+        control = cyclic_visual_geometry(geometry_name)
         append_smooth_tube(
             control,
             CYCLIC_OPAQUE_MATERIAL,
@@ -3124,11 +3150,13 @@ def add_pedal_set(body: dict[str, core.Patch], interior_x) -> None:
 
 
 def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], body: dict[str, core.Patch]) -> None:
-    global _current_animated_control_geometries, _current_live_display_geometries, _current_live_display_pivots
+    global _current_animated_control_geometries, _current_cyclic_visual_geometries
+    global _current_live_display_geometries, _current_live_display_pivots
     global _current_stock_display_geometries, _current_center_map_pivot
     global _current_cockpit_x_delta
     global _current_dash_forward_x_delta, _current_interior_forward_x_delta
     _current_animated_control_geometries = {}
+    _current_cyclic_visual_geometries = {}
     _current_live_display_geometries = {}
     _current_live_display_pivots = {}
     _current_stock_display_geometries = {}
@@ -3811,43 +3839,11 @@ def visual_control_dynamic_objects() -> str:
     if not control_graphic_groups():
         return ""
 
-    left_cyclic_pivot = (2.32, -0.39, -0.785)
-    right_cyclic_pivot = (2.32, 0.39, -0.785)
     left_collective_pivot = (current_interior_x(1.34), -0.10, -0.610)
     right_collective_pivot = (current_interior_x(1.34), 0.70, -0.610)
 
     return f"""
             // GTVR generated cockpit visual controls
-            <[graphics_input][GTVRVisualCyclicPitchTravel][]
-                <[uint32][InputID][StickCyclicPitch.Output]>
-                <[float64][Scaling][0.2]>
-            >
-            <[graphics_input][GTVRVisualCyclicRollTravel][]
-                <[uint32][InputID][StickCyclicRoll.Output]>
-                <[float64][Scaling][0.2]>
-            >
-            <[graphics_rotation][GTVRLeftCyclicPitchTransform][]
-                <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
-            >
-            <[graphics_rotation][GTVRLeftCyclicTransform][]
-                <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
-                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(left_cyclic_pivot)} ]>
-                <[string8][InputTransform][GTVRLeftCyclicPitchTransform.Output]>
-            >
-            <[graphics_rotation][GTVRRightCyclicPitchTransform][]
-                <[string8][Input][GTVRVisualCyclicPitchTravel.Output]>
-                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
-            >
-            <[graphics_rotation][GTVRRightCyclicTransform][]
-                <[string8][Input][GTVRVisualCyclicRollTravel.Output]>
-                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
-                <[tmvector3d][Pivot][ {fmt_vector(right_cyclic_pivot)} ]>
-                <[string8][InputTransform][GTVRRightCyclicPitchTransform.Output]>
-            >
             <[graphics_input][GTVRVisualCollectiveTravel][]
                 <[uint32][InputID][CollectivePitchLever.Output]>
                 <[float64][Scaling][0.2]>
@@ -4380,6 +4376,124 @@ def prepare_dev_rotor_animation_source(
     return ROTOR_ANIMATION_SOURCE_DIR
 
 
+def write_cyclic_visual_source_tmc(path: Path) -> None:
+    path.write_text(
+        """<[file][][]
+    <[modelinformation][][]
+        <[int32][Version][230]>
+        <[list_vector4_float64][ContactSpheres][ (0.0 0.0 0.0 0.05) ]>
+        <[stringt8c][ICAO][GTVC]>
+        <[string8][DisplayName][Wraith Cyclic Visuals]>
+        <[string8][DisplayNameFull][Wraith Cyclic Visuals]>
+        <[float64][MaximumTakeoffMass][1.0]>
+        <[uint32][MaximumPersonsOnBoard][0]>
+        <[float64][WingSpan][0.01]>
+        <[float64][Length][0.01]>
+        <[float64][Height][0.7]>
+        <[uint32][Year][2026]>
+        <[uint32][EngineCount][0]>
+        <[float64][EnginePower][0.0]>
+        <[string8][Tags][ cyclic visuals experimental ]>
+    >
+>
+""",
+        encoding="utf-8",
+    )
+
+
+def prepare_dev_cyclic_visual_source(
+    args: argparse.Namespace,
+    materials: dict[int, Material],
+) -> Path:
+    expected_geometries = {
+        LEFT_CYCLIC_VISUAL_GEOMETRY,
+        RIGHT_CYCLIC_VISUAL_GEOMETRY,
+    }
+    if set(_current_cyclic_visual_geometries) != expected_geometries:
+        raise RuntimeError(
+            "Missing independent cyclic option geometry: "
+            + ", ".join(sorted(expected_geometries - set(_current_cyclic_visual_geometries)))
+        )
+    if any(
+        not patch_map_has_faces(_current_cyclic_visual_geometries[name])
+        for name in expected_geometries
+    ):
+        raise RuntimeError("Independent cyclic option contains empty geometry.")
+
+    if CYCLIC_VISUAL_SOURCE_DIR.exists():
+        shutil.rmtree(CYCLIC_VISUAL_SOURCE_DIR)
+    CYCLIC_VISUAL_SOURCE_DIR.mkdir(parents=True, exist_ok=True)
+    core.ensure_runtime_resources(CYCLIC_VISUAL_SOURCE_ROOT)
+
+    geometries = {
+        name: core.copy_patch_map(_current_cyclic_visual_geometries[name])
+        for name in sorted(expected_geometries)
+    }
+    used_material_names = {
+        material_name
+        for patches in geometries.values()
+        for material_name in patches
+    }
+    source_materials = {
+        index: material
+        for index, material in materials.items()
+        if material.name in used_material_names
+    }
+    missing_materials = used_material_names - {
+        material.name for material in source_materials.values()
+    }
+    if missing_materials:
+        raise RuntimeError(
+            "Missing cyclic option materials: " + ", ".join(sorted(missing_materials))
+        )
+    for material in source_materials.values():
+        source_texture = core.SOURCE_DIR / f"{material.texture_name}.png"
+        if not source_texture.exists():
+            raise FileNotFoundError(f"Missing cyclic option source texture: {source_texture}")
+        shutil.copy2(source_texture, CYCLIC_VISUAL_SOURCE_DIR / source_texture.name)
+
+    write_cyclic_visual_source_tmc(
+        CYCLIC_VISUAL_SOURCE_DIR / f"{CYCLIC_VISUAL_DIR_NAME}.tmc"
+    )
+    core.write_minimal_tmd(
+        CYCLIC_VISUAL_SOURCE_DIR / f"{CYCLIC_VISUAL_DIR_NAME}.tmd",
+        sorted(geometries),
+    )
+    core.write_tgi(
+        CYCLIC_VISUAL_SOURCE_DIR / f"{CYCLIC_VISUAL_DIR_NAME}.tgi",
+        source_materials,
+        geometries,
+    )
+    core.write_model_tmc(
+        CYCLIC_VISUAL_SOURCE_DIR / "model.tmc",
+        source_materials,
+        geometries,
+        args.max_texture_size,
+    )
+    core.write_root_converter_config(
+        CYCLIC_VISUAL_SOURCE_ROOT / "config.tmc",
+        CYCLIC_VISUAL_SOURCE_ROOT,
+        CYCLIC_VISUAL_BUILD_USER,
+    )
+    CYCLIC_VISUAL_SOURCE_STAMP.write_text(
+        "\n".join(
+            [
+                "GTVR Wraith independent cyclic visual source prepared.",
+                f"left_geometry={LEFT_CYCLIC_VISUAL_GEOMETRY}",
+                "left_pivot=2.25 -0.39 -0.642",
+                f"right_geometry={RIGHT_CYCLIC_VISUAL_GEOMETRY}",
+                "right_pivot=2.25 0.39 -0.642",
+                "pitch_axis=0 1 0",
+                "roll_axis=1 0 0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(f"Wrote dev independent cyclic visual source: {CYCLIC_VISUAL_SOURCE_DIR}")
+    return CYCLIC_VISUAL_SOURCE_DIR
+
+
 def write_preview_render_source_tmc(path: Path) -> None:
     path.write_text(
         f"""<[file][][]
@@ -4609,6 +4723,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     print(f"Imported body faces: {imported_faces}")
     prepare_dev_map_panel_source(args)
     prepare_dev_rotor_animation_source(args, materials)
+    prepare_dev_cyclic_visual_source(args, materials)
     if getattr(args, "use_converted_previews", False):
         prepare_dev_preview_render_source(args, materials, geometries)
 
@@ -4631,7 +4746,7 @@ def write_source_stamp() -> None:
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, rearward-positioned EC135-style cyclics with rounded heads raised 0.09m and fixed lower bases, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
-                "animated_controls=cyclic floor joints remain unchanged while fixed lower bases meet the native EC135 pivots and the moving meshes occupy the TMQ's StickL/StickR slots; pitch retains its native axis and travel while the packaged pilot/copilot roll visual axes provide a constant-height left/right swing; collective geometry remains independently bound only to CollectivePitchLever.Output; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                f"animated_controls=the stock StickL/StickR geometry slots are intentionally empty so the preserved EC135 TMQ cannot render the cyclics as one paired roll assembly; accepted moving cyclic meshes are packaged in the independent default option {CYCLIC_VISUAL_DIR_NAME}, where left and right graphics use separate pitch-roll transforms and pilot-side pivots while sharing the same flight-control inputs; collective geometry remains independently bound only to CollectivePitchLever.Output and is unchanged; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
                 "center_map=gtvr_map_panel option includes its own compiled screen TMB and native texture_animation_map_display renderer targeting gtvr_map_panel_light",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
@@ -4697,6 +4812,23 @@ def assert_fresh_converted_tmb(allow_stale_tmb: bool) -> None:
             f"is older than {ROTOR_ANIMATION_SOURCE_STAMP}. Run the full converter with --convert."
         )
 
+    cyclic_tmb_path = converted_cyclic_visual_tmb()
+    if not cyclic_tmb_path.exists():
+        raise FileNotFoundError(
+            f"Missing cyclic visual option converter output: {cyclic_tmb_path}. "
+            "Run the full converter with --convert."
+        )
+    if not CYCLIC_VISUAL_SOURCE_STAMP.exists():
+        raise FileNotFoundError(
+            f"Missing cyclic visual source stamp: {CYCLIC_VISUAL_SOURCE_STAMP}. "
+            "Run --prepare-source before assembling."
+        )
+    if cyclic_tmb_path.stat().st_mtime < CYCLIC_VISUAL_SOURCE_STAMP.stat().st_mtime:
+        raise RuntimeError(
+            f"Refusing to assemble stale cyclic visual option TMB: {cyclic_tmb_path} "
+            f"is older than {CYCLIC_VISUAL_SOURCE_STAMP}. Run the full converter with --convert."
+        )
+
 
 def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
     command = [
@@ -4749,6 +4881,23 @@ def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
         if rotor_completed.returncode != 0:
             return rotor_completed.returncode
 
+    if CYCLIC_VISUAL_SOURCE_DIR.exists():
+        cyclic_command = [
+            sys.executable,
+            str(ROOT / "tools" / "run_aerofly_converter.py"),
+            CYCLIC_VISUAL_DIR_NAME,
+            str(CYCLIC_VISUAL_SOURCE_ROOT),
+            "--userfolder",
+            str(CYCLIC_VISUAL_LAUNCH_USER),
+            "--timeout",
+            str(timeout),
+        ]
+        print("Running full Aerofly converter for Wraith independent cyclic visuals:")
+        print(" ".join(cyclic_command))
+        cyclic_completed = subprocess.run(cyclic_command, cwd=ROOT, check=False)
+        if cyclic_completed.returncode != 0:
+            return cyclic_completed.returncode
+
     if use_converted_previews:
         if not PREVIEW_RENDER_SOURCE_DIR.exists():
             raise FileNotFoundError(
@@ -4795,7 +4944,7 @@ def write_dev_package_marker() -> None:
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, rearward-positioned EC135-style cyclics with rounded heads raised 0.09m and fixed lower bases, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
-                "Cyclic floor joints remain unchanged while fixed lower bases meet the native EC135 pivots and the moving meshes occupy the TMQ's StickL and StickR slots; pitch retains its native axis and travel while the packaged pilot/copilot roll visual axes provide a constant-height left/right swing; collective geometry remains independently bound only to CollectivePitchLever.Output; pedals retain unchanged travel.",
+                f"The stock StickL and StickR geometry slots are intentionally empty so the preserved EC135 TMQ cannot render the cyclics as one paired roll assembly. The accepted moving cyclic meshes are packaged in the independent default option {CYCLIC_VISUAL_DIR_NAME}, where left and right graphics use separate pitch-roll transforms and pilot-side pivots while sharing the same flight-control inputs. The collective remains unchanged and independently bound only to CollectivePitchLever.Output; pedals retain unchanged travel.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center map is a separate gtvr_map_panel option with its own compiled screen TMB.",
                 "The gtvr_map_panel option hosts a native texture_animation_map_display renderer targeting its own gtvr_map_panel_light texture; it does not copy the C172 compiled panel TMB or add duplicate avionics dynamic objects.",
@@ -4980,6 +5129,60 @@ def rotor_animation_system_tmd() -> str:
 """
 
 
+def cyclic_visual_system_tmd() -> str:
+    return f"""<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmuniverse][DynamicObjects][]
+        >
+        <[pointer_list_tmgraphics][GraphicObjects][]
+            <[graphics_input][GTVRCyclicPitchTravel][]
+                <[uint32][InputID][StickCyclicPitch.Output]>
+                <[float64][Scaling][0.2]>
+            >
+            <[graphics_input][GTVRCyclicRollTravel][]
+                <[uint32][InputID][StickCyclicRoll.Output]>
+                <[float64][Scaling][0.2]>
+            >
+            <[graphics_rotation][GTVRLeftCyclicPitchTransform][]
+                <[string8][Input][GTVRCyclicPitchTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ 2.25 -0.39 -0.642 ]>
+            >
+            <[graphics_rotation][GTVRLeftCyclicTransform][]
+                <[string8][Input][GTVRCyclicRollTravel.Output]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
+                <[tmvector3d][Pivot][ 2.25 -0.39 -0.642 ]>
+                <[string8][InputTransform][GTVRLeftCyclicPitchTransform.Output]>
+            >
+            <[graphics_rotation][GTVRRightCyclicPitchTransform][]
+                <[string8][Input][GTVRCyclicPitchTravel.Output]>
+                <[tmvector3d][Axis][ 0.0 1.0 0.0 ]>
+                <[tmvector3d][Pivot][ 2.25 0.39 -0.642 ]>
+            >
+            <[graphics_rotation][GTVRRightCyclicTransform][]
+                <[string8][Input][GTVRCyclicRollTravel.Output]>
+                <[tmvector3d][Axis][ 1.0 0.0 0.0 ]>
+                <[tmvector3d][Pivot][ 2.25 0.39 -0.642 ]>
+                <[string8][InputTransform][GTVRRightCyclicPitchTransform.Output]>
+            >
+            <[rigidbodygraphics][GTVRLeftCyclicGraphics][]
+                <[string8][GeometryList][ {LEFT_CYCLIC_VISUAL_GEOMETRY} ]>
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[string8][InputTransform][GTVRLeftCyclicTransform.Output]>
+            >
+            <[rigidbodygraphics][GTVRRightCyclicGraphics][]
+                <[string8][GeometryList][ {RIGHT_CYCLIC_VISUAL_GEOMETRY} ]>
+                <[uint32][PositionID][Fuselage.R]>
+                <[uint32][OrientationID][Fuselage.Q]>
+                <[string8][InputTransform][GTVRRightCyclicTransform.Output]>
+            >
+        >
+    >
+>
+"""
+
+
 def write_dev_map_panel_option() -> Path:
     panel_dir = DEV_PACKAGE_DIR / MAP_PANEL_DIR_NAME
     if panel_dir.exists():
@@ -5073,6 +5276,53 @@ def write_dev_rotor_animation_option() -> Path:
     return option_dir
 
 
+def write_dev_cyclic_visual_option() -> Path:
+    option_dir = DEV_PACKAGE_DIR / CYCLIC_VISUAL_DIR_NAME
+    if option_dir.exists():
+        shutil.rmtree(option_dir)
+    option_dir.mkdir(parents=True)
+
+    (option_dir / "option.tmc").write_text(
+        """<[file][][]
+  <[object][][]
+    <[string8][Description][Wraith Independent Cyclic Visuals]>
+    <[string8][Type][default]>
+    <[string8][Tags][cyclic]>
+  >
+>
+""",
+        encoding="utf-8",
+    )
+    (option_dir / "system.tmd").write_text(cyclic_visual_system_tmd(), encoding="utf-8")
+    (option_dir / "controls.tmd").write_text(
+        """<[file][][]
+    <[modelmanager][][]
+        <[pointer_list_tmcontrol][ControlObjects][]
+        >
+    >
+>
+""",
+        encoding="utf-8",
+    )
+    (option_dir / "system_cold.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
+    (option_dir / "system_start.tmd").write_text(empty_modelmanager_tmd(), encoding="utf-8")
+
+    option_tmb = converted_cyclic_visual_tmb()
+    if not option_tmb.exists():
+        raise FileNotFoundError(f"Missing converted cyclic visual option TMB: {option_tmb}")
+    shutil.copy2(option_tmb, option_dir / option_tmb.name)
+    expected_texture_names = {
+        texture.stem
+        for texture in CYCLIC_VISUAL_SOURCE_DIR.glob("*.png")
+    }
+    for texture_name in sorted(expected_texture_names):
+        texture = option_tmb.parent / f"{texture_name}.ttx"
+        if not texture.exists():
+            raise FileNotFoundError(f"Missing converted cyclic visual option texture: {texture}")
+        shutil.copy2(texture, option_dir / texture.name)
+    return option_dir
+
+
 def patch_dev_controls_tmd(path: Path) -> int:
     if not path.exists():
         return 0
@@ -5105,26 +5355,8 @@ def patch_dev_controls_tmd(path: Path) -> int:
         if hidden_depth > 0 and stripped == ">":
             hidden_depth -= 1
 
-    patched_text = "\n".join(patched) + "\n"
-    roll_axis_pattern = re.compile(
-        r"(<\[control_rotation\]\[(?:StickTransform|StickTransformCopilot)\]\[\]\n"
-        r"\s*<\[string8\]\[Input\]\[CyclicRollTravel\.Output\]>\n\s*)"
-        r"<\[tmvector3d\]\[Axis\]\[[^\]]+\]>"
-    )
-    patched_text, roll_axis_updates = roll_axis_pattern.subn(
-        r"\g<1><[tmvector3d][Axis][ -0.3489 0.9372 0.0 ]>",
-        patched_text,
-    )
-    if roll_axis_updates != 2:
-        raise RuntimeError(
-            f"Expected to patch 2 native cyclic roll visual axes, patched {roll_axis_updates}."
-        )
-
-    path.write_text(patched_text, encoding="utf-8")
-    print(
-        "Dev controls: changed pilot and copilot cyclic roll visuals to a "
-        "constant-height left/right pivot."
-    )
+    if hidden_objects:
+        path.write_text("\n".join(patched) + "\n", encoding="utf-8")
     return hidden_objects
 
 
@@ -5247,6 +5479,7 @@ def install_dev_package(user_root: Path, force_install: bool) -> Path:
         source_dir / f"{DEV_AIRCRAFT_NAME}.tmb",
         source_dir / MAP_PANEL_DIR_NAME / f"{MAP_PANEL_DIR_NAME}.tmb",
         source_dir / ROTOR_ANIMATION_DIR_NAME / f"{ROTOR_ANIMATION_DIR_NAME}.tmb",
+        source_dir / CYCLIC_VISUAL_DIR_NAME / f"{CYCLIC_VISUAL_DIR_NAME}.tmb",
         *(source_dir / filename for filename in DEV_PREVIEW_FILENAMES),
     )
     missing_package_paths = [
@@ -5408,6 +5641,11 @@ def main() -> int:
             print(
                 f"Dev rotors: packaged independent runtime animation option "
                 f"{rotor_option_dir.name} using {mode}."
+            )
+            cyclic_option_dir = write_dev_cyclic_visual_option()
+            print(
+                f"Dev cyclics: packaged independent left/right runtime visual option "
+                f"{cyclic_option_dir.name}."
             )
             copied_surface_textures = copy_dev_auxiliary_textures()
             print(f"Dev cockpit materials: packaged {copied_surface_textures} auxiliary surface textures.")
