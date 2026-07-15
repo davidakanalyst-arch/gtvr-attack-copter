@@ -2880,10 +2880,11 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
 
 def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
     # Retain the exact EC135 floor/animation pivots, then sweep the shaft
-    # forward around the seat cushion before returning the grip to hand height.
+    # around the seat cushion before returning the grip to hand height. Use
+    # dedicated geometry slots so collective travel cannot transform the cyclic.
     cyclic_references = (
-        (-0.39, -0.379, "LeftCyclicCont"),
-        (0.39, 0.400, "RightCyclicCont"),
+        (-0.39, -0.379, "GTVRLeftCyclicStick"),
+        (0.39, 0.400, "GTVRRightCyclicStick"),
     )
     for pivot_y, grip_y, geometry_name in cyclic_references:
         floor_pivot = (2.32, pivot_y, -0.785)
@@ -2909,10 +2910,10 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             CYCLIC_OPAQUE_MATERIAL,
             [
                 (2.32, pivot_y, -0.738),
-                (2.35, pivot_y, -0.675),
-                (2.43, grip_y, -0.565),
-                (2.48, grip_y, -0.430),
-                (2.43, grip_y, -0.315),
+                (2.34, pivot_y, -0.665),
+                (2.40, grip_y, -0.540),
+                (2.445, grip_y, -0.395),
+                (2.395, grip_y, -0.280),
             ],
             0.019,
             samples_per_segment=7,
@@ -2922,17 +2923,17 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             control,
             CYCLIC_OPAQUE_MATERIAL,
             [
-                (2.43, grip_y, -0.325),
-                (2.400, grip_y, -0.270),
-                (2.375, grip_y, -0.185),
-                (2.385, grip_y, -0.105),
+                (2.395, grip_y, -0.290),
+                (2.365, grip_y, -0.235),
+                (2.340, grip_y, -0.150),
+                (2.350, grip_y, -0.070),
             ],
             0.029,
             samples_per_segment=7,
             radial_segments=30,
         )
 
-        head_center = (2.392, grip_y, -0.060)
+        head_center = (2.357, grip_y, -0.025)
         append_rounded_box(
             control,
             CYCLIC_OPAQUE_MATERIAL,
@@ -3769,6 +3770,8 @@ def add_generated_main_rotor_visual_to_body(
 
 def control_graphic_groups() -> list[tuple[str, list[str], str]]:
     candidates = [
+        ("GTVRLeftCyclicGraphics", ["GTVRLeftCyclicStick"], "GTVRLeftCyclicTransform.Output"),
+        ("GTVRRightCyclicGraphics", ["GTVRRightCyclicStick"], "GTVRRightCyclicTransform.Output"),
         ("GTVRLeftCollectiveGraphics", ["LeftCollectiveLever"], "GTVRLeftCollectiveTransform.Output"),
         ("GTVRRightCollectiveGraphics", ["RightCollectiveLever"], "GTVRRightCollectiveTransform.Output"),
         ("GTVRLLPedalGraphics", ["LLPedal"], "GTVRLLPedalTransform.Output"),
@@ -4610,8 +4613,8 @@ def write_source_stamp() -> None:
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, compact seat-clearing EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
-                "animated_controls=cyclic floor pivots and pitch/roll inputs remain unchanged while the slimmer rearward-adjusted dog-leg shafts and rounded control heads occupy stock LeftCyclicCont/RightCyclicCont slots; collective pivots and travel remain unchanged while their slimmer grip/head geometry is raised 0.035m; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, slightly raised and rearward-adjusted compact EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
+                "animated_controls=cyclic floor pivots remain unchanged while dedicated GTVRLeftCyclicStick/GTVRRightCyclicStick graphics use only StickCyclicPitch.Output and StickCyclicRoll.Output; collective geometry remains independently bound only to CollectivePitchLever.Output; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
                 "center_map=gtvr_map_panel option includes its own compiled screen TMB and native texture_animation_map_display renderer targeting gtvr_map_panel_light",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
@@ -4774,8 +4777,8 @@ def write_dev_package_marker() -> None:
                 "The lower-cockpit opening follows the tapered belly contour, uses exact triangle clipping for a coherent edge, and has a body-following matte-black beveled trim collar.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, compact seat-clearing EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
-                "Cyclic floor pivots and pitch/roll inputs remain unchanged while the slimmer rearward-adjusted dog-leg shafts and rounded control heads occupy the stock LeftCyclicCont and RightCyclicCont slots; collective pivots and travel remain unchanged while their slimmer grip/head geometry is raised 0.035m; pedals retain unchanged travel.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, slightly raised and rearward-adjusted compact EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
+                "Cyclic floor pivots remain unchanged while dedicated GTVRLeftCyclicStick and GTVRRightCyclicStick graphics use only StickCyclicPitch.Output and StickCyclicRoll.Output; collective geometry remains independently bound only to CollectivePitchLever.Output; pedals retain unchanged travel.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center map is a separate gtvr_map_panel option with its own compiled screen TMB.",
                 "The gtvr_map_panel option hosts a native texture_animation_map_display renderer targeting its own gtvr_map_panel_light texture; it does not copy the C172 compiled panel TMB or add duplicate avionics dynamic objects.",
