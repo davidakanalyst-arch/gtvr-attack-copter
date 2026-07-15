@@ -91,7 +91,9 @@ REAR_WHEEL_STRUT_SHAVE_EXPECTED_REMOVED_FACES = 350
 REAR_WHEEL_STRUT_SHAVE_EXPECTED_GENERATED_FACES = 420
 REAR_WHEEL_STRUT_SHAVE_EXPECTED_RESULT_FACES = 26987
 REAR_WHEEL_STRUT_SHAVE_SHELL_INDEX_CELL_SIZE = 0.25
-FRONT_GEAR_BRACE_MATERIAL = "static_parts"
+FRONT_GEAR_BRACE_SOURCE_MATERIAL = "static_parts"
+FRONT_GEAR_BRACE_MATERIAL = "gtvr_front_gear_brace_match"
+FRONT_GEAR_BRACE_COLOR = (152, 106, 86)
 FRONT_GEAR_BRACE_BASE_START = (0.57104015, 1.1479198, -0.95190045)
 FRONT_GEAR_BRACE_BASE_END = (0.72173435, 1.0435283, -0.77173025)
 FRONT_GEAR_BRACE_RADIUS = 0.058
@@ -1783,16 +1785,26 @@ def append_cap(
 
 
 def add_front_gear_brace_connectors(
+    materials: dict[int, Material],
     visual_gear: dict[str, core.Patch],
 ) -> dict[str, int]:
     """Bridge the existing front-gear diagonals into the fuselage-side mounts."""
-    gear_patch = visual_gear.get(FRONT_GEAR_BRACE_MATERIAL)
-    if gear_patch is None:
+    if FRONT_GEAR_BRACE_SOURCE_MATERIAL not in visual_gear:
         raise RuntimeError(
-            f"Cannot find {FRONT_GEAR_BRACE_MATERIAL} geometry for front-gear brace connectors."
+            f"Cannot find {FRONT_GEAR_BRACE_SOURCE_MATERIAL} geometry for front-gear brace connectors."
         )
+    existing_patch = visual_gear.get(FRONT_GEAR_BRACE_MATERIAL)
+    if existing_patch is not None and existing_patch.indices:
+        raise RuntimeError("Front-gear brace connector material already contains geometry.")
+    add_generated_material(
+        materials,
+        name=FRONT_GEAR_BRACE_MATERIAL,
+        texture_name=FRONT_GEAR_BRACE_MATERIAL,
+        color=FRONT_GEAR_BRACE_COLOR,
+        source_uri="generated-gtvr-dev-front-gear-brace-match",
+    )
 
-    source_face_count = len(gear_patch.indices) // 3
+    source_face_count = 0
     connector_count = 0
     for side in (-1.0, 1.0):
         start = (
@@ -1816,6 +1828,7 @@ def add_front_gear_brace_connectors(
         )
         connector_count += 1
 
+    gear_patch = visual_gear[FRONT_GEAR_BRACE_MATERIAL]
     result_face_count = len(gear_patch.indices) // 3
     added_faces = result_face_count - source_face_count
     if added_faces != FRONT_GEAR_BRACE_EXPECTED_ADDED_FACES:
@@ -2914,7 +2927,7 @@ def build_body_for_dev(args: argparse.Namespace):
         f"with {REAR_WHEEL_STRUT_SHAVE_SHELL_CLEARANCE * 1000:.1f} mm clearance; "
         f"removed {rear_strut_shave['fully_removed_faces']} fully internal faces."
     )
-    front_brace_connectors = add_front_gear_brace_connectors(visual_gear)
+    front_brace_connectors = add_front_gear_brace_connectors(materials, visual_gear)
     print(
         "Dev front-gear brace connection: "
         f"added {front_brace_connectors['connectors']} mirrored body links "
@@ -4112,7 +4125,7 @@ def write_source_stamp() -> None:
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
-                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, paired protruding side/rear gear-support meshes stay hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts",
+                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, paired protruding side/rear gear-support meshes stay hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and colour-matched single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts",
                 "floor_aperture=exactly clipped body-following tapered oval with a matte-black beveled trim collar",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
@@ -4253,7 +4266,7 @@ def write_dev_package_marker() -> None:
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
-                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened, both layers of each protruding side/rear gear-support mesh remain hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts.",
+                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened, both layers of each protruding side/rear gear-support mesh remain hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and colour-matched single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts.",
                 "The lower-cockpit opening follows the tapered belly contour, uses exact triangle clipping for a coherent edge, and has a body-following matte-black beveled trim collar.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
