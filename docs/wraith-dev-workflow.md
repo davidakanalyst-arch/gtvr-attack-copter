@@ -51,11 +51,22 @@ That command:
 - shifts the dev visual shell forward around the fixed working EC135 pilot so the pilot sits closer to the side-window area;
 - duplicates solid shell faces inward with a matte black material so opaque exterior panels are visible from the cockpit side;
 - adds the generated cockpit kit: raised textured upholstered front seats, compact rearward-positioned EC135-style cyclics with rounded heads raised one fist above the pilot hands and fixed lower bases at the native animation pivots, detailed collectives with unchanged pivots and slightly raised grips, forward rounded pedals, a forward dashboard without lower shelf/brace tubes, and left/middle/right glass-style panels;
-- runs the full Aerofly converter for model `gtvr_wraith_dev` and its independent map, rotor-animation, and cyclic-visual options;
+- runs the full Aerofly converter for model `gtvr_wraith_dev`, its independent map, rotor-animation, and cyclic-visual options, and the Wraith repaint texture set;
 - assembles `local-aircraft-packages\gtvr_wraith_dev`;
 - installs only to `C:\Users\david\Documents\Aerofly FS 4\aircraft\gtvr_wraith_dev`.
 
 The script refuses to install over `gtvr_wraith_ec135_core`.
+
+## Wraith Liveries
+
+The root aircraft keeps the accepted fractured charcoal/gunmetal camouflage. Dev assembly removes the inherited EC135 repaint folders `adac`, `drf`, `german_army`, `police`, and `sheriff`; those textures target the stock EC135 atlases and do not correctly repaint the custom Wraith shell. The landing-gear options `highskids` and `lowskids` are retained.
+
+Two native repaint options are generated from the Wraith's own two exterior body atlases:
+
+- `wraith_red_camo` — `Wraith Red Camo`, using a deep red/black fractured pattern while preserving vents, panel gaps, alpha, weapons, sensors, and auxiliary finishes;
+- `wraith_black` — `Wraith Black`, using a plain near-black treatment with restrained source panel detail and no camouflage pattern.
+
+Each option contains converted replacements for `gtvr_wraith_livery_body_1.ttx` and `gtvr_wraith_livery_body_2.ttx` plus a distinct large and small selector preview. Repaint generation does not alter geometry, controls, displays, rotors, contact points, or the flight model.
 
 ## Manual Dev Steps
 

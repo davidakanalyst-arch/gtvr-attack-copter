@@ -13,6 +13,7 @@ from PIL import Image, ImageEnhance, ImageOps
 
 import build_msfs_shell_source as msfs_shell
 import build_gtvr_wraith_ec135_core as core
+import build_wraith_livery_options as wraith_liveries
 from build_gtvr_source_project import write_png
 from build_msfs_shell_source import Material
 
@@ -399,6 +400,10 @@ def assert_dev_paths() -> None:
         CYCLIC_VISUAL_SOURCE_DIR,
         CYCLIC_VISUAL_BUILD_USER,
         CYCLIC_VISUAL_LAUNCH_USER,
+        wraith_liveries.DEFAULT_SOURCE_ROOT,
+        wraith_liveries.DEFAULT_SOURCE_DIR,
+        wraith_liveries.DEFAULT_BUILD_USER,
+        wraith_liveries.DEFAULT_LAUNCH_USER,
         PREVIEW_RENDER_SOURCE_ROOT,
         PREVIEW_RENDER_SOURCE_DIR,
         PREVIEW_RENDER_BUILD_USER,
@@ -4756,6 +4761,18 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     prepare_dev_map_panel_source(args)
     prepare_dev_rotor_animation_source(args, materials)
     prepare_dev_cyclic_visual_source(args, materials)
+    livery_source_atlases = tuple(
+        core.SOURCE_DIR / f"{source_stem}.png"
+        for source_stem, _target_stem, _treatment in WRAITH_LIVERY_MATERIALS.values()
+    )
+    wraith_liveries.prepare_source(
+        livery_source_atlases,  # type: ignore[arg-type]
+        WRAITH_LIVERY_PATTERN,
+    )
+    print(
+        "Wrote dev Wraith repaint source: "
+        f"{wraith_liveries.DEFAULT_SOURCE_DIR}"
+    )
     if getattr(args, "use_converted_previews", False):
         prepare_dev_preview_render_source(args, materials, geometries)
 
@@ -4768,6 +4785,7 @@ def write_source_stamp() -> None:
                 f"aircraft={DEV_AIRCRAFT_NAME}",
                 f"display={DEV_DISPLAY_NAME}",
                 f"livery=low-visibility fractured charcoal/gunmetal Wraith scheme from {WRAITH_LIVERY_PATTERN.name}",
+                "repaint_options=legacy ADAC/DRF/German Army/Police/Sheriff repaints removed; generated Wraith Red Camo and Wraith Black options override the two Wraith body atlases",
                 "msfs_import=optimized half-float exterior UVs decoded in the dev path",
                 f"preview=rotor-inclusive static render source {PREVIEW_RENDER_DIR_NAME}; runtime aircraft remains animation-option driven",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
@@ -4861,6 +4879,8 @@ def assert_fresh_converted_tmb(allow_stale_tmb: bool) -> None:
             f"is older than {CYCLIC_VISUAL_SOURCE_STAMP}. Run the full converter with --convert."
         )
 
+    wraith_liveries.assert_fresh_conversion()
+
 
 def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
     command = [
@@ -4878,6 +4898,13 @@ def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
     completed = subprocess.run(command, cwd=ROOT, check=False)
     if completed.returncode != 0:
         return completed.returncode
+
+    livery_preview_master = DEV_SOURCE_DIR / f"preview_{DEV_AIRCRAFT_NAME}.tif"
+    wraith_liveries.refresh_previews(livery_preview_master)
+    print(
+        "Dev Wraith repaints: refreshed red-camo and black selector previews from "
+        f"{livery_preview_master.name}."
+    )
 
     if MAP_PANEL_SOURCE_DIR.exists():
         panel_command = [
@@ -4930,6 +4957,23 @@ def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
         if cyclic_completed.returncode != 0:
             return cyclic_completed.returncode
 
+    if wraith_liveries.DEFAULT_SOURCE_DIR.exists():
+        livery_command = [
+            sys.executable,
+            str(ROOT / "tools" / "run_aerofly_converter.py"),
+            wraith_liveries.MODEL_NAME,
+            str(wraith_liveries.DEFAULT_SOURCE_ROOT),
+            "--userfolder",
+            str(wraith_liveries.DEFAULT_LAUNCH_USER),
+            "--timeout",
+            str(timeout),
+        ]
+        print("Running full Aerofly converter for Wraith repaint options:")
+        print(" ".join(livery_command))
+        livery_completed = subprocess.run(livery_command, cwd=ROOT, check=False)
+        if livery_completed.returncode != 0:
+            return livery_completed.returncode
+
     if use_converted_previews:
         if not PREVIEW_RENDER_SOURCE_DIR.exists():
             raise FileNotFoundError(
@@ -4967,6 +5011,7 @@ def write_dev_package_marker() -> None:
                 "The package keeps EC135 controls, flight model, sounds, TMQ and state files.",
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Exterior paint uses a low-visibility fractured charcoal/gunmetal Wraith military scheme while weapons, sensors and auxiliary fixtures retain their accepted finish.",
+                "Inherited ADAC, DRF, German Army, Police and Sheriff repaint folders are removed. Wraith Red Camo and Wraith Black are generated as native repaint options that override only the two custom Wraith body atlases and include distinct selector previews.",
                 "The dev import decodes the source aircraft's optimized half-float exterior UVs so the livery follows the intended atlas mapping.",
                 "Preview textures come from a separate static render source containing both accepted rotor assemblies; it is not installed and does not duplicate the runtime rotors.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
@@ -5512,6 +5557,16 @@ def install_dev_package(user_root: Path, force_install: bool) -> Path:
         source_dir / MAP_PANEL_DIR_NAME / f"{MAP_PANEL_DIR_NAME}.tmb",
         source_dir / ROTOR_ANIMATION_DIR_NAME / f"{ROTOR_ANIMATION_DIR_NAME}.tmb",
         source_dir / CYCLIC_VISUAL_DIR_NAME / f"{CYCLIC_VISUAL_DIR_NAME}.tmb",
+        *(
+            source_dir / variant.folder / texture_name
+            for variant in wraith_liveries.VARIANTS
+            for texture_name in (
+                "option.tmc",
+                *wraith_liveries.BODY_TEXTURE_TARGETS,
+                "preview.ttx",
+                "preview_small.ttx",
+            )
+        ),
         *(source_dir / filename for filename in DEV_PREVIEW_FILENAMES),
     )
     missing_package_paths = [
@@ -5521,6 +5576,16 @@ def install_dev_package(user_root: Path, force_install: bool) -> Path:
         missing = ", ".join(str(path.relative_to(source_dir)) for path in missing_package_paths)
         raise RuntimeError(
             f"Refusing to install incomplete dev package {source_dir}; missing or empty: {missing}"
+        )
+    unexpected_repaints = [
+        name
+        for name in wraith_liveries.LEGACY_REPAINT_DIRS
+        if (source_dir / name).exists()
+    ]
+    if unexpected_repaints:
+        raise RuntimeError(
+            "Refusing to install dev package with inherited repaint folders: "
+            + ", ".join(unexpected_repaints)
         )
     if target_dir.exists():
         if not force_install:
@@ -5651,6 +5716,18 @@ def main() -> int:
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)
             core.assemble_package(args)
+            removed_repaints = wraith_liveries.remove_legacy_repaints(DEV_PACKAGE_DIR)
+            print(
+                "Dev repaints: removed inherited options "
+                + ", ".join(removed_repaints)
+                + "."
+            )
+            livery_option_dirs = wraith_liveries.assemble_options(DEV_PACKAGE_DIR)
+            print(
+                "Dev repaints: packaged "
+                + ", ".join(option_dir.name for option_dir in livery_option_dirs)
+                + "."
+            )
             if args.use_converted_previews:
                 if args.allow_stale_tmb:
                     raise RuntimeError("Fresh converted previews cannot be used with --allow-stale-tmb.")
