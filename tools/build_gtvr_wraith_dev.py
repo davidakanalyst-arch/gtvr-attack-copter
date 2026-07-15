@@ -94,12 +94,9 @@ REAR_WHEEL_STRUT_SHAVE_SHELL_INDEX_CELL_SIZE = 0.25
 FRONT_GEAR_BRACE_MATERIAL = "static_parts"
 FRONT_GEAR_BRACE_BASE_START = (0.57104015, 1.1479198, -0.95190045)
 FRONT_GEAR_BRACE_BASE_END = (0.72173435, 1.0435283, -0.77173025)
-FRONT_GEAR_BRACE_RADIUS = 0.028
-FRONT_GEAR_BRACE_HUB_RADIUS = 0.058
-FRONT_GEAR_BRACE_HUB_REAR_OVERLAP = 0.008
-FRONT_GEAR_BRACE_HUB_FORWARD_OVERLAP = 0.055
+FRONT_GEAR_BRACE_RADIUS = 0.058
 FRONT_GEAR_BRACE_SEGMENTS = 12
-FRONT_GEAR_BRACE_EXPECTED_ADDED_FACES = 144
+FRONT_GEAR_BRACE_EXPECTED_ADDED_FACES = 96
 TAIL_ROTOR_BLUR_MATERIAL = "gtvr_tail_rotor_blur"
 TAIL_ROTOR_AXIS = (0.0, 1.0, 0.0)
 TAIL_ROTOR_BASE_PIVOT = (-11.18395, 0.35312, 2.27417)
@@ -1808,8 +1805,6 @@ def add_front_gear_brace_connectors(
             side * FRONT_GEAR_BRACE_BASE_END[1],
             FRONT_GEAR_BRACE_BASE_END[2],
         )
-        direction = vector_normalize(vector_sub(end, start))
-
         append_cylinder_between(
             visual_gear,
             FRONT_GEAR_BRACE_MATERIAL,
@@ -1818,21 +1813,6 @@ def add_front_gear_brace_connectors(
             FRONT_GEAR_BRACE_RADIUS,
             segments=FRONT_GEAR_BRACE_SEGMENTS,
             caps=True,
-        )
-        append_cylinder_between(
-            visual_gear,
-            FRONT_GEAR_BRACE_MATERIAL,
-            vector_sub(
-                start,
-                vector_mul(direction, FRONT_GEAR_BRACE_HUB_REAR_OVERLAP),
-            ),
-            vector_add(
-                start,
-                vector_mul(direction, FRONT_GEAR_BRACE_HUB_FORWARD_OVERLAP),
-            ),
-            FRONT_GEAR_BRACE_HUB_RADIUS,
-            segments=FRONT_GEAR_BRACE_SEGMENTS,
-            caps=False,
         )
         connector_count += 1
 
@@ -4132,7 +4112,7 @@ def write_source_stamp() -> None:
                 f"display={DEV_DISPLAY_NAME}",
                 f"inner_shell=solid materials are duplicated inward into {INNER_SHELL_MATERIAL_NAME}",
                 "tyres=front and rear tyre mesh nodes use dedicated solid matte-black rubber material",
-                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, paired protruding side/rear gear-support meshes stay hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and compact mirrored links connect the surviving front-gear diagonals to the fuselage mounts",
+                "exterior_cleanup=opaque UH-60 boolean-helper and slime-light faces removed; tail-wheel support is shortened, paired protruding side/rear gear-support meshes stay hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts",
                 "floor_aperture=exactly clipped body-following tapered oval with a matte-black beveled trim collar",
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
@@ -4273,7 +4253,7 @@ def write_dev_package_marker() -> None:
                 "Only the dev aircraft identity and compiled visual TMB are replaced.",
                 "Solid shell materials include inward-facing matte black faces for cockpit-side opacity.",
                 "Front and rear tyre mesh nodes use a dedicated solid matte-black rubber material; rims and struts retain their imported finish.",
-                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened, both layers of each protruding side/rear gear-support mesh remain hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and compact mirrored links connect the surviving front-gear diagonals to the fuselage mounts.",
+                "Opaque UH-60 boolean-helper and slime-light geometry is removed; the tail-wheel support is shortened, both layers of each protruding side/rear gear-support mesh remain hidden, the remaining central rear-wheel mount is shaved to the lower fuselage skin, and single-piece mirrored links connect the surviving front-gear diagonals to the fuselage mounts.",
                 "The lower-cockpit opening follows the tapered belly contour, uses exact triangle clipping for a coherent edge, and has a body-following matte-black beveled trim collar.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
