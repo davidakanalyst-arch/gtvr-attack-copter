@@ -2880,11 +2880,12 @@ def add_upholstered_seat(body: dict[str, core.Patch], base_x: float, seat_y: flo
 
 def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
     # Retain the exact EC135 floor/animation pivots, then sweep the shaft
-    # around the seat cushion before returning the grip to hand height. Use
-    # dedicated geometry slots so collective travel cannot transform the cyclic.
+    # around the seat cushion before returning the grip to hand height. Use the
+    # EC135 TMQ's proven native stick slots so its existing StickTransform and
+    # StickTransformCopilot controls animate the mesh independently of collective travel.
     cyclic_references = (
-        (-0.39, -0.379, "GTVRLeftCyclicStick"),
-        (0.39, 0.400, "GTVRRightCyclicStick"),
+        (-0.39, -0.379, "StickL"),
+        (0.39, 0.400, "StickR"),
     )
     for pivot_y, grip_y, geometry_name in cyclic_references:
         floor_pivot = (2.32, pivot_y, -0.785)
@@ -3770,8 +3771,6 @@ def add_generated_main_rotor_visual_to_body(
 
 def control_graphic_groups() -> list[tuple[str, list[str], str]]:
     candidates = [
-        ("GTVRLeftCyclicGraphics", ["GTVRLeftCyclicStick"], "GTVRLeftCyclicTransform.Output"),
-        ("GTVRRightCyclicGraphics", ["GTVRRightCyclicStick"], "GTVRRightCyclicTransform.Output"),
         ("GTVRLeftCollectiveGraphics", ["LeftCollectiveLever"], "GTVRLeftCollectiveTransform.Output"),
         ("GTVRRightCollectiveGraphics", ["RightCollectiveLever"], "GTVRRightCollectiveTransform.Output"),
         ("GTVRLLPedalGraphics", ["LLPedal"], "GTVRLLPedalTransform.Output"),
@@ -4614,7 +4613,7 @@ def write_source_stamp() -> None:
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
                 "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, slightly raised and rearward-adjusted compact EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
-                "animated_controls=cyclic floor pivots remain unchanged while dedicated GTVRLeftCyclicStick/GTVRRightCyclicStick graphics use only StickCyclicPitch.Output and StickCyclicRoll.Output; collective geometry remains independently bound only to CollectivePitchLever.Output; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                "animated_controls=cyclic floor pivots remain unchanged while the raised/rearward meshes occupy the EC135 TMQ's native StickL/StickR slots driven by StickTransform/StickTransformCopilot cyclic pitch-roll controls; collective geometry remains independently bound only to CollectivePitchLever.Output; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
                 "center_map=gtvr_map_panel option includes its own compiled screen TMB and native texture_animation_map_display renderer targeting gtvr_map_panel_light",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
@@ -4778,7 +4777,7 @@ def write_dev_package_marker() -> None:
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
                 "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, slightly raised and rearward-adjusted compact EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
-                "Cyclic floor pivots remain unchanged while dedicated GTVRLeftCyclicStick and GTVRRightCyclicStick graphics use only StickCyclicPitch.Output and StickCyclicRoll.Output; collective geometry remains independently bound only to CollectivePitchLever.Output; pedals retain unchanged travel.",
+                "Cyclic floor pivots remain unchanged while the raised/rearward meshes occupy the EC135 TMQ's native StickL and StickR slots driven by StickTransform and StickTransformCopilot cyclic pitch-roll controls; collective geometry remains independently bound only to CollectivePitchLever.Output; pedals retain unchanged travel.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center map is a separate gtvr_map_panel option with its own compiled screen TMB.",
                 "The gtvr_map_panel option hosts a native texture_animation_map_display renderer targeting its own gtvr_map_panel_light texture; it does not copy the C172 compiled panel TMB or add duplicate avionics dynamic objects.",
