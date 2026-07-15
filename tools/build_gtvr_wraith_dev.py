@@ -2943,16 +2943,16 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             CYCLIC_OPAQUE_MATERIAL,
             [
                 (2.32, grip_y, -0.295),
-                (2.29, grip_y, -0.250),
-                (2.255, grip_y, -0.205),
-                (2.245, grip_y, -0.170),
+                (2.29, grip_y, -0.235),
+                (2.255, grip_y, -0.155),
+                (2.245, grip_y, -0.080),
             ],
             0.029,
             samples_per_segment=7,
             radial_segments=30,
         )
 
-        head_center = (2.245, grip_y, -0.155)
+        head_center = (2.245, grip_y, -0.065)
         append_rounded_box(
             control,
             CYCLIC_OPAQUE_MATERIAL,
@@ -3176,7 +3176,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added shortened dark-brown leather seats, shorter rearward EC135-style cyclics aligned to native animation pivots, slightly raised rounded collectives on unchanged pivots, "
+        "Dev cockpit kit: added shortened dark-brown leather seats, rearward EC135-style cyclics raised one fist and aligned to native animation pivots, slightly raised rounded collectives on unchanged pivots, "
         "lowered rearward flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface."
     )
 
@@ -4630,8 +4630,8 @@ def write_source_stamp() -> None:
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, shorter rearward-positioned EC135-style cyclics with rounded heads and fixed lower bases, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
-                "animated_controls=cyclic floor joints remain unchanged while fixed lower bases meet the native EC135 pivots and the shorter moving meshes occupy the TMQ's StickL/StickR slots driven by StickTransform/StickTransformCopilot cyclic pitch-roll controls; collective geometry remains independently bound only to CollectivePitchLever.Output; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, rearward-positioned EC135-style cyclics with rounded heads raised 0.09m and fixed lower bases, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
+                "animated_controls=cyclic floor joints remain unchanged while fixed lower bases meet the native EC135 pivots and the moving meshes occupy the TMQ's StickL/StickR slots; pitch retains its native axis and travel while the packaged pilot/copilot roll visual axes provide a constant-height left/right swing; collective geometry remains independently bound only to CollectivePitchLever.Output; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
                 "center_map=gtvr_map_panel option includes its own compiled screen TMB and native texture_animation_map_display renderer targeting gtvr_map_panel_light",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
@@ -4794,8 +4794,8 @@ def write_dev_package_marker() -> None:
                 "The lower-cockpit opening follows the tapered belly contour, uses exact triangle clipping for a coherent edge, and has a body-following matte-black beveled trim collar.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, shorter rearward-positioned EC135-style cyclics with rounded heads and fixed lower bases, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
-                "Cyclic floor joints remain unchanged while fixed lower bases meet the native EC135 pivots and the shorter moving meshes occupy the TMQ's StickL and StickR slots driven by StickTransform and StickTransformCopilot cyclic pitch-roll controls; collective geometry remains independently bound only to CollectivePitchLever.Output; pedals retain unchanged travel.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, rearward-positioned EC135-style cyclics with rounded heads raised 0.09m and fixed lower bases, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
+                "Cyclic floor joints remain unchanged while fixed lower bases meet the native EC135 pivots and the moving meshes occupy the TMQ's StickL and StickR slots; pitch retains its native axis and travel while the packaged pilot/copilot roll visual axes provide a constant-height left/right swing; collective geometry remains independently bound only to CollectivePitchLever.Output; pedals retain unchanged travel.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center map is a separate gtvr_map_panel option with its own compiled screen TMB.",
                 "The gtvr_map_panel option hosts a native texture_animation_map_display renderer targeting its own gtvr_map_panel_light texture; it does not copy the C172 compiled panel TMB or add duplicate avionics dynamic objects.",
@@ -5105,8 +5105,26 @@ def patch_dev_controls_tmd(path: Path) -> int:
         if hidden_depth > 0 and stripped == ">":
             hidden_depth -= 1
 
-    if hidden_objects:
-        path.write_text("\n".join(patched) + "\n", encoding="utf-8")
+    patched_text = "\n".join(patched) + "\n"
+    roll_axis_pattern = re.compile(
+        r"(<\[control_rotation\]\[(?:StickTransform|StickTransformCopilot)\]\[\]\n"
+        r"\s*<\[string8\]\[Input\]\[CyclicRollTravel\.Output\]>\n\s*)"
+        r"<\[tmvector3d\]\[Axis\]\[[^\]]+\]>"
+    )
+    patched_text, roll_axis_updates = roll_axis_pattern.subn(
+        r"\g<1><[tmvector3d][Axis][ 0.3489 0.9372 0.0 ]>",
+        patched_text,
+    )
+    if roll_axis_updates != 2:
+        raise RuntimeError(
+            f"Expected to patch 2 native cyclic roll visual axes, patched {roll_axis_updates}."
+        )
+
+    path.write_text(patched_text, encoding="utf-8")
+    print(
+        "Dev controls: changed pilot and copilot cyclic roll visuals to a "
+        "constant-height left/right pivot."
+    )
     return hidden_objects
 
 
