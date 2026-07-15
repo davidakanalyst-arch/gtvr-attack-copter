@@ -1757,6 +1757,60 @@ def append_box(
     append_quad(patch, [(minx, miny, minz), (minx, maxy, minz), (maxx, maxy, minz), (maxx, miny, minz)], (0, 0, -1))
 
 
+def append_rounded_box(
+    body: dict[str, core.Patch],
+    material_name: str,
+    center: tuple[float, float, float],
+    size: tuple[float, float, float],
+    radius: float,
+    *,
+    segments: int = 5,
+) -> None:
+    """Append a closed box with genuinely rounded edges and corners."""
+    if segments < 1:
+        raise ValueError("segments must be at least 1")
+    half = tuple(dimension * 0.5 for dimension in size)
+    radius = min(radius, *half)
+    if radius <= 1e-9:
+        append_box(body, material_name, center, size)
+        return
+    core = tuple(component - radius for component in half)
+
+    def rounded_point(local: list[float]) -> tuple[float, float, float]:
+        closest = [max(-core[axis], min(core[axis], local[axis])) for axis in range(3)]
+        offset = [local[axis] - closest[axis] for axis in range(3)]
+        length = math.sqrt(sum(component * component for component in offset))
+        if length <= 1e-9:
+            return tuple(center[axis] + local[axis] for axis in range(3))
+        return tuple(
+            center[axis] + closest[axis] + offset[axis] / length * radius
+            for axis in range(3)
+        )
+
+    for fixed_axis in range(3):
+        other_axes = [axis for axis in range(3) if axis != fixed_axis]
+        axis_u, axis_v = other_axes
+        for sign in (-1.0, 1.0):
+            for segment_u in range(segments):
+                u0 = -half[axis_u] + size[axis_u] * segment_u / segments
+                u1 = -half[axis_u] + size[axis_u] * (segment_u + 1) / segments
+                for segment_v in range(segments):
+                    v0 = -half[axis_v] + size[axis_v] * segment_v / segments
+                    v1 = -half[axis_v] + size[axis_v] * (segment_v + 1) / segments
+                    local_points: list[list[float]] = []
+                    for u, v in ((u0, v0), (u1, v0), (u1, v1), (u0, v1)):
+                        local = [0.0, 0.0, 0.0]
+                        local[fixed_axis] = sign * half[fixed_axis]
+                        local[axis_u] = u
+                        local[axis_v] = v
+                        local_points.append(local)
+                    points = [rounded_point(local) for local in local_points]
+                    raw_normal = vector_cross(vector_sub(points[1], points[0]), vector_sub(points[2], points[0]))
+                    if raw_normal[fixed_axis] * sign < 0.0:
+                        points.reverse()
+                    append_auto_quad(body, material_name, points)
+
+
 def append_cylinder_between(
     body: dict[str, core.Patch],
     material_name: str,
@@ -2836,9 +2890,9 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         # A compact tapered collar masks the floor joint without extending back
         # into the accepted seat cushion or cockpit-floor aperture.
         for start_z, end_z, radius in (
-            (-0.792, -0.770, 0.055),
-            (-0.770, -0.746, 0.047),
-            (-0.746, -0.724, 0.039),
+            (-0.792, -0.770, 0.047),
+            (-0.770, -0.746, 0.040),
+            (-0.746, -0.724, 0.033),
         ):
             append_cylinder_between(
                 body,
@@ -2855,12 +2909,12 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             CYCLIC_OPAQUE_MATERIAL,
             [
                 (2.32, pivot_y, -0.738),
-                (2.36, pivot_y, -0.675),
-                (2.48, grip_y, -0.565),
-                (2.53, grip_y, -0.430),
-                (2.48, grip_y, -0.315),
+                (2.35, pivot_y, -0.675),
+                (2.43, grip_y, -0.565),
+                (2.48, grip_y, -0.430),
+                (2.43, grip_y, -0.315),
             ],
-            0.023,
+            0.019,
             samples_per_segment=7,
             radial_segments=28,
         )
@@ -2868,77 +2922,82 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
             control,
             CYCLIC_OPAQUE_MATERIAL,
             [
-                (2.48, grip_y, -0.325),
-                (2.445, grip_y, -0.270),
-                (2.420, grip_y, -0.185),
-                (2.430, grip_y, -0.105),
+                (2.43, grip_y, -0.325),
+                (2.400, grip_y, -0.270),
+                (2.375, grip_y, -0.185),
+                (2.385, grip_y, -0.105),
             ],
-            0.035,
+            0.029,
             samples_per_segment=7,
             radial_segments=30,
         )
 
-        head_center = (2.438, grip_y, -0.060)
-        append_box(
+        head_center = (2.392, grip_y, -0.060)
+        append_rounded_box(
             control,
             CYCLIC_OPAQUE_MATERIAL,
             head_center,
-            (0.082, 0.150, 0.088),
+            (0.070, 0.128, 0.076),
+            0.014,
+            segments=5,
         )
         # EC135-style rear-facing control cluster: central guarded rocker and
         # four round switches, all part of the animated cyclic geometry.
-        face_x = head_center[0] - 0.046
-        append_box(
+        face_x = head_center[0] - 0.040
+        append_rounded_box(
             control,
             "gtvr_cockpit_button_red",
             (face_x, grip_y, head_center[2] + 0.006),
-            (0.014, 0.030, 0.052),
+            (0.012, 0.026, 0.044),
+            0.005,
+            segments=3,
         )
         for button_y, button_z in (
-            (grip_y - 0.052, head_center[2] + 0.020),
-            (grip_y + 0.052, head_center[2] + 0.020),
-            (grip_y - 0.048, head_center[2] - 0.026),
-            (grip_y + 0.048, head_center[2] - 0.026),
+            (grip_y - 0.043, head_center[2] + 0.017),
+            (grip_y + 0.043, head_center[2] + 0.017),
+            (grip_y - 0.040, head_center[2] - 0.022),
+            (grip_y + 0.040, head_center[2] - 0.022),
         ):
             append_cylinder_between(
                 control,
                 "gtvr_cockpit_metal",
                 (face_x - 0.002, button_y, button_z),
-                (face_x - 0.012, button_y, button_z),
-                0.012,
+                (face_x - 0.010, button_y, button_z),
+                0.010,
                 segments=20,
             )
 
 
 def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
+    grip_z_lift = 0.035
     for lever_y, geometry_name in (
         (-0.10, "LeftCollectiveLever"),
         (0.70, "RightCollectiveLever"),
     ):
         control = animated_control_geometry(geometry_name)
         base = (interior_x(1.34), lever_y, -0.610)
-        elbow = (interior_x(1.70), lever_y, -0.485)
-        grip_end = (interior_x(1.90), lever_y, -0.445)
+        elbow = (interior_x(1.70), lever_y, -0.485 + grip_z_lift)
+        grip_end = (interior_x(1.90), lever_y, -0.445 + grip_z_lift)
         append_cylinder_between(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
-            (base[0] - 0.050, lever_y - 0.044, base[2] - 0.010),
-            (base[0] + 0.050, lever_y + 0.044, base[2] - 0.010),
-            0.028,
+            (base[0] - 0.043, lever_y - 0.037, base[2] - 0.010),
+            (base[0] + 0.043, lever_y + 0.037, base[2] - 0.010),
+            0.024,
             segments=28,
         )
-        # Preserve the accepted base, elbow, grip end and animation pivot while
-        # replacing the plain rods with a shaped EC135-style lever and head.
+        # Preserve the accepted base and animation pivot while lifting the
+        # grip/head slightly along a slimmer EC135-style lever path.
         append_smooth_tube(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
             [
                 base,
-                (interior_x(1.50), lever_y, -0.585),
-                (interior_x(1.66), lever_y, -0.525),
+                (interior_x(1.50), lever_y, -0.570),
+                (interior_x(1.66), lever_y, -0.495),
                 elbow,
             ],
-            0.022,
+            0.019,
             samples_per_segment=6,
             radial_segments=26,
         )
@@ -2947,7 +3006,7 @@ def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
             "gtvr_cockpit_rubber",
             elbow,
             grip_end,
-            0.034,
+            0.029,
             segments=32,
         )
 
@@ -2959,21 +3018,23 @@ def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
             "gtvr_glass_yellow",
             band_start,
             band_end,
-            0.0355,
+            0.0305,
             segments=32,
         )
 
-        head_center = (grip_end[0] + 0.005, lever_y, grip_end[2] + 0.020)
-        append_box(
+        head_center = (grip_end[0] + 0.004, lever_y, grip_end[2] + 0.017)
+        append_rounded_box(
             control,
             CONTROL_MATTE_BLACK_MATERIAL,
             head_center,
-            (0.115, 0.120, 0.066),
+            (0.098, 0.102, 0.056),
+            0.012,
+            segments=5,
         )
-        head_top_z = head_center[2] + 0.037
+        head_top_z = head_center[2] + 0.032
         for button_y, material_name, radius in (
-            (lever_y - 0.035, "gtvr_cockpit_button_red", 0.013),
-            (lever_y + 0.035, "gtvr_cockpit_metal", 0.014),
+            (lever_y - 0.029, "gtvr_cockpit_button_red", 0.011),
+            (lever_y + 0.029, "gtvr_cockpit_metal", 0.012),
         ):
             append_cylinder_between(
                 control,
@@ -2986,9 +3047,9 @@ def add_collective_controls(body: dict[str, core.Patch], interior_x) -> None:
         append_cylinder_between(
             control,
             "gtvr_cockpit_button_red",
-            (head_center[0] + 0.058, lever_y, head_center[2] - 0.010),
-            (head_center[0] + 0.070, lever_y, head_center[2] - 0.010),
-            0.012,
+            (head_center[0] + 0.050, lever_y, head_center[2] - 0.008),
+            (head_center[0] + 0.060, lever_y, head_center[2] - 0.008),
+            0.010,
             segments=20,
         )
 
@@ -3095,7 +3156,7 @@ def add_cockpit_kit(args: argparse.Namespace, materials: dict[int, Material], bo
     add_pedal_set(body, interior_x)
 
     print(
-        "Dev cockpit kit: added shortened dark-brown leather seats, forward EC135-style dog-leg cyclics, detailed unchanged-position collectives, "
+        "Dev cockpit kit: added shortened dark-brown leather seats, compact seat-clearing EC135-style cyclics, slightly raised rounded collectives on unchanged pivots, "
         "lowered rearward flat pedal pads, Wraith side PFD screens and a borderless centre ND/map surface."
     )
 
@@ -4549,8 +4610,8 @@ def write_source_stamp() -> None:
                 "main_rotor=inherited RotorBlade0-3 visual geometry is hidden; a generated black shaft-top four-blade main prop with blur streaks is baked into the Fuselage mesh",
                 "tail_rotor=generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh",
                 f"rotor_animation=independent default option {ROTOR_ANIMATION_DIR_NAME}; probe_only={ROTOR_ANIMATION_PROBE_ONLY}",
-                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, forward seat-clearing EC135-style cyclics, detailed unchanged-position collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
-                "animated_controls=cyclic floor pivots and pitch/roll inputs remain unchanged while forward dog-leg shafts and detailed control heads occupy stock LeftCyclicCont/RightCyclicCont slots; collective pivots and travel remain unchanged while detailed levers use dev visual groups; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
+                "cockpit_kit=generated shortened dark-brown leather seats, no lower shelf/dash braces, compact seat-clearing EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount",
+                "animated_controls=cyclic floor pivots and pitch/roll inputs remain unchanged while the slimmer rearward-adjusted dog-leg shafts and rounded control heads occupy stock LeftCyclicCont/RightCyclicCont slots; collective pivots and travel remain unchanged while their slimmer grip/head geometry is raised 0.035m; unchanged-travel pedals use dev visual groups; inherited EC135 handle clickspots are suppressed in the dev package",
                 "runtime_displays=DisplayPFDL and DisplayPFDR use independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape side displays; the centre map is handled by an independent panel option",
                 "center_map=gtvr_map_panel option includes its own compiled screen TMB and native texture_animation_map_display renderer targeting gtvr_map_panel_light",
                 "display_states=dev state files force pilot/copilot PFD and ND display inputs on by default",
@@ -4713,8 +4774,8 @@ def write_dev_package_marker() -> None:
                 "The lower-cockpit opening follows the tapered belly contour, uses exact triangle clipping for a coherent edge, and has a body-following matte-black beveled trim collar.",
                 "A generated close-coupled side-mounted four-blade tapered physical tail rotor with red blade tips, corrected positive blade-angle tilt and grey motion-blur streaks is placed against the tail side and baked into the Fuselage mesh.",
                 f"The independent {ROTOR_ANIMATION_DIR_NAME} default option runs the runtime rotor animation proof; probe_only={ROTOR_ANIMATION_PROBE_ONLY}.",
-                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, forward seat-clearing EC135-style cyclics, detailed unchanged-position collectives, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
-                "Cyclic floor pivots and pitch/roll inputs remain unchanged while forward dog-leg shafts and detailed control heads occupy the stock LeftCyclicCont and RightCyclicCont slots; collective pivots and travel remain unchanged while their detailed levers retain the dev visual groups; pedals retain unchanged travel.",
+                "Generated cockpit kit includes shortened dark-brown leather seats, no lower shelf/pedestal slab, compact seat-clearing EC135-style cyclics with rounded heads, slightly raised rounded collectives on unchanged pivots, unchanged-position flat pedal pads, Wraith side PFD screens and an independent centre map panel mount.",
+                "Cyclic floor pivots and pitch/roll inputs remain unchanged while the slimmer rearward-adjusted dog-leg shafts and rounded control heads occupy the stock LeftCyclicCont and RightCyclicCont slots; collective pivots and travel remain unchanged while their slimmer grip/head geometry is raised 0.035m; pedals retain unchanged travel.",
                 "Inherited EC135 visible cockpit stick/collective/pedal visuals are removed from the dev model TMD static render list, and their click handles are reduced in controls.tmd so the dev-generated controls are the visible ones.",
                 "Left and right screens populate DisplayPFDL and DisplayPFDR with independent PFD-only atlas windows for live speed/altitude/attitude/heading-tape data; the center map is a separate gtvr_map_panel option with its own compiled screen TMB.",
                 "The gtvr_map_panel option hosts a native texture_animation_map_display renderer targeting its own gtvr_map_panel_light texture; it does not copy the C172 compiled panel TMB or add duplicate avionics dynamic objects.",
