@@ -2925,7 +2925,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         ):
             append_cylinder_between(
                 body,
-                CYCLIC_OPAQUE_MATERIAL,
+                PEDAL_BLACK_MATERIAL,
                 (floor_pivot[0], floor_pivot[1], start_z),
                 (floor_pivot[0], floor_pivot[1], end_z),
                 radius,
@@ -2938,7 +2938,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         # visual option and moves around its own pilot-side pivot.
         append_smooth_tube(
             body,
-            CYCLIC_OPAQUE_MATERIAL,
+            PEDAL_BLACK_MATERIAL,
             [
                 (2.32, pivot_y, -0.738),
                 (2.30, pivot_y, -0.700),
@@ -2952,7 +2952,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         control = cyclic_visual_geometry(geometry_name)
         append_smooth_tube(
             control,
-            CYCLIC_OPAQUE_MATERIAL,
+            PEDAL_BLACK_MATERIAL,
             [
                 animation_pivot,
                 (2.29, pivot_y, -0.575),
@@ -2966,7 +2966,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         )
         append_smooth_tube(
             control,
-            CYCLIC_OPAQUE_MATERIAL,
+            PEDAL_BLACK_MATERIAL,
             [
                 (2.32, grip_y, -0.295),
                 (2.29, grip_y, -0.235),
@@ -2981,7 +2981,7 @@ def add_cyclic_controls(body: dict[str, core.Patch]) -> None:
         head_center = (2.245, grip_y, -0.065)
         append_rounded_box(
             control,
-            CYCLIC_OPAQUE_MATERIAL,
+            PEDAL_BLACK_MATERIAL,
             head_center,
             (0.070, 0.128, 0.076),
             0.014,
@@ -4451,6 +4451,18 @@ def prepare_dev_cyclic_visual_source(
         if not source_texture.exists():
             raise FileNotFoundError(f"Missing cyclic option source texture: {source_texture}")
         shutil.copy2(source_texture, CYCLIC_VISUAL_SOURCE_DIR / source_texture.name)
+    surface_texture_names = {
+        texture_name
+        for material_name in used_material_names
+        for _channel, texture_name in DEV_MATERIAL_SURFACE_MAPS.get(material_name, ())
+    }
+    for texture_name in sorted(surface_texture_names):
+        source_texture = core.SOURCE_DIR / f"{texture_name}.png"
+        if not source_texture.exists():
+            raise FileNotFoundError(
+                f"Missing cyclic option surface texture: {source_texture}"
+            )
+        shutil.copy2(source_texture, CYCLIC_VISUAL_SOURCE_DIR / source_texture.name)
 
     write_cyclic_visual_source_tmc(
         CYCLIC_VISUAL_SOURCE_DIR / f"{CYCLIC_VISUAL_DIR_NAME}.tmc"
@@ -4459,11 +4471,28 @@ def prepare_dev_cyclic_visual_source(
         CYCLIC_VISUAL_SOURCE_DIR / f"{CYCLIC_VISUAL_DIR_NAME}.tmd",
         sorted(geometries),
     )
+    cyclic_tgi_path = CYCLIC_VISUAL_SOURCE_DIR / f"{CYCLIC_VISUAL_DIR_NAME}.tgi"
     core.write_tgi(
-        CYCLIC_VISUAL_SOURCE_DIR / f"{CYCLIC_VISUAL_DIR_NAME}.tgi",
+        cyclic_tgi_path,
         source_materials,
         geometries,
     )
+    patched_materials, surface_slots = patch_dev_tgi_material_shaders(cyclic_tgi_path)
+    expected_patched_materials = len(used_material_names & DEV_INTERIOR_SHADER_MATERIALS)
+    expected_surface_slots = sum(
+        len(DEV_MATERIAL_SURFACE_MAPS.get(material_name, ()))
+        for material_name in used_material_names
+    )
+    if patched_materials != expected_patched_materials:
+        raise RuntimeError(
+            "Cyclic option interior shader mismatch: "
+            f"patched {patched_materials}, expected {expected_patched_materials}."
+        )
+    if surface_slots != expected_surface_slots:
+        raise RuntimeError(
+            "Cyclic option surface-map mismatch: "
+            f"added {surface_slots}, expected {expected_surface_slots}."
+        )
     core.write_model_tmc(
         CYCLIC_VISUAL_SOURCE_DIR / "model.tmc",
         source_materials,
@@ -4485,6 +4514,9 @@ def prepare_dev_cyclic_visual_source(
                 "right_pivot=2.25 0.39 -0.642",
                 "pitch_axis=0 1 0",
                 "roll_axis=1 0 0",
+                f"cyclic_material={PEDAL_BLACK_MATERIAL}",
+                f"pedal_material={PEDAL_BLACK_MATERIAL}",
+                f"surface_maps={','.join(sorted(surface_texture_names))}",
                 "",
             ]
         ),
