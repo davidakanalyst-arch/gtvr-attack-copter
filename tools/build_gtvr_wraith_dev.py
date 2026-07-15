@@ -5112,7 +5112,7 @@ def patch_dev_controls_tmd(path: Path) -> int:
         r"<\[tmvector3d\]\[Axis\]\[[^\]]+\]>"
     )
     patched_text, roll_axis_updates = roll_axis_pattern.subn(
-        r"\g<1><[tmvector3d][Axis][ 0.3489 0.9372 0.0 ]>",
+        r"\g<1><[tmvector3d][Axis][ -0.3489 0.9372 0.0 ]>",
         patched_text,
     )
     if roll_axis_updates != 2:
