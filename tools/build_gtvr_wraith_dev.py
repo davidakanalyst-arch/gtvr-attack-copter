@@ -549,6 +549,45 @@ def converted_preview_render_tmb() -> Path:
     )
 
 
+def rotor_inclusive_preview_master() -> Path:
+    return PREVIEW_RENDER_SOURCE_DIR / f"preview_{PREVIEW_RENDER_DIR_NAME}.tif"
+
+
+def assert_fresh_rotor_inclusive_preview_master() -> Path:
+    if not PREVIEW_RENDER_SOURCE_STAMP.exists():
+        raise FileNotFoundError(
+            f"Missing rotor-inclusive preview source stamp: {PREVIEW_RENDER_SOURCE_STAMP}"
+        )
+    source_stamp_time = PREVIEW_RENDER_SOURCE_STAMP.stat().st_mtime
+    preview_tmb = converted_preview_render_tmb()
+    if not preview_tmb.exists() or preview_tmb.stat().st_size <= 0:
+        raise FileNotFoundError(f"Missing rotor-inclusive preview TMB: {preview_tmb}")
+    if preview_tmb.stat().st_mtime < source_stamp_time:
+        raise RuntimeError(f"Refusing stale rotor-inclusive preview TMB: {preview_tmb}")
+
+    master_preview = rotor_inclusive_preview_master()
+    if not master_preview.exists() or master_preview.stat().st_size <= 0:
+        raise FileNotFoundError(f"Missing rotor-inclusive preview master: {master_preview}")
+    if master_preview.stat().st_mtime < source_stamp_time:
+        raise RuntimeError(f"Refusing stale rotor-inclusive preview master: {master_preview}")
+
+    with Image.open(master_preview) as preview_image:
+        if preview_image.format != "TIFF":
+            raise RuntimeError(f"Unexpected rotor-inclusive preview format: {preview_image.format}")
+        if preview_image.mode != "RGBA" or preview_image.size != (4096, 4096):
+            raise RuntimeError(
+                "Unexpected rotor-inclusive preview master layout: "
+                f"{preview_image.mode} {preview_image.size}"
+            )
+        if preview_image.getchannel("A").getbbox() is None:
+            raise RuntimeError(
+                f"Refusing fully transparent rotor-inclusive preview master: {master_preview}"
+            )
+        if ImageOps.grayscale(preview_image.convert("RGB")).getbbox() is None:
+            raise RuntimeError(f"Refusing blank rotor-inclusive preview master: {master_preview}")
+    return master_preview
+
+
 def projected_vertex_polygon_area(vertices: VertexPolygon) -> float:
     if len(vertices) < 3:
         return 0.0
@@ -4761,6 +4800,7 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
     prepare_dev_map_panel_source(args)
     prepare_dev_rotor_animation_source(args, materials)
     prepare_dev_cyclic_visual_source(args, materials)
+    prepare_dev_preview_render_source(args, materials, geometries)
     livery_source_atlases = tuple(
         core.SOURCE_DIR / f"{source_stem}.png"
         for source_stem, _target_stem, _treatment in WRAITH_LIVERY_MATERIALS.values()
@@ -4773,8 +4813,6 @@ def prepare_source_for_dev(args: argparse.Namespace) -> None:
         "Wrote dev Wraith repaint source: "
         f"{wraith_liveries.DEFAULT_SOURCE_DIR}"
     )
-    if getattr(args, "use_converted_previews", False):
-        prepare_dev_preview_render_source(args, materials, geometries)
 
 
 def write_source_stamp() -> None:
@@ -4879,10 +4917,90 @@ def assert_fresh_converted_tmb(allow_stale_tmb: bool) -> None:
             f"is older than {CYCLIC_VISUAL_SOURCE_STAMP}. Run the full converter with --convert."
         )
 
+    assert_fresh_rotor_inclusive_preview_master()
     wraith_liveries.assert_fresh_conversion()
 
 
-def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
+def refresh_converted_repaint_previews(timeout: float) -> int:
+    if not PREVIEW_RENDER_SOURCE_DIR.exists():
+        raise FileNotFoundError(
+            f"Missing rotor-inclusive preview source: {PREVIEW_RENDER_SOURCE_DIR}"
+        )
+    preview_command = [
+        sys.executable,
+        str(ROOT / "tools" / "run_aerofly_converter.py"),
+        PREVIEW_RENDER_DIR_NAME,
+        str(PREVIEW_RENDER_SOURCE_ROOT),
+        "--userfolder",
+        str(PREVIEW_RENDER_LAUNCH_USER),
+        "--timeout",
+        str(timeout),
+    ]
+    print("Running full Aerofly converter for the rotor-inclusive Wraith preview:")
+    print(" ".join(preview_command))
+    preview_completed = subprocess.run(preview_command, cwd=ROOT, check=False)
+    if preview_completed.returncode != 0:
+        return preview_completed.returncode
+
+    livery_preview_master = assert_fresh_rotor_inclusive_preview_master()
+    wraith_liveries.refresh_previews(livery_preview_master)
+    print(
+        "Dev Wraith repaints: refreshed red-camo and black selector previews from "
+        f"the rotor-inclusive {livery_preview_master.name}."
+    )
+
+    if wraith_liveries.DEFAULT_SOURCE_DIR.exists():
+        livery_command = [
+            sys.executable,
+            str(ROOT / "tools" / "run_aerofly_converter.py"),
+            wraith_liveries.MODEL_NAME,
+            str(wraith_liveries.DEFAULT_SOURCE_ROOT),
+            "--userfolder",
+            str(wraith_liveries.DEFAULT_LAUNCH_USER),
+            "--timeout",
+            str(timeout),
+        ]
+        print("Running full Aerofly converter for Wraith repaint options:")
+        print(" ".join(livery_command))
+        livery_completed = subprocess.run(livery_command, cwd=ROOT, check=False)
+        if livery_completed.returncode != 0:
+            return livery_completed.returncode
+    else:
+        raise FileNotFoundError(
+            f"Missing Wraith repaint source: {wraith_liveries.DEFAULT_SOURCE_DIR}"
+        )
+
+    assert_fresh_rotor_inclusive_preview_master()
+    wraith_liveries.assert_fresh_conversion()
+    return 0
+
+
+def install_converted_repaint_previews(user_root: Path) -> int:
+    wraith_liveries.assert_fresh_conversion()
+    package_targets = (
+        DEV_PACKAGE_DIR,
+        user_root / "aircraft" / DEV_AIRCRAFT_NAME,
+    )
+    copied = 0
+    for package_target in package_targets:
+        if package_target.name != DEV_AIRCRAFT_NAME:
+            raise RuntimeError(f"Refusing unexpected repaint preview target: {package_target}")
+        if not package_target.exists():
+            raise FileNotFoundError(f"Missing dev package for repaint preview update: {package_target}")
+        for variant in wraith_liveries.VARIANTS:
+            option_dir = package_target / variant.folder
+            if not option_dir.exists():
+                raise FileNotFoundError(f"Missing Wraith repaint option: {option_dir}")
+            for small, target_name in ((False, "preview.ttx"), (True, "preview_small.ttx")):
+                source = wraith_liveries.converted_preview_texture(variant, small=small)
+                if not source.exists() or source.stat().st_size <= 0:
+                    raise FileNotFoundError(f"Missing converted Wraith repaint preview: {source}")
+                shutil.copy2(source, option_dir / target_name)
+                copied += 1
+    return copied
+
+
+def run_converter(timeout: float) -> int:
     command = [
         sys.executable,
         str(ROOT / "tools" / "run_aerofly_converter.py"),
@@ -4898,13 +5016,6 @@ def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
     completed = subprocess.run(command, cwd=ROOT, check=False)
     if completed.returncode != 0:
         return completed.returncode
-
-    livery_preview_master = DEV_SOURCE_DIR / f"preview_{DEV_AIRCRAFT_NAME}.tif"
-    wraith_liveries.refresh_previews(livery_preview_master)
-    print(
-        "Dev Wraith repaints: refreshed red-camo and black selector previews from "
-        f"{livery_preview_master.name}."
-    )
 
     if MAP_PANEL_SOURCE_DIR.exists():
         panel_command = [
@@ -4957,43 +5068,9 @@ def run_converter(timeout: float, use_converted_previews: bool = False) -> int:
         if cyclic_completed.returncode != 0:
             return cyclic_completed.returncode
 
-    if wraith_liveries.DEFAULT_SOURCE_DIR.exists():
-        livery_command = [
-            sys.executable,
-            str(ROOT / "tools" / "run_aerofly_converter.py"),
-            wraith_liveries.MODEL_NAME,
-            str(wraith_liveries.DEFAULT_SOURCE_ROOT),
-            "--userfolder",
-            str(wraith_liveries.DEFAULT_LAUNCH_USER),
-            "--timeout",
-            str(timeout),
-        ]
-        print("Running full Aerofly converter for Wraith repaint options:")
-        print(" ".join(livery_command))
-        livery_completed = subprocess.run(livery_command, cwd=ROOT, check=False)
-        if livery_completed.returncode != 0:
-            return livery_completed.returncode
-
-    if use_converted_previews:
-        if not PREVIEW_RENDER_SOURCE_DIR.exists():
-            raise FileNotFoundError(
-                f"Missing rotor-inclusive preview source: {PREVIEW_RENDER_SOURCE_DIR}"
-            )
-        preview_command = [
-            sys.executable,
-            str(ROOT / "tools" / "run_aerofly_converter.py"),
-            PREVIEW_RENDER_DIR_NAME,
-            str(PREVIEW_RENDER_SOURCE_ROOT),
-            "--userfolder",
-            str(PREVIEW_RENDER_LAUNCH_USER),
-            "--timeout",
-            str(timeout),
-        ]
-        print("Running full Aerofly converter for the rotor-inclusive Wraith preview:")
-        print(" ".join(preview_command))
-        preview_completed = subprocess.run(preview_command, cwd=ROOT, check=False)
-        if preview_completed.returncode != 0:
-            return preview_completed.returncode
+    repaint_preview_result = refresh_converted_repaint_previews(timeout)
+    if repaint_preview_result != 0:
+        return repaint_preview_result
 
     return 0
 
@@ -5498,34 +5575,9 @@ def preserve_installed_dev_previews(user_root: Path) -> int:
 
 
 def install_converted_dev_previews() -> int:
-    if not PREVIEW_RENDER_SOURCE_STAMP.exists():
-        raise FileNotFoundError(
-            f"Missing rotor-inclusive preview source stamp: {PREVIEW_RENDER_SOURCE_STAMP}"
-        )
+    assert_fresh_rotor_inclusive_preview_master()
     source_stamp_time = PREVIEW_RENDER_SOURCE_STAMP.stat().st_mtime
     preview_tmb = converted_preview_render_tmb()
-    if not preview_tmb.exists() or preview_tmb.stat().st_size <= 0:
-        raise FileNotFoundError(f"Missing rotor-inclusive preview TMB: {preview_tmb}")
-    if preview_tmb.stat().st_mtime < source_stamp_time:
-        raise RuntimeError(f"Refusing stale rotor-inclusive preview TMB: {preview_tmb}")
-
-    master_preview = PREVIEW_RENDER_SOURCE_DIR / f"preview_{PREVIEW_RENDER_DIR_NAME}.tif"
-    if not master_preview.exists() or master_preview.stat().st_size <= 0:
-        raise FileNotFoundError(f"Missing converted dev preview master: {master_preview}")
-    if master_preview.stat().st_mtime < source_stamp_time:
-        raise RuntimeError(f"Refusing stale dev preview master: {master_preview}")
-
-    with Image.open(master_preview) as preview_image:
-        if preview_image.format != "TIFF":
-            raise RuntimeError(f"Unexpected dev preview format: {preview_image.format}")
-        if preview_image.mode != "RGBA" or preview_image.size != (4096, 4096):
-            raise RuntimeError(
-                f"Unexpected dev preview master layout: {preview_image.mode} {preview_image.size}"
-            )
-        if preview_image.getchannel("A").getbbox() is None:
-            raise RuntimeError(f"Refusing fully transparent dev preview master: {master_preview}")
-        if ImageOps.grayscale(preview_image.convert("RGB")).getbbox() is None:
-            raise RuntimeError(f"Refusing blank dev preview master: {master_preview}")
 
     converted_dir = preview_tmb.parent
     copied = 0
@@ -5669,6 +5721,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_core_args(parser)
     parser.add_argument("--prepare-source", action="store_true")
     parser.add_argument("--convert", action="store_true", help="Run the full Aerofly converter for the dev source.")
+    parser.add_argument(
+        "--refresh-repaint-previews",
+        action="store_true",
+        help="Convert and install only the red/black repaint selector previews from the rotor-inclusive render.",
+    )
     parser.add_argument("--assemble-package", action="store_true")
     parser.add_argument("--install", action="store_true", help="Install only to the gtvr_wraith_dev FS4 folder.")
     parser.add_argument("--full", action="store_true", help="Prepare, convert, assemble and install the dev package.")
@@ -5695,7 +5752,13 @@ def main() -> int:
         args.assemble_package = True
         args.install = True
 
-    requested_actions = [args.prepare_source, args.convert, args.assemble_package, args.install]
+    requested_actions = [
+        args.prepare_source,
+        args.convert,
+        args.refresh_repaint_previews,
+        args.assemble_package,
+        args.install,
+    ]
     if not any(requested_actions):
         parser.print_help()
         print("")
@@ -5709,9 +5772,19 @@ def main() -> int:
             write_source_stamp()
 
         if args.convert:
-            result = run_converter(args.converter_timeout, args.use_converted_previews)
+            result = run_converter(args.converter_timeout)
             if result != 0:
                 return result
+
+        if args.refresh_repaint_previews:
+            result = refresh_converted_repaint_previews(args.converter_timeout)
+            if result != 0:
+                return result
+            copied_previews = install_converted_repaint_previews(args.user_root)
+            print(
+                "Dev Wraith repaints: installed only the rotor-inclusive red/black selector "
+                f"previews ({copied_previews} files across package and dev install)."
+            )
 
         if args.assemble_package:
             assert_fresh_converted_tmb(args.allow_stale_tmb)

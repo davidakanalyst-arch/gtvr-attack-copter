@@ -66,7 +66,15 @@ Two native repaint options are generated from the Wraith's own two exterior body
 - `wraith_red_camo` — `Wraith Red Camo`, using a deep red/black fractured pattern while preserving vents, panel gaps, alpha, weapons, sensors, and auxiliary finishes;
 - `wraith_black` — `Wraith Black`, using a plain near-black treatment with restrained source panel detail and no camouflage pattern.
 
-Each option contains converted replacements for `gtvr_wraith_livery_body_1.ttx` and `gtvr_wraith_livery_body_2.ttx` plus a distinct large and small selector preview. Repaint generation does not alter geometry, controls, displays, rotors, contact points, or the flight model.
+Each option contains converted replacements for `gtvr_wraith_livery_body_1.ttx` and `gtvr_wraith_livery_body_2.ttx` plus a distinct large and small selector preview. Both repaint previews are recoloured from the same dedicated rotor-inclusive static render used by the accepted base-aircraft preview, so the complete main and tail rotor assemblies remain visible. Repaint generation does not alter geometry, controls, displays, rotors, contact points, or the flight model.
+
+To regenerate and install only the red and black repaint selector previews without rebuilding or reinstalling the aircraft, run:
+
+```powershell
+python tools\build_gtvr_wraith_dev.py --refresh-repaint-previews --converter-timeout 600
+```
+
+That focused path updates only `preview.ttx` and `preview_small.ttx` in the two repaint folders of the local dev package and installed dev aircraft.
 
 ## Manual Dev Steps
 

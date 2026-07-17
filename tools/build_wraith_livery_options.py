@@ -255,6 +255,7 @@ def write_source_stamp(
                 "GTVR Wraith repaint option source prepared.",
                 "base_livery=accepted charcoal/gunmetal Wraith camouflage",
                 "variants=wraith_red_camo,wraith_black",
+                "preview_source=rotor-inclusive accepted Wraith preview render",
                 f"preview_master={preview_master or 'placeholder'}",
                 *texture_hashes,
                 "",
